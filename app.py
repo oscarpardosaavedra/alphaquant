@@ -8,11 +8,38 @@ import pytz
 import time
 
 # ==========================================
-# 1. BLOQUE SELLADO (Título y Base de Datos)
+# 1. CONFIGURACIÓN Y ESTILOS CSS (DISEÑO PREMIUM)
 # ==========================================
-st.set_page_config(page_title="Alphaquant", page_icon="📈", layout="wide")
-st.title("📈 Alphaquant")
+st.set_page_config(page_title="Alphaquant Titanium", page_icon="📈", layout="wide")
 
+# Inyección de CSS para forzar cabeceras en negrita y mejorar el diseño
+st.markdown("""
+<style>
+    /* Forzar cabeceras de la tabla en negrita absoluta */
+    [data-testid="stDataFrame"] th {
+        font-weight: 900 !important;
+        font-size: 14px !important;
+    }
+    
+    /* Estilo para las tarjetas de métricas */
+    [data-testid="stMetric"] {
+        background-color: #f8f9fa;
+        border-radius: 10px;
+        padding: 15px;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+    }
+</style>
+""", unsafe_allow_html=True)
+
+# Banner Superior Premium (Reemplaza al st.title básico)
+st.markdown("""
+<div style="background: linear-gradient(135deg, #0f2027 0%, #203a43 50%, #2c5364 100%); padding: 30px; border-radius: 12px; text-align: center; margin-bottom: 30px; box-shadow: 0 8px 16px rgba(0,0,0,0.2);">
+    <h1 style="color: white; margin: 0; font-size: 3em; font-family: 'Segoe UI', Tahoma, sans-serif; letter-spacing: 2px;">📈 ALPHAQUANT <span style="color: #00FF41;">TITANIUM</span></h1>
+    <p style="color: #a8b2b8; font-size: 1.2em; font-style: italic; margin-top: 10px; letter-spacing: 1px;">Motor Cuantitativo Institucional V4 | Multi-Mercado</p>
+</div>
+""", unsafe_allow_html=True)
+
+# Base de datos de Tickers
 tickers_nombres = {
     "AGH": "Powerus", "XTND": "Xtend", "UMAC": "Unusual Mac", "RCAT": "Red Cat",
     "AVAV": "AeroViron", "UAVS": "AgEagle", "EH": "EHang", "LMT": "Lockheed",
@@ -193,6 +220,9 @@ def a_yahoo(ticker):
     if ticker.startswith("NYSE:"): return ticker.replace("NYSE:", "")
     return ticker
 
+# ==========================================
+# 2. MOTOR DE RELOJES Y SEMÁFOROS
+# ==========================================
 def obtener_estado_mercados():
     ahora_utc = datetime.datetime.now(pytz.utc)
     
@@ -221,9 +251,6 @@ def obtener_estado_mercados():
     
     return estado_us, estado_eu, estado_asia
 
-# ==========================================
-# 3. CABECERA GLOBAL
-# ==========================================
 st.markdown("### 🚦 Estado Global de los Mercados")
 us, eu, asia = obtener_estado_mercados()
 col1, col2, col3 = st.columns(3)
@@ -475,7 +502,7 @@ with tab2:
             df = pd.DataFrame(resultados_radar)
             df = df.sort_values(by="PUNTOS", ascending=False).reset_index(drop=True)
             
-            # --- ESTILOS DE LA TABLA (AJUSTE VISUAL PERFECTO) ---
+            # --- ESTILOS DE LA TABLA (AJUSTE VISUAL FINAL) ---
             def color_porcentajes(val):
                 if isinstance(val, str) and '%' in val:
                     # Verde oscuro idéntico a la gráfica, SIN negrita
@@ -491,14 +518,11 @@ with tab2:
             columnas_pct = ["% HOY", "% 1 mes", "% 6 meses", "% 1 año", "% Máx", "Suelo (52s)", "Max (52s)"]
             
             try:
-                # set_table_styles refuerza las cabeceras para que sean bold
                 styled_df = df.style.map(color_porcentajes, subset=columnas_pct)\
-                                    .map(negrita_ticker, subset=['Ticker'])\
-                                    .set_table_styles([dict(selector="th", props=[("font-weight", "bold")])])
+                                    .map(negrita_ticker, subset=['Ticker'])
             except AttributeError:
                 styled_df = df.style.applymap(color_porcentajes, subset=columnas_pct)\
-                                    .applymap(negrita_ticker, subset=['Ticker'])\
-                                    .set_table_styles([dict(selector="th", props=[("font-weight", "bold")])])
+                                    .applymap(negrita_ticker, subset=['Ticker'])
 
             st.success("Caza terminada. Tu Matriz Cuantitativa V4 (Adaptativa) está lista:")
             
