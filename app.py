@@ -3,10 +3,10 @@ import yfinance as yf
 import plotly.graph_objects as go
 
 # ==========================================
-# 1. BLOQUE SELLADO (No se toca)
+# 1. BLOQUE SELLADO (Título y Panel Izquierdo)
 # ==========================================
-st.set_page_config(page_title="alphaquant", layout="centered")
-st.title("alphaquant")
+st.set_page_config(page_title="Alphaquant", page_icon="📈", layout="wide")
+st.title("📈 Alphaquant")
 
 tickers_nombres = {
     "AGH": "Powerus", "XTND": "Xtend", "UMAC": "Unusual Mac", "RCAT": "Red Cat",
@@ -178,13 +178,15 @@ tickers_nombres = {
 opciones_desplegable = [f"{ticker} ({nombre})" for ticker, nombre in tickers_nombres.items()]
 opciones_desplegable.sort()
 
-ticker_elegido = st.selectbox("Selecciona un activo:", opciones_desplegable)
+# Panel izquierdo (Sidebar)
+with st.sidebar:
+    ticker_elegido = st.selectbox("Selecciona un activo:", opciones_desplegable)
 
 # ==========================================
-# 2. EL NUEVO MOTOR DE GRÁFICOS (Limpio y exacto)
+# 2. MOTOR DE GRÁFICOS (Limpio y exacto)
 # ==========================================
 if ticker_elegido:
-    # Extraemos solo las letras del ticker (Ej: de "AAPL (Apple)" sacamos "AAPL")
+    # Extraemos solo el ticker para Yahoo Finance
     simbolo_real = ticker_elegido.split(" ")[0]
     
     st.markdown("---")
@@ -197,7 +199,7 @@ if ticker_elegido:
         horizontal=True
     )
     
-    # Traductor de tiempo para conectarse a Wall Street
+    # Traductor de tiempo
     mapa_tiempo = {
         "1 Mes": "1mo", 
         "3 Meses": "3mo", 
@@ -218,10 +220,10 @@ if ticker_elegido:
                     y=datos['Close'], 
                     mode='lines', 
                     name='Precio de Cierre',
-                    line=dict(color='#00FF41', width=2) # Línea verde estilo terminal
+                    line=dict(color='#00FF41', width=2) # Línea verde neón
                 ))
                 
-                # Diseño de la gráfica: fondo oscuro, sin distracciones
+                # Diseño de la gráfica
                 fig.update_layout(
                     title=f"Cotización de {ticker_elegido}",
                     template='plotly_dark',
@@ -235,4 +237,4 @@ if ticker_elegido:
             else:
                 st.warning("⚠️ No hay datos históricos en Yahoo Finance para este activo en este periodo.")
         except Exception as e:
-            st.error("⚠️ Ha ocurrido un error de conexión al cargar la gráfica.")
+            st.error("⚠️ Ha ocurrido un error al cargar la gráfica.")
