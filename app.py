@@ -8,34 +8,30 @@ import pytz
 import time
 
 # ==========================================
-# 1. CONFIGURACIÓN Y ESTILOS CSS (DISEÑO PREMIUM)
+# 1. CONFIGURACIÓN Y ESTILOS CSS
 # ==========================================
-st.set_page_config(page_title="Alphaquant Titanium", page_icon="📈", layout="wide")
+st.set_page_config(page_title="Alphaquant", page_icon="📈", layout="wide")
 
-# Inyección de CSS para forzar cabeceras en negrita y mejorar el diseño
+# CSS minimalista para mejorar las tarjetas
 st.markdown("""
 <style>
-    /* Forzar cabeceras de la tabla en negrita absoluta */
-    [data-testid="stDataFrame"] th {
-        font-weight: 900 !important;
-        font-size: 14px !important;
-    }
-    
-    /* Estilo para las tarjetas de métricas */
     [data-testid="stMetric"] {
         background-color: #f8f9fa;
         border-radius: 10px;
         padding: 15px;
         box-shadow: 0 4px 6px rgba(0,0,0,0.05);
     }
+    /* Intentamos forzar negrita por CSS adicional */
+    th, [data-testid="stDataFrame"] th, .stDataFrame th {
+        font-weight: 900 !important;
+    }
 </style>
 """, unsafe_allow_html=True)
 
-# Banner Superior Premium (Reemplaza al st.title básico)
+# Banner Superior Elegante y Limpio
 st.markdown("""
-<div style="background: linear-gradient(135deg, #0f2027 0%, #203a43 50%, #2c5364 100%); padding: 30px; border-radius: 12px; text-align: center; margin-bottom: 30px; box-shadow: 0 8px 16px rgba(0,0,0,0.2);">
-    <h1 style="color: white; margin: 0; font-size: 3em; font-family: 'Segoe UI', Tahoma, sans-serif; letter-spacing: 2px;">📈 ALPHAQUANT <span style="color: #00FF41;">TITANIUM</span></h1>
-    <p style="color: #a8b2b8; font-size: 1.2em; font-style: italic; margin-top: 10px; letter-spacing: 1px;">Motor Cuantitativo Institucional V4 | Multi-Mercado</p>
+<div style="background: linear-gradient(135deg, #0f2027 0%, #203a43 50%, #2c5364 100%); padding: 25px; border-radius: 12px; text-align: center; margin-bottom: 30px; box-shadow: 0 4px 8px rgba(0,0,0,0.1);">
+    <h1 style="color: white; margin: 0; font-size: 2.8em; font-family: 'Segoe UI', Tahoma, sans-serif; letter-spacing: 2px;">📈 ALPHAQUANT</h1>
 </div>
 """, unsafe_allow_html=True)
 
@@ -220,9 +216,6 @@ def a_yahoo(ticker):
     if ticker.startswith("NYSE:"): return ticker.replace("NYSE:", "")
     return ticker
 
-# ==========================================
-# 2. MOTOR DE RELOJES Y SEMÁFOROS
-# ==========================================
 def obtener_estado_mercados():
     ahora_utc = datetime.datetime.now(pytz.utc)
     
@@ -251,7 +244,9 @@ def obtener_estado_mercados():
     
     return estado_us, estado_eu, estado_asia
 
-st.markdown("### 🚦 Estado Global de los Mercados")
+# ==========================================
+# 3. CABECERA GLOBAL
+# ==========================================
 us, eu, asia = obtener_estado_mercados()
 col1, col2, col3 = st.columns(3)
 col1.info(f"**EEUU:** {us}")
@@ -368,9 +363,9 @@ with tab2:
     if mercado_objetivo:
         tickers_a_escanear = [t for t in tickers_nombres.keys() if mercado_objetivo == "Todos" or obtener_region(t) == mercado_objetivo]
         
-        st.info(f"Iniciando Radar Cuantitativo V4 Adaptativo para: **{mercado_objetivo}** ({len(tickers_a_escanear)} activos)...")
+        st.info(f"Iniciando radar para: **{mercado_objetivo}** ({len(tickers_a_escanear)} activos)...")
         
-        barra_progreso = st.progress(0, text="Iniciando conexión con Wall Street y calculando benchmark (SPY)...")
+        barra_progreso = st.progress(0, text="Conectando con Wall Street...")
         resultados_radar = []
         
         alphaSPY = 0
@@ -475,23 +470,24 @@ with tab2:
                 simbolos_moneda = {"USD": "$", "EUR": "€", "GBP": "£", "GBp": "GBp", "JPY": "¥"}
                 s_mon = simbolos_moneda.get(moneda, moneda)
 
+                # Diccionario con claves en MAYÚSCULAS para forzar que destaquen las cabeceras
                 resultados_radar.append({
-                    "Ticker": ticker,
-                    "Nombre": nombre_empresa,
+                    "TICKER": ticker,
+                    "NOMBRE": nombre_empresa,
                     "PUNTOS": pts,
                     "RECOMENDACIÓN": recomendacion,
                     "PRECIO": f"{precio_actual:.2f} {s_mon}",
                     "% HOY": f"{pct_hoy:+.2f}%",
-                    "% 1 mes": f"{ret_1m:+.2f}%",
-                    "% 6 meses": f"{ret_6m:+.2f}%",
-                    "% 1 año": f"{ret_1y:+.2f}%",
-                    "% Máx": f"{ret_max:+.2f}%",
+                    "% 1 MES": f"{ret_1m:+.2f}%",
+                    "% 6 MESES": f"{ret_6m:+.2f}%",
+                    "% 1 AÑO": f"{ret_1y:+.2f}%",
+                    "% MÁX": f"{ret_max:+.2f}%",
                     "PER": f"{per:.1f}" if per != 999 else "N/A",
-                    "Sector": sector,
-                    "Volumen": f"{vol_hoy:,.0f}",
-                    "Vol. Medio": f"{vol_medio:,.0f}",
-                    "Suelo (52s)": f"{dist_suelo:+.2f}%",
-                    "Max (52s)": f"{dist_max:+.2f}%"
+                    "SECTOR": sector,
+                    "VOLUMEN": f"{vol_hoy:,.0f}",
+                    "VOL. MEDIO": f"{vol_medio:,.0f}",
+                    "SUELO (52s)": f"{dist_suelo:+.2f}%",
+                    "MAX (52s)": f"{dist_max:+.2f}%"
                 })
                 
             except Exception: continue
@@ -502,48 +498,48 @@ with tab2:
             df = pd.DataFrame(resultados_radar)
             df = df.sort_values(by="PUNTOS", ascending=False).reset_index(drop=True)
             
-            # --- ESTILOS DE LA TABLA (AJUSTE VISUAL FINAL) ---
+            # --- ESTILOS DE LA TABLA (VERDE OSCURO Y SIN NEGRITA EN DATOS) ---
             def color_porcentajes(val):
                 if isinstance(val, str) and '%' in val:
-                    # Verde oscuro idéntico a la gráfica, SIN negrita
+                    # Verde oscuro idéntico a la gráfica, sin negrita
                     if val.startswith('+'): return 'color: #228B22;' 
-                    # Rojo estándar, SIN negrita
+                    # Rojo estándar, sin negrita
                     elif val.startswith('-'): return 'color: #FF3333;' 
                 return ''
 
             def negrita_ticker(val):
-                # Solo negrita, sin forzar el color a blanco
+                # Solo el ticker en negrita
                 return 'font-weight: bold;' 
 
-            columnas_pct = ["% HOY", "% 1 mes", "% 6 meses", "% 1 año", "% Máx", "Suelo (52s)", "Max (52s)"]
+            columnas_pct = ["% HOY", "% 1 MES", "% 6 MESES", "% 1 AÑO", "% MÁX", "SUELO (52s)", "MAX (52s)"]
             
             try:
                 styled_df = df.style.map(color_porcentajes, subset=columnas_pct)\
-                                    .map(negrita_ticker, subset=['Ticker'])
+                                    .map(negrita_ticker, subset=['TICKER'])
             except AttributeError:
                 styled_df = df.style.applymap(color_porcentajes, subset=columnas_pct)\
-                                    .applymap(negrita_ticker, subset=['Ticker'])
+                                    .applymap(negrita_ticker, subset=['TICKER'])
 
-            st.success("Caza terminada. Tu Matriz Cuantitativa V4 (Adaptativa) está lista:")
+            st.success("Caza terminada. Resultados del radar:")
             
             st.dataframe(
                 styled_df, 
                 use_container_width=True, 
                 hide_index=True,
                 column_config={
-                    "PUNTOS": st.column_config.NumberColumn(help="Motor Quant V4 Adaptativo: Evalúa Alpha relativo, Indulto Tech y Rastros de Ballena según la región."),
-                    "RECOMENDACIÓN": st.column_config.TextColumn(help="Etiquetas oficiales: Compra Institucional (>85) y Vigilar Breakout (>70)."),
-                    "% HOY": st.column_config.TextColumn(help="Variación del precio en la sesión actual."),
-                    "% 1 mes": st.column_config.TextColumn(help="Rendimiento en los últimos 21 días laborables."),
-                    "% 6 meses": st.column_config.TextColumn(help="Rendimiento en los últimos 126 días laborables."),
-                    "% 1 año": st.column_config.TextColumn(help="Rendimiento en el último año natural."),
-                    "% Máx": st.column_config.TextColumn(help="Rendimiento histórico total."),
-                    "PER": st.column_config.TextColumn(help="Price-to-Earnings. El Motor V4 indulta los PER altos si hay hipercrecimiento, ajustado por mercado."),
-                    "Sector": st.column_config.TextColumn(help="Sector económico."),
-                    "Volumen": st.column_config.TextColumn(help="Volumen última sesión."),
-                    "Vol. Medio": st.column_config.TextColumn(help="Volumen medio 20 días."),
-                    "Suelo (52s)": st.column_config.TextColumn(help="Distancia al precio MÍNIMO del último año."),
-                    "Max (52s)": st.column_config.TextColumn(help="Distancia al precio MÁXIMO del último año.")
+                    "PUNTOS": st.column_config.NumberColumn(help="Evaluación del algoritmo (0 a 100)."),
+                    "RECOMENDACIÓN": st.column_config.TextColumn(help="Requiere mínimo de 65 puntos para dar señal."),
+                    "% HOY": st.column_config.TextColumn(help="Variación en la sesión actual."),
+                    "% 1 MES": st.column_config.TextColumn(help="Rendimiento en 21 días laborables."),
+                    "% 6 MESES": st.column_config.TextColumn(help="Rendimiento en 126 días laborables."),
+                    "% 1 AÑO": st.column_config.TextColumn(help="Rendimiento en 252 sesiones."),
+                    "% MÁX": st.column_config.TextColumn(help="Rendimiento histórico total."),
+                    "PER": st.column_config.TextColumn(help="Price-to-Earnings."),
+                    "SECTOR": st.column_config.TextColumn(help="Sector económico."),
+                    "VOLUMEN": st.column_config.TextColumn(help="Volumen de la última sesión."),
+                    "VOL. MEDIO": st.column_config.TextColumn(help="Media diaria de acciones negociadas (20d)."),
+                    "SUELO (52s)": st.column_config.TextColumn(help="Distancia al precio MÍNIMO del último año."),
+                    "MAX (52s)": st.column_config.TextColumn(help="Distancia al precio MÁXIMO del último año.")
                 }
             )
         else:
