@@ -1,8 +1,8 @@
 import streamlit as st
 
-# 1. TÍTULO EXACTO
-st.set_page_config(page_title="alphaquant", layout="centered")
-st.title("alphaquant")
+# 1. TÍTULO CON ICONO
+st.set_page_config(page_title="Alphaquant", page_icon="📈", layout="wide")
+st.title("📈 Alphaquant")
 
 # 2. BASE DE DATOS EXACTA
 tickers_nombres = {
@@ -174,9 +174,8 @@ tickers_nombres = {
 
 # 3. CREAR LA LISTA FORMATO "TICKER (Nombre)"
 opciones_desplegable = [f"{ticker} ({nombre})" for ticker, nombre in tickers_nombres.items()]
-
-# Ordenar alfabéticamente
 opciones_desplegable.sort()
 
-# 4. MOSTRAR SOLO EL DESPLEGABLE
-ticker_elegido = st.selectbox("Selecciona un activo:", opciones_desplegable)
+# 4. DESPLEGABLE EN EL PANEL IZQUIERDO
+with st.sidebar:
+    ticker_elegido = st.selectbox("Selecciona un activo:", opciones_desplegable)
