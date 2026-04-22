@@ -3,3 +3,5 @@ pandas
 numpy
 plotly
 pytz
+gspread
+google-auth
