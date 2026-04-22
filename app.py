@@ -3,42 +3,86 @@ import yfinance as yf
 import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
-import re
 
-st.set_page_config(page_title="AlphaQuant Replica", layout="wide")
-st.title("📊 ALPHAQUANT: RÉPLICA EXACTA DEL EXCEL")
+st.set_page_config(page_title="AlphaQuant Radar", layout="wide")
+st.title("🎯 ALPHAQUANT: RADAR Y GRÁFICOS (Modo Excel)")
 st.markdown("---")
 
-with st.sidebar:
-    st.header("1️⃣ Tu Cartera")
-    capital = st.number_input("Capital Disponible (€)", value=10000, step=1000)
-    riesgo_euros = st.number_input("Riesgo Fijo por Operación (€)", value=100, help="Cuánto estás dispuesto a perder si salta el Stop Loss")
-    
-    st.markdown("---")
-    st.header("2️⃣ Pegar Tickers")
-    st.caption("Ve a tu Excel, copia la columna entera con tus 600 tickers y pégala aquí dentro:")
-    
-    # Text area gigante ideal para copiar/pegar columnas de Excel
-    default_tickers = "NVDA\nAAPL\nMSFT\nMETA\nAMZN\nGOOGL\nTSLA\nPLTR\nASML\nAVGO"
-    tickers_input = st.text_area("Universo de Acciones", default_tickers, height=300)
+# 1. LA BASE DE DATOS GIGANTE (Extraída de tu lista)
+TICKERS = [
+    "NVDA","MSFT","GOOGL","AMZN","META","AAPL","TSLA","PLTR","AMD","AVGO","SMCI","ASML","CRM","ADBE","ORCL","NOW",
+    "CRWD","PANW","SNOW","DDOG","MDB","TEAM","NET","ZS","FTNT","OKTA","AI","SOUN","PATH","APP","TTD","NFLX","ANET",
+    "VRT","SYM","HPE","DELL","PSTG","MRVL","ARM","BABA","IGFA","IONQ","QUBT","LAES","MSTR","COIN","MARA","RIOT",
+    "CLSK","HIVE","BITF","IREN","HUT","BTBT","CIFR","WULF","GLXY","SQ","PYPL","SOFI","AFRM","UPST","HOOD","V","MA",
+    "AXP","JPM","BAC","WFC","C","GS","MS","BLK","SPG","IMC","O","CME","SCHW","BX","CBM","MCP","GR","AON","ICE","COF",
+    "DFS","SYF","TRV","PRU","MET","ALL","AFL","STT","BK","USB","PNC","TFC","FITB","MTB","KEY","RF","HBAN","LLY","JNJ",
+    "UNH","PFE","MRK","ABBV","AMGN","VRTX","REGN","GILD","BIIB","MRNA","BNTX","ISRG","SYK","MDT","BSX","EW","DXCM",
+    "ILMN","ALGN","IDXX","ZTS","ADHR","TMO","ABT","ZBH","CVS","CI","HUM","CNC","MCK","CAH","BDX","PRCT","IQV","VEEV",
+    "WAT","CRL","GEHC","WMT","COST","HD","LOW","TGT","MCD","SBUX","CMG","NKE","LULU","KO","PEP","PG","EL","PM","MO",
+    "KMB","CL","GIS","HSY","STZ","MNST","TJX","ROST","ULTA","KHC","MDLZ","KDP","DIS","BKNG","MAR","HLT","RCL","CCL",
+    "SPOT","SHOP","MELI","PAR","AWB","FOXA","FOX","MTCH","Z","DKNG","RBLX","UTOST","MGM","NCLH","EXPE","SIRI","EA",
+    "XOM","CVX","COP","SLB","HAL","BKR","EOG","OXY","MPC","VLO","PSX","FANG","HES","DVN","GE","CAT","MMM","HON","DE",
+    "UNP","UPS","FDX","EMR","ETN","ITW","PH","PCAR","CMI","ROK","TTC","ARR","GWW","URI","FAST","NUE","FCX","NEM",
+    "DOW","WMRS","GAP","DSH","WECL","CPRT","SN","AG","PCEX","PD","NEED","UKS","OPLD","AMTD","EXCA","EPSR","ECE","GBX",
+    "PCB","REC","CIS","PGO","PSA","DLR","EQIX","VTR","AVB","ARE","SBAC","WELL","HST","CSG","PB",
+    "BME:SAN","BME:BBVA","BME:CABK","BME:BKT","BME:SAB","BME:UNI","BME:ITX","BME:TEF","BME:IBE","BME:REP","BME:ELE",
+    "BME:ENG","BME:NTGY","BME:GRF","BME:ROVI","BME:PHM","BME:ALM","BME:AMS","BME:FER","BME:ACS","BME:SCYR","BME:IAG",
+    "BME:AENA","BME:IDR","BME:MAP","BME:GCO","BME:COL","BME:MER","BME:SLR","BME:LOG","BME:VIS","BME:MEL","BME:EBRO",
+    "BME:FDR","BME:ACX","BME:ENC",
+    "MC.PA","RMS.PA","OR.PA","TTE.PA","SAP.DE","BMW.DE","MBG.DE","VOW3.DE","BAS.DE","LIN","ENEL.MI","HSBA.L","AZN.L",
+    "ADYEN.AS","TCEHY","JD","PDD","BIDU","NTES","NIO","XPEV","LI","BYDDY","FZKG","ELY","FXI","AOFM","EITK","UAIF",
+    "TME","FUTU","BEKE","TAL","EDU","VIPS","GDS","JKS","DQ","SMIC","TSM","SONY","TM","HMC","9984.T","RELIANCE.NS",
+    "HDFCBANK.NS","INFY","NUPBR","VALE","WALMEX.MX","SE","GRAB","CPNG","TV","AGH","XTN","DUM","ACR","AVAV","UAVS",
+    "EHL","MTR","TXN","OCG","DLH","XLD","OSTX","THI","IKT","OSH","WMB","ATD","GHE","IWW","DSP","RBW","XTN","NER",
+    "HM.DE","SAAB-B.ST","BA.L","HO.PA","AM.PA","PLR.MI"
+]
+# Limpiar duplicados por si acaso
+TICKERS = sorted(list(set(TICKERS)))
 
-if st.button("🚀 EJECUTAR RADAR (Igual que en Excel)", type="primary"):
-    # Separar por saltos de línea, comas o espacios (A prueba de balas al pegar desde Excel)
-    tickers_raw = re.split(r'[,\s]+', tickers_input.strip())
-    tickers = list(set([t.upper() for t in tickers_raw if t])) 
-    
+# ==========================================
+# 1. VISOR DE GRÁFICOS INSTANTÁNEO
+# ==========================================
+st.subheader("🔬 1. Gráficos a la carta")
+c1, c2 = st.columns([1, 3])
+
+with c1:
+    ticker_grafico = st.selectbox("Busca cualquier acción de tu Excel:", TICKERS)
+    periodo = st.radio("Temporalidad:", ["3 Meses", "6 Meses", "1 Año", "2 Años"], index=1)
+
+with c2:
+    if ticker_grafico:
+        p_map = {"3 Meses":"3mo", "6 Meses":"6mo", "1 Año":"1y", "2 Años":"2y"}
+        try:
+            h = yf.Ticker(ticker_grafico).history(period=p_map[periodo])
+            if not h.empty:
+                fig = go.Figure(data=[go.Candlestick(x=h.index, open=h['Open'], high=h['High'], low=h['Low'], close=h['Close'])])
+                fig.update_layout(title=f"{ticker_grafico} ({periodo})", template='plotly_dark', xaxis_rangeslider_visible=False, height=400, margin=dict(l=0, r=0, t=40, b=0))
+                st.plotly_chart(fig, use_container_width=True)
+            else:
+                st.warning("No hay datos de Yahoo Finance para graficar este ticker.")
+        except:
+            st.error("Error al cargar la gráfica.")
+
+st.markdown("---")
+
+# ==========================================
+# 2. EL RADAR (TU EXCEL)
+# ==========================================
+st.subheader("📊 2. El Radar de Titanio")
+st.write(f"Base de datos cargada: **{len(TICKERS)} activos** listos para escanear.")
+
+if st.button("🚀 EJECUTAR ESCÁNER COMPLETO", type="primary"):
     matriz_final = []
-    historicos = {}
+    my_bar = st.progress(0, text="Arrancando motores...")
     
-    my_bar = st.progress(0, text=f"Escaneando {len(tickers)} activos...")
-    
-    for i, t in enumerate(tickers):
-        my_bar.progress(int(((i + 1) / len(tickers)) * 100), text=f"Analizando {t}...")
+    for i, t in enumerate(TICKERS):
+        # Actualizar barra de progreso
+        my_bar.progress(int(((i + 1) / len(TICKERS)) * 100), text=f"Analizando {t} ({i+1}/{len(TICKERS)})...")
+        
         try:
             stock = yf.Ticker(t)
             hist = stock.history(period="6mo")
             if hist.empty: continue
-            historicos[t] = hist
             
             precio = float(hist['Close'].iloc[-1])
             info = stock.info
@@ -49,7 +93,7 @@ if st.button("🚀 EJECUTAR RADAR (Igual que en Excel)", type="primary"):
             vol_hoy = float(hist['Volume'].iloc[-1])
             vol_medio = float(hist['Volume'].mean())
 
-            # Scoring exacto de tu sistema
+            # Puntuación exacta de Excel
             pts = 0
             if ret_1m > 0: pts += 20
             if ret_6m > 0: pts += 20
@@ -58,7 +102,7 @@ if st.button("🚀 EJECUTAR RADAR (Igual que en Excel)", type="primary"):
             elif per < 100 and ret_1m > 0.05: pts += 30
             else: pts += 5
 
-            # Etiquetas del Excel (Magia Pura)
+            # Etiquetas
             is_whale = vol_hoy >= (vol_medio * 1.5)
             is_fenix = ret_6m < -0.10 and ret_1m > 0.05
             is_momentum = ret_6m > 0.10 and ret_1m > 0.05
@@ -71,78 +115,41 @@ if st.button("🚀 EJECUTAR RADAR (Igual que en Excel)", type="primary"):
             elif is_impulsivo: estado = "⚡ RADAR IMPULSIVO"
             elif pts >= 60: estado = "💎 VIGILAR"
 
-            # Gestión simple (Réplica de las columnas de tu Excel)
+            # ATR y Stop Loss (Solo valor de referencia, sin riesgo en euros)
             high_low = hist['High'] - hist['Low']
             high_close = np.abs(hist['High'] - hist['Close'].shift())
             low_close = np.abs(hist['Low'] - hist['Close'].shift())
             ranges = pd.concat([high_low, high_close, low_close], axis=1)
             atr = float(np.max(ranges, axis=1).rolling(14).mean().iloc[-1])
             
-            distancia_stop = atr * 2
-            stop_loss = precio - distancia_stop
-            acciones = round(riesgo_euros / distancia_stop, 2) if distancia_stop > 0 else 0
-            
-            inversion = acciones * precio
-            ratio_tp = 3 if pts >= 80 else 2
-            take_profit = precio + (distancia_stop * ratio_tp)
-            beneficio = acciones * (take_profit - precio)
-            
+            stop_loss = precio - (atr * 2)
+
             matriz_final.append({
                 "SCORE": pts,
                 "ESTADO": estado,
                 "ACTIVO": t,
-                "PRECIO": f"{precio:.2f} $",
-                "ACCIONES": acciones,
-                "INVERSIÓN": f"{inversion:.2f} $",
-                "STOP LOSS": f"{stop_loss:.2f} $",
-                "TAKE PROFIT": f"{take_profit:.2f} $",
-                "RIESGO": f"-{riesgo_euros:.2f} $",
-                "BENEFICIO ESP.": f"+{beneficio:.2f} $"
+                "PRECIO": f"{precio:.2f}",
+                "STOP LOSS (Nivel)": f"{stop_loss:.2f}",
+                "ATR (Volatilidad)": f"{atr:.2f}",
+                "PER": f"{per:.1f}" if per != 999 else "N/A"
             })
         except Exception:
             continue
             
-    my_bar.empty() # Quitar barra al terminar
+    my_bar.empty()
     
     if matriz_final:
         df = pd.DataFrame(matriz_final).sort_values(by="SCORE", ascending=False).reset_index(drop=True)
+        st.success(f"✅ Matriz generada con éxito. Se analizaron {len(matriz_final)} activos válidos.")
         
-        # 1. RESUMEN GLOBAL DE LA CARTERA (Lo que querías ver)
-        st.subheader("⚖️ Balance Global de la Operación")
-        # Sumamos solo las que el sistema nos dice de COMPRAR o VIGILAR
-        df_activas = df[df['ESTADO'].str.contains("COMPRA|BALLENA|IMPULSIVO")]
-        
-        total_inv = sum([float(str(r).replace(' $','')) for r in df_activas['INVERSIÓN']]) if not df_activas.empty else 0
-        total_riesgo = sum([float(str(r).replace(' $','').replace('-','')) for r in df_activas['RIESGO']]) if not df_activas.empty else 0
-        total_ben = sum([float(str(r).replace(' $','').replace('+','')) for r in df_activas['BENEFICIO ESP.']]) if not df_activas.empty else 0
-        
-        c1, c2, c3 = st.columns(3)
-        c1.metric("💰 CAPITAL TOTAL INVERTIDO", f"{total_inv:.2f} $")
-        c2.metric("⚠️ RIESGO TOTAL ASUMIDO", f"-{total_riesgo:.2f} $")
-        c3.metric("🎯 BENEFICIO POTENCIAL", f"+{total_ben:.2f} $")
-        st.markdown("*(Los totales suman automáticamente solo las acciones con señal de Compra, Ballena o Impulso)*")
-        st.markdown("---")
-        
-        # 2. TABLA PRINCIPAL (Filtro exacto de tu Excel)
-        st.subheader("📋 MATRIZ DE COMPRAS (El Radar)")
+        # Filtro: Mostrar solo lo interesante arriba
         df_buenas = df[df['ESTADO'].str.contains("COMPRA|BALLENA|IMPULSIVO|VIGILAR")]
+        
         if not df_buenas.empty:
+            st.write("### 🎯 Oportunidades de Entrada")
             st.dataframe(df_buenas, use_container_width=True)
         else:
-            st.warning("Hoy el mercado manda estar quieto. No hay señales claras.")
+            st.warning("El mercado está rojo. No hay compras claras hoy.")
             
-        with st.expander("Ver tabla completa (Incluidas las de '❌ ESPERAR')"):
+        with st.expander("Ver lista completa (Incluyendo las de '❌ ESPERAR')"):
             st.dataframe(df, use_container_width=True)
-            
-        st.markdown("---")
-        
-        # 3. GRÁFICAS INTEGRADAS
-        st.subheader("🔬 Gráficas Interactivas")
-        tickers_validos = df['ACTIVO'].tolist()
-        ticker_elegido = st.selectbox("Selecciona un activo de la tabla para ver su gráfica:", tickers_validos)
-        
-        if ticker_elegido:
-            h = historicos[ticker_elegido]
-            fig = go.Figure(data=[go.Candlestick(x=h.index, open=h['Open'], high=h['High'], low=h['Low'], close=h['Close'])])
-            fig.update_layout(title=f"Acción del Precio: {ticker_elegido} (Últimos 6 meses)", template='plotly_dark', xaxis_rangeslider_visible=False, height=550)
-            st.plotly_chart(fig, use_container_width=True)
