@@ -395,7 +395,7 @@ with tab2:
     if mercado_objetivo:
         tickers_a_escanear = [t for t in tickers_nombres.keys() if mercado_objetivo == "Todos" or obtener_region(t) == mercado_objetivo]
         
-        st.info(f"Iniciando Radar Cuantitativo Adaptativo para: **{mercado_objetivo}** ({len(tickers_a_escanear)} activos)...")
+        st.info(f"Iniciando Radar Cuantitativo V4 Adaptativo para: **{mercado_objetivo}** ({len(tickers_a_escanear)} activos)...")
         
         barra_progreso = st.progress(0, text="Conectando con Wall Street y calculando benchmark (SPY)...")
         resultados_radar = []
@@ -412,7 +412,6 @@ with tab2:
         existentes_en_db = []
         if ws:
             try:
-                # Obtenemos todos los tickers que ya están en la columna A (Ticker)
                 existentes_en_db = ws.col_values(1)
             except Exception:
                 pass
@@ -443,7 +442,6 @@ with tab2:
                 dist_suelo = ((precio_actual / min_52) - 1) * 100 if min_52 > 0 else 0
                 dist_max = ((precio_actual / max_52) - 1) * 100 if max_52 > 0 else 0
                 
-                # Función segura para sacar % históricos
                 def get_ret(days):
                     if len(hist_full) >= days and not pd.isna(hist_full['Close'].iloc[-days]) and hist_full['Close'].iloc[-days] > 0:
                         return ((precio_actual / hist_full['Close'].iloc[-days]) - 1) * 100
@@ -518,13 +516,11 @@ with tab2:
 
                 # =======================================================
                 # AUTO-GUARDADO EN LA SALA DE TROFEOS (Google Sheets)
+                # UMBRAL SUBIDO A >= 90 PUNTOS
                 # =======================================================
-                # Si la puntuación es alta y el ticker NO estaba en la base de datos...
-                if pts >= 80 and ticker not in existentes_en_db and ws is not None:
+                if pts >= 90 and ticker not in existentes_en_db and ws is not None:
                     fecha_hoy = datetime.datetime.now().strftime("%Y-%m-%d")
-                    # Añadimos la fila: [Ticker, Empresa, Fecha, Precio_Aviso, Puntos]
                     ws.append_row([ticker, nombre_empresa, fecha_hoy, float(precio_actual), int(pts)])
-                    # Lo añadimos a la lista local para no duplicarlo si repetimos escaneo
                     existentes_en_db.append(ticker)
                 # =======================================================
 
@@ -588,7 +584,7 @@ with tab2:
                 styled_df = df.style.applymap(color_porcentajes, subset=columnas_pct)\
                                     .applymap(negrita_ticker, subset=['TICKER'])
 
-            st.success("Caza terminada. Las empresas con más de 80 puntos se han guardado automáticamente en la Sala de Trofeos.")
+            st.success("Caza terminada. Las empresas con 90 puntos o más se han guardado automáticamente en la Sala de Trofeos.")
             
             st.dataframe(
                 styled_df, 
@@ -622,34 +618,31 @@ with tab2:
 # ------------------------------------------
 with tab3:
     st.markdown("### 🏆 Sala de Trofeos")
-    st.write("Verifica en tiempo real si el algoritmo está acertando. Las acciones que superan los 80 puntos en el Radar se guardan aquí de forma permanente.")
+    st.write("Verifica en tiempo real si el algoritmo V4 está acertando. Las acciones que alcanzan o superan los 90 puntos en el Radar se guardan aquí de forma permanente.")
     
     ws = conectar_db()
     
     if ws is not None:
-        # Obtenemos todo el contenido de la hoja
         data_sheet = ws.get_all_records()
         
         if not data_sheet:
-            st.info("Tu Google Sheets está vacío. Ve a la pestaña de Radar y haz un escaneo para cazar nuevas acciones.")
+            st.info("Tu base de datos está vacía. Ve a la pestaña de Radar y haz un escaneo para cazar nuevas acciones.")
         else:
             # --- PANEL PARA ELIMINAR TICKERS MANUALMENTE ---
             with st.expander("🗑️ Gestionar Base de Datos (Eliminar Tickers)"):
-                st.write("Si alguna acción ya no te interesa, puedes borrarla de tu Google Sheets desde aquí:")
+                st.write("Si alguna acción ya no te interesa, puedes borrarla desde aquí:")
                 with st.form("form_del"):
-                    # Listamos los tickers que hay en la base de datos
                     tk_borrar = st.selectbox("Selecciona el Ticker a eliminar:", [d['Ticker'] for d in data_sheet])
                     
                     if st.form_submit_button("Borrar permanentemente"):
-                        # Buscamos en qué fila está el ticker (solo en la columna 1 para ser seguros)
                         cell = ws.find(tk_borrar, in_column=1)
                         if cell:
                             ws.delete_rows(cell.row)
-                            st.success(f"✅ El ticker {tk_borrar} se ha eliminado de Google Sheets.")
-                            time.sleep(1.5) # Pausa corta para que el usuario lea el mensaje
-                            st.rerun() # Refresca la página para actualizar la lista
+                            st.success(f"✅ El ticker {tk_borrar} se ha eliminado.")
+                            time.sleep(1.5) 
+                            st.rerun() 
                         else:
-                            st.error("No se ha encontrado el ticker en la hoja.")
+                            st.error("No se ha encontrado el ticker en la base de datos.")
             # ------------------------------------------------
 
             if st.button("🔄 Auditar Rendimiento Actual", use_container_width=True):
@@ -660,12 +653,10 @@ with tab3:
                     
                     for d in data_sheet:
                         try:
-                            # Sacamos el precio actual de cada activo guardado
                             tk_y = a_yahoo(d['Ticker'])
                             tk = yf.Ticker(tk_y)
                             p_hoy = tk.history(period="1d")['Close'].iloc[-1]
                             
-                            # Calculamos rentabilidad desde el día que se cazó
                             rent = ((p_hoy / float(d['Precio_Aviso'])) - 1) * 100
                             
                             obj = {
