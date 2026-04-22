@@ -215,7 +215,7 @@ def obtener_estado_mercados():
     return estado_us, estado_eu, estado_asia
 
 # ==========================================
-# 3. PANEL IZQUIERDO (Banderas eliminadas)
+# 3. PANEL IZQUIERDO (Sellado y sin banderas raras)
 # ==========================================
 with st.sidebar:
     st.markdown("### 🚦 Estado Global")
@@ -228,16 +228,18 @@ with st.sidebar:
     ticker_elegido = st.selectbox("Selecciona un activo:", opciones_desplegable)
 
 # ==========================================
-# 4. MOTOR DE GRÁFICOS
+# 4. MOTOR DE GRÁFICOS (Ahora con Traductor a Dólares)
 # ==========================================
 if ticker_elegido:
     simbolo_real = ticker_elegido.split(" ")[0]
     
+    # --- TRADUCTOR INVISIBLE PARA YAHOO FINANCE ---
     simbolo_yahoo = simbolo_real
     if simbolo_yahoo.startswith("BME:"):
         simbolo_yahoo = simbolo_yahoo.replace("BME:", "") + ".MC"
     elif simbolo_yahoo.startswith("NYSE:"):
         simbolo_yahoo = simbolo_yahoo.replace("NYSE:", "")
+    # ----------------------------------------------
     
     st.markdown("---")
     
@@ -261,22 +263,40 @@ if ticker_elegido:
             if not datos.empty:
                 info = ticker_obj.info
                 moneda_codigo = info.get('currency', 'USD')
+                precio_actual = datos['Close'].iloc[-1]
                 
+                # Símbolos bonitos
                 simbolos_moneda = {
-                    "USD": "$",
-                    "EUR": "€",
-                    "GBP": "£",
-                    "JPY": "¥",
-                    "HKD": "HK$",
-                    "MXN": "MX$",
-                    "SEK": "kr",
-                    "CHF": "CHF"
+                    "USD": "$", "EUR": "€", "GBP": "£", "GBp": "GBp",
+                    "JPY": "¥", "HKD": "HK$", "MXN": "MX$", "SEK": "kr", "CHF": "CHF"
                 }
                 s_moneda = simbolos_moneda.get(moneda_codigo, moneda_codigo)
 
-                precio_actual = datos['Close'].iloc[-1]
-                st.metric(label=f"Valor Actual ({simbolo_real})", value=f"{precio_actual:.2f} {s_moneda}")
+                # --- EL TRADUCTOR A DÓLARES EN VIVO ---
+                texto_mostrar = f"{precio_actual:.2f} {s_moneda}"
                 
+                if moneda_codigo != "USD":
+                    try:
+                        # Si es GBp (Peniques de UK), hay que pedir 'GBP' y dividir entre 100
+                        query_curr = "GBP" if moneda_codigo == "GBp" else moneda_codigo
+                        factor = 0.01 if moneda_codigo == "GBp" else 1.0
+                        
+                        # Pedimos el tipo de cambio a Yahoo Finance
+                        tasa_fx = yf.Ticker(f"{query_curr}USD=X").history(period="1d")
+                        if not tasa_fx.empty:
+                            rate = tasa_fx['Close'].iloc[-1]
+                            precio_usd = precio_actual * factor * rate
+                            texto_mostrar = f"{precio_actual:.2f} {s_moneda} (${precio_usd:.2f})"
+                    except Exception:
+                        pass # Si falla internet al buscar el FX, no mostramos el paréntesis y listos
+                else:
+                    texto_mostrar = f"{precio_actual:.2f} $"
+                # --------------------------------------
+
+                # Mostramos el precio con o sin conversión
+                st.metric(label=f"Valor Actual ({simbolo_real})", value=texto_mostrar)
+                
+                # Dibujamos la gráfica
                 fig = go.Figure()
                 fig.add_trace(go.Scatter(
                     x=datos.index, 
