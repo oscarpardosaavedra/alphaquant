@@ -215,9 +215,8 @@ def obtener_estado_mercados():
     return estado_us, estado_eu, estado_asia
 
 # ==========================================
-# 3. CABECERA GLOBAL (Fuera del menú lateral)
+# 3. CABECERA GLOBAL
 # ==========================================
-# Pintamos los semáforos arriba del todo, siempre visibles
 st.markdown("### 🚦 Estado Global de los Mercados")
 us, eu, asia = obtener_estado_mercados()
 col1, col2, col3 = st.columns(3)
@@ -236,8 +235,11 @@ tab1, tab2 = st.tabs(["🔬 Análisis Individual", "🎯 Cazar Alpha (Radar)"])
 # ------------------------------------------
 with tab1:
     st.markdown("### 🔍 Selector de Activos")
-    # EL BUSCADOR VIVE AQUÍ: Solo se ve si estás en la Pestaña 1
-    ticker_elegido = st.selectbox("Elige la empresa que quieres revisar:", opciones_desplegable)
+    
+    # AHORA EL BUSCADOR VIVE AQUÍ: En una columna para no ocupar todo el ancho
+    col_buscador, col_espacio = st.columns([1, 2])
+    with col_buscador:
+        ticker_elegido = st.selectbox("Elige la empresa que quieres revisar:", opciones_desplegable)
     
     if ticker_elegido:
         simbolo_real = ticker_elegido.split(" ")[0]
