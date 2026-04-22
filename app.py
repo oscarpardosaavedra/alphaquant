@@ -1,9 +1,11 @@
 import streamlit as st
 import yfinance as yf
 import plotly.graph_objects as go
+import datetime
+import pytz
 
 # ==========================================
-# 1. BLOQUE SELLADO (Título y Panel Izquierdo)
+# 1. BLOQUE SELLADO (Título)
 # ==========================================
 st.set_page_config(page_title="Alphaquant", page_icon="📈", layout="wide")
 st.title("📈 Alphaquant")
@@ -178,20 +180,65 @@ tickers_nombres = {
 opciones_desplegable = [f"{ticker} ({nombre})" for ticker, nombre in tickers_nombres.items()]
 opciones_desplegable.sort()
 
-# Panel izquierdo (Sidebar)
+# ==========================================
+# 2. MOTOR DE RELOJES Y SEMÁFOROS (NUEVO)
+# ==========================================
+def obtener_estado_mercados():
+    ahora_utc = datetime.datetime.now(pytz.utc)
+    
+    # EEUU (Nueva York - EST)
+    hora_ny = ahora_utc.astimezone(pytz.timezone('US/Eastern'))
+    es_fin_semana_ny = hora_ny.weekday() >= 5
+    t_ny = hora_ny.time()
+    
+    if es_fin_semana_ny: estado_us = "🔴 Cerrado"
+    elif datetime.time(4, 0) <= t_ny < datetime.time(9, 30): estado_us = "🟡 Pre-Market"
+    elif datetime.time(9, 30) <= t_ny < datetime.time(16, 0): estado_us = "🟢 Abierto"
+    elif datetime.time(16, 0) <= t_ny < datetime.time(20, 0): estado_us = "🔵 Post-Market"
+    else: estado_us = "🔴 Cerrado"
+
+    # EUROPA (Madrid/París - CET)
+    hora_eu = ahora_utc.astimezone(pytz.timezone('Europe/Madrid'))
+    es_fin_semana_eu = hora_eu.weekday() >= 5
+    t_eu = hora_eu.time()
+    
+    if es_fin_semana_eu: estado_eu = "🔴 Cerrado"
+    elif datetime.time(9, 0) <= t_eu < datetime.time(17, 30): estado_eu = "🟢 Abierto"
+    else: estado_eu = "🔴 Cerrado"
+
+    # ASIA (Tokio - JST)
+    hora_asia = ahora_utc.astimezone(pytz.timezone('Asia/Tokyo'))
+    es_fin_semana_asia = hora_asia.weekday() >= 5
+    t_asia = hora_asia.time()
+    
+    if es_fin_semana_asia: estado_asia = "🔴 Cerrado"
+    elif datetime.time(9, 0) <= t_asia <= datetime.time(15, 0): estado_asia = "🟢 Abierto"
+    else: estado_asia = "🔴 Cerrado"
+    
+    return estado_us, estado_eu, estado_asia
+
+# ==========================================
+# 3. PANEL IZQUIERDO (Con Semáforos)
+# ==========================================
 with st.sidebar:
+    # Mostramos los semáforos en la parte superior del panel
+    st.markdown("### 🚦 Estado Global")
+    us, eu, asia = obtener_estado_mercados()
+    st.write(f"🇺🇸 **EEUU:** {us}")
+    st.write(f"🇪🇺 **Europa:** {eu}")
+    st.write(f"🇯🇵 **Asia:** {asia}")
+    st.markdown("---")
+    
+    # El desplegable original intacto
     ticker_elegido = st.selectbox("Selecciona un activo:", opciones_desplegable)
 
 # ==========================================
-# 2. MOTOR DE GRÁFICOS (Añadido Precio y Verde Oscuro)
+# 4. MOTOR DE GRÁFICOS (Sellado con Verde Oscuro)
 # ==========================================
 if ticker_elegido:
-    # Extraemos solo el ticker para Yahoo Finance
     simbolo_real = ticker_elegido.split(" ")[0]
-    
     st.markdown("---")
     
-    # Botones horizontales limpios para elegir el tiempo
     periodo = st.radio(
         "Rango de tiempo:", 
         ["1 Mes", "3 Meses", "6 Meses", "1 Año", "Máximo"], 
@@ -199,13 +246,9 @@ if ticker_elegido:
         horizontal=True
     )
     
-    # Traductor de tiempo
     mapa_tiempo = {
-        "1 Mes": "1mo", 
-        "3 Meses": "3mo", 
-        "6 Meses": "6mo", 
-        "1 Año": "1y", 
-        "Máximo": "max"
+        "1 Mes": "1mo", "3 Meses": "3mo", "6 Meses": "6mo", 
+        "1 Año": "1y", "Máximo": "max"
     }
     
     with st.spinner(f"Cargando historial de {simbolo_real}..."):
@@ -213,30 +256,25 @@ if ticker_elegido:
             datos = yf.Ticker(simbolo_real).history(period=mapa_tiempo[periodo])
             
             if not datos.empty:
-                # EXTRAEMOS EL VALOR ACTUAL (El último cierre registrado)
                 precio_actual = datos['Close'].iloc[-1]
-                
-                # MOSTRAMOS EL VALOR ACTUAL EN GRANDE
                 st.metric(label=f"Valor Actual ({simbolo_real})", value=f"{precio_actual:.2f} $")
                 
-                # Dibujamos la gráfica
                 fig = go.Figure()
                 fig.add_trace(go.Scatter(
                     x=datos.index, 
                     y=datos['Close'], 
                     mode='lines', 
                     name='Precio',
-                    line=dict(color='#228B22', width=2) # Verde oscuro (Forest Green)
+                    line=dict(color='#228B22', width=2)
                 ))
                 
-                # Diseño limpio de la gráfica
                 fig.update_layout(
                     title=f"Cotización: {ticker_elegido}",
                     template='plotly_dark',
                     margin=dict(l=0, r=0, t=40, b=0),
                     xaxis_title="",
                     yaxis_title="Precio ($)",
-                    hovermode="x unified" # Muestra la info exacta al pasar el ratón
+                    hovermode="x unified"
                 )
                 
                 st.plotly_chart(fig, use_container_width=True)
