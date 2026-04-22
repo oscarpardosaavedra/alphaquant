@@ -1,9 +1,10 @@
 import streamlit as st
 import yfinance as yf
+import pandas as pd
+import numpy as np
 import plotly.graph_objects as go
 import datetime
 import pytz
-import time
 
 # ==========================================
 # 1. BLOQUE SELLADO (Título y Base de Datos)
@@ -105,7 +106,7 @@ tickers_nombres = {
     "GELYF": "Geely", "XIAOF": "Xiaomi", "MEIT": "Meituan", "KUAIF": "Kuaishou",
     "TME": "TencMusic", "FUTU": "Futu", "BEKE": "KE Hold", "TAL": "TAL Edu",
     "EDU": "NewOrient", "VIPS": "Vipshop", "GDS": "GDS", "JKS": "JinkoSolar",
-    "DQ": "Daqo", "SMIC": "SMIC", "TSM": "TSMC", "SONY": "Sony", "TM": "Toyota",
+    "DQ": "Daqo", "SMICS": "SMIC", "TSM": "TSMC", "SONY": "Sony", "TM": "Toyota",
     "HMC": "Honda", "9984.T": "SoftBank", "RELIANCE.NS": "Reliance", "HDFCBANK.NS": "HDFC",
     "INFY": "Infosys", "NU": "Nubank", "PBR": "Petrobras", "VALE": "Vale",
     "WALMEX.MX": "Walmex", "SE": "Sea Ltd", "GRAB": "Grab", "CPNG": "Coupang",
@@ -181,7 +182,7 @@ tickers_nombres = {
 opciones_desplegable = [f"{ticker} ({nombre})" for ticker, nombre in tickers_nombres.items()]
 opciones_desplegable.sort()
 
-# Clasificador de regiones en la sombra
+# Clasificador de regiones
 def obtener_region(ticker):
     if "BME:" in ticker or ticker.endswith((".DE", ".PA", ".MI", ".L", ".AS", ".ST")):
         return "Europa"
@@ -189,6 +190,12 @@ def obtener_region(ticker):
         return "Asia"
     else:
         return "EEUU"
+
+# Traductor de Yahoo
+def a_yahoo(ticker):
+    if ticker.startswith("BME:"): return ticker.replace("BME:", "") + ".MC"
+    if ticker.startswith("NYSE:"): return ticker.replace("NYSE:", "")
+    return ticker
 
 # ==========================================
 # 2. MOTOR DE RELOJES Y SEMÁFOROS
@@ -252,12 +259,7 @@ with tab1:
     
     if ticker_elegido:
         simbolo_real = ticker_elegido.split(" ")[0]
-        
-        simbolo_yahoo = simbolo_real
-        if simbolo_yahoo.startswith("BME:"):
-            simbolo_yahoo = simbolo_yahoo.replace("BME:", "") + ".MC"
-        elif simbolo_yahoo.startswith("NYSE:"):
-            simbolo_yahoo = simbolo_yahoo.replace("NYSE:", "")
+        simbolo_yahoo = a_yahoo(simbolo_real)
         
         st.markdown("---")
         
@@ -268,10 +270,7 @@ with tab1:
             horizontal=True
         )
         
-        mapa_tiempo = {
-            "1 Mes": "1mo", "3 Meses": "3mo", "6 Meses": "6mo", 
-            "1 Año": "1y", "Máximo": "max"
-        }
+        mapa_tiempo = {"1 Mes": "1mo", "3 Meses": "3mo", "6 Meses": "6mo", "1 Año": "1y", "Máximo": "max"}
         
         with st.spinner(f"Cargando datos en vivo de {simbolo_real}..."):
             try:
@@ -288,7 +287,6 @@ with tab1:
                         "JPY": "¥", "HKD": "HK$", "MXN": "MX$", "SEK": "kr", "CHF": "CHF"
                     }
                     s_moneda = simbolos_moneda.get(moneda_codigo, moneda_codigo)
-
                     texto_mostrar = f"{precio_actual:.2f} {s_moneda}"
                     
                     if moneda_codigo != "USD":
@@ -300,8 +298,7 @@ with tab1:
                                 rate = tasa_fx['Close'].iloc[-1]
                                 precio_usd = precio_actual * factor * rate
                                 texto_mostrar = f"{precio_actual:.2f} {s_moneda} (${precio_usd:.2f})"
-                        except Exception:
-                            pass
+                        except Exception: pass
                     else:
                         texto_mostrar = f"{precio_actual:.2f} $"
 
@@ -316,31 +313,14 @@ with tab1:
                     
                     if resumen_largo:
                         frases = resumen_largo.split('. ')
-                        if len(frases) > 2:
-                            resumen_corto = '. '.join(frases[:2]) + '.'
-                        else:
-                            resumen_corto = resumen_largo
+                        resumen_corto = '. '.join(frases[:2]) + '.' if len(frases) > 2 else resumen_largo
                         st.markdown(f"*{resumen_corto}*")
                     
                     st.write("")
                     
                     fig = go.Figure()
-                    fig.add_trace(go.Scatter(
-                        x=datos.index, 
-                        y=datos['Close'], 
-                        mode='lines', 
-                        name='Precio',
-                        line=dict(color='#228B22', width=2)
-                    ))
-                    
-                    fig.update_layout(
-                        title=f"Cotización: {ticker_elegido}",
-                        template='plotly_dark',
-                        margin=dict(l=0, r=0, t=40, b=0),
-                        xaxis_title="",
-                        yaxis_title=f"Precio ({s_moneda})",
-                        hovermode="x unified"
-                    )
+                    fig.add_trace(go.Scatter(x=datos.index, y=datos['Close'], mode='lines', name='Precio', line=dict(color='#228B22', width=2)))
+                    fig.update_layout(title=f"Cotización: {ticker_elegido}", template='plotly_dark', margin=dict(l=0, r=0, t=40, b=0), xaxis_title="", yaxis_title=f"Precio ({s_moneda})", hovermode="x unified")
                     
                     st.plotly_chart(fig, use_container_width=True)
                 else:
@@ -349,12 +329,11 @@ with tab1:
                 st.error("⚠️ Ha ocurrido un error al cargar la gráfica y los datos corporativos.")
 
 # ------------------------------------------
-# PESTAÑA 2: EL RADAR DE CAZA 
+# PESTAÑA 2: EL RADAR DE CAZA
 # ------------------------------------------
 with tab2:
     st.markdown("### 🎯 Selecciona tu Objetivo")
     
-    # 4 BOTONES LIMPIOS (SIN BANDERAS)
     c1, c2, c3, c4 = st.columns(4)
     btn_todos = c1.button("Cazar Todos los Mercados", use_container_width=True)
     btn_us = c2.button("Cazar Solo EE.UU.", use_container_width=True)
@@ -370,26 +349,109 @@ with tab2:
     elif btn_asia: mercado_objetivo = "Asia"
 
     if mercado_objetivo:
-        tickers_a_escanear = []
-        for t in tickers_nombres.keys():
-            if mercado_objetivo == "Todos" or obtener_region(t) == mercado_objetivo:
-                tickers_a_escanear.append(t)
+        tickers_a_escanear = [t for t in tickers_nombres.keys() if mercado_objetivo == "Todos" or obtener_region(t) == mercado_objetivo]
         
         st.info(f"Iniciando radar para: **{mercado_objetivo}** ({len(tickers_a_escanear)} activos encontrados)...")
         
-        # LA NUEVA BARRA DE PROGRESO SIN PARPADEO
-        barra_progreso = st.progress(0, text="Iniciando motores...")
-        texto_exito = st.empty() 
+        barra_progreso = st.progress(0, text="Iniciando conexión con Wall Street...")
+        
+        resultados_radar = []
         
         for i, ticker in enumerate(tickers_a_escanear):
             porcentaje = int(((i + 1) / len(tickers_a_escanear)) * 100)
             nombre_empresa = tickers_nombres[ticker]
             
-            # Al usar el parámetro "text" directamente dentro de progress(), no parpadea.
-            texto_barra = f"⏳ Completado: {porcentaje}% | Evaluando: {ticker} ({nombre_empresa})"
-            barra_progreso.progress(porcentaje, text=texto_barra)
+            barra_progreso.progress(porcentaje, text=f"⏳ Evaluando: {ticker} ({nombre_empresa}) | {porcentaje}%")
             
-            time.sleep(0.02)
+            try:
+                sym_yahoo = a_yahoo(ticker)
+                stock = yf.Ticker(sym_yahoo)
+                
+                # Pedimos el máximo historial posible para el % Máximo
+                hist_full = stock.history(period="max")
+                if hist_full.empty or len(hist_full) < 2: continue
+                
+                # Precios y Variaciones
+                precio_actual = float(hist_full['Close'].iloc[-1])
+                precio_ayer = float(hist_full['Close'].iloc[-2])
+                pct_hoy = ((precio_actual / precio_ayer) - 1) * 100
+                
+                # Rangos de 1 año (252 sesiones)
+                hist_1y = hist_full.iloc[-252:] if len(hist_full) >= 252 else hist_full
+                max_52 = float(hist_1y['High'].max())
+                min_52 = float(hist_1y['Low'].min())
+                
+                dist_suelo = ((precio_actual / min_52) - 1) * 100
+                dist_max = ((precio_actual / max_52) - 1) * 100
+                
+                # Momentum y Otros periodos
+                ret_1m = ((precio_actual / hist_full['Close'].iloc[-21]) - 1) * 100 if len(hist_full) >= 21 else 0
+                ret_6m = ((precio_actual / hist_full['Close'].iloc[-126]) - 1) * 100 if len(hist_full) >= 126 else 0
+                ret_1y = ((precio_actual / hist_full['Close'].iloc[-252]) - 1) * 100 if len(hist_full) >= 252 else 0
+                ret_max = ((precio_actual / hist_full['Close'].iloc[0]) - 1) * 100
+                
+                # Fundamentales
+                info = stock.info
+                sector = info.get('sector', 'N/A')
+                per = info.get('trailingPE', 999)
+                vol_hoy = float(hist_full['Volume'].iloc[-1])
+                vol_medio = float(hist_full['Volume'].tail(20).mean())
+                
+                # Sistema de Puntuación
+                pts = 0
+                if ret_1m > 0: pts += 20
+                if ret_6m > 0: pts += 20
+                if vol_hoy > (vol_medio * 1.2): pts += 20
+                if per != 999 and per < 45: pts += 40
+                elif per != 999 and per < 100 and ret_1m > 5: pts += 30
+                else: pts += 5
+
+                # Recomendación
+                is_whale = vol_hoy >= (vol_medio * 1.5)
+                is_fenix = ret_6m < -10 and ret_1m > 5
+                is_momentum = ret_6m > 10 and ret_1m > 5
+                is_impulsivo = ret_1m > 15
+
+                recomendacion = "Esperar"
+                if is_fenix and pts >= 60: recomendacion = "🦅 COMPRA FÉNIX"
+                elif is_momentum and pts >= 80: recomendacion = "🔥 MOMENTUM"
+                elif is_whale and pts >= 60: recomendacion = "🐋 BALLENA"
+                elif is_impulsivo: recomendacion = "⚡ IMPULSO"
+                elif pts >= 60: recomendacion = "💎 VIGILAR"
+                
+                # Formateo de moneda
+                moneda = info.get('currency', 'USD')
+                simbolos_moneda = {"USD": "$", "EUR": "€", "GBP": "£", "GBp": "GBp", "JPY": "¥"}
+                s_mon = simbolos_moneda.get(moneda, moneda)
+
+                # FILA ORDENADA LÓGICAMENTE
+                resultados_radar.append({
+                    "Ticker": ticker,
+                    "Nombre": nombre_empresa,
+                    "PUNTOS": pts,
+                    "RECOMENDACIÓN": recomendacion,
+                    "PRECIO": f"{precio_actual:.2f} {s_mon}",
+                    "% HOY": f"{pct_hoy:+.2f}%",
+                    "% 1 mes": f"{ret_1m:+.2f}%",
+                    "% 6 meses": f"{ret_6m:+.2f}%",
+                    "% 1 año": f"{ret_1y:+.2f}%",
+                    "% Máx": f"{ret_max:+.2f}%",
+                    "PER": f"{per:.1f}" if per != 999 else "N/A",
+                    "Sector": sector,
+                    "Volumen": f"{vol_hoy:,.0f}",
+                    "Vol. Medio": f"{vol_medio:,.0f}",
+                    "Suelo (52s)": f"{dist_suelo:+.2f}%",
+                    "Max (52s)": f"{dist_max:+.2f}%"
+                })
+                
+            except Exception: continue
             
-        texto_exito.success(f"✅ ¡Caza completada con éxito para el mercado de {mercado_objetivo}!")
         barra_progreso.progress(100, text="✅ 100% Completado")
+        
+        if resultados_radar:
+            df = pd.DataFrame(resultados_radar)
+            df = df.sort_values(by="PUNTOS", ascending=False).reset_index(drop=True)
+            st.success("Caza terminada. Tabla organizada por potencial (Puntos):")
+            st.dataframe(df, use_container_width=True, hide_index=True)
+        else:
+            st.error("No se han podido descargar datos.")
