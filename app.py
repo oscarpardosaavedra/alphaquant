@@ -12,7 +12,6 @@ import time
 # ==========================================
 st.set_page_config(page_title="Alphaquant", page_icon="📈", layout="wide")
 
-# CSS minimalista para mejorar las tarjetas
 st.markdown("""
 <style>
     [data-testid="stMetric"] {
@@ -21,21 +20,20 @@ st.markdown("""
         padding: 15px;
         box-shadow: 0 4px 6px rgba(0,0,0,0.05);
     }
-    /* Intentamos forzar negrita por CSS adicional */
-    th, [data-testid="stDataFrame"] th, .stDataFrame th {
+    /* Intento máximo de forzar negrita en cabeceras Canvas/HTML */
+    th, [data-testid="stDataFrame"] th, .stDataFrame th, .col_heading {
         font-weight: 900 !important;
+        color: #073763 !important;
     }
 </style>
 """, unsafe_allow_html=True)
 
-# Banner Superior Elegante y Limpio
 st.markdown("""
 <div style="background: linear-gradient(135deg, #0f2027 0%, #203a43 50%, #2c5364 100%); padding: 25px; border-radius: 12px; text-align: center; margin-bottom: 30px; box-shadow: 0 4px 8px rgba(0,0,0,0.1);">
     <h1 style="color: white; margin: 0; font-size: 2.8em; font-family: 'Segoe UI', Tahoma, sans-serif; letter-spacing: 2px;">📈 ALPHAQUANT</h1>
 </div>
 """, unsafe_allow_html=True)
 
-# Base de datos de Tickers
 tickers_nombres = {
     "AGH": "Powerus", "XTND": "Xtend", "UMAC": "Unusual Mac", "RCAT": "Red Cat",
     "AVAV": "AeroViron", "UAVS": "AgEagle", "EH": "EHang", "LMT": "Lockheed",
@@ -218,7 +216,6 @@ def a_yahoo(ticker):
 
 def obtener_estado_mercados():
     ahora_utc = datetime.datetime.now(pytz.utc)
-    
     hora_ny = ahora_utc.astimezone(pytz.timezone('US/Eastern'))
     es_fin_semana_ny = hora_ny.weekday() >= 5
     t_ny = hora_ny.time()
@@ -386,24 +383,38 @@ with tab2:
                 sym_yahoo = a_yahoo(ticker)
                 stock = yf.Ticker(sym_yahoo)
                 
-                hist_full = stock.history(period="max")
+                # FILTRO ANTIFALLOS: Eliminamos datos vacíos de Yahoo para evitar los "nan"
+                hist_full = stock.history(period="max").dropna(subset=['Close'])
                 if hist_full.empty or len(hist_full) < 2: continue
                 
                 precio_actual = float(hist_full['Close'].iloc[-1])
                 precio_ayer = float(hist_full['Close'].iloc[-2])
-                pct_hoy = ((precio_actual / precio_ayer) - 1) * 100
+                
+                # Evitar división por cero
+                pct_hoy = ((precio_actual / precio_ayer) - 1) * 100 if precio_ayer > 0 else 0
                 
                 hist_1y = hist_full.iloc[-252:] if len(hist_full) >= 252 else hist_full
                 max_52 = float(hist_1y['High'].max())
                 min_52 = float(hist_1y['Low'].min())
                 
-                dist_suelo = ((precio_actual / min_52) - 1) * 100
-                dist_max = ((precio_actual / max_52) - 1) * 100
+                dist_suelo = ((precio_actual / min_52) - 1) * 100 if min_52 > 0 else 0
+                dist_max = ((precio_actual / max_52) - 1) * 100 if max_52 > 0 else 0
                 
-                ret_1m = ((precio_actual / hist_full['Close'].iloc[-21]) - 1) * 100 if len(hist_full) >= 21 else 0
-                ret_6m = ((precio_actual / hist_full['Close'].iloc[-126]) - 1) * 100 if len(hist_full) >= 126 else 0
-                ret_1y = ((precio_actual / hist_full['Close'].iloc[-252]) - 1) * 100 if len(hist_full) >= 252 else 0
-                ret_max = ((precio_actual / hist_full['Close'].iloc[0]) - 1) * 100
+                # Funciones seguras para calcular rendimientos históricos y evitar errores
+                def get_ret(days):
+                    if len(hist_full) >= days and not pd.isna(hist_full['Close'].iloc[-days]) and hist_full['Close'].iloc[-days] > 0:
+                        return ((precio_actual / hist_full['Close'].iloc[-days]) - 1) * 100
+                    return None
+
+                ret_1m = get_ret(21)
+                ret_6m = get_ret(126)
+                ret_1y = get_ret(252)
+                ret_5y = get_ret(1260)
+                ret_10y = get_ret(2520)
+                ret_20y = get_ret(5040)
+                
+                start_price = hist_full['Close'].iloc[0]
+                ret_max = ((precio_actual / start_price) - 1) * 100 if start_price > 0 else 0
                 
                 info = stock.info
                 sector = info.get('sector', 'N/A')
@@ -411,14 +422,18 @@ with tab2:
                 vol_hoy = float(hist_full['Volume'].iloc[-1])
                 vol_medio = float(hist_full['Volume'].tail(20).mean())
                 
+                # Variables seguras para el algoritmo (si falta dato, asume 0 para no romper el cálculo)
+                v_1m = ret_1m if ret_1m is not None else 0
+                v_6m = ret_6m if ret_6m is not None else 0
+                
                 ptsBase = 50
                 
-                if ret_1m > 0 and ret_6m > 0: ptsBase += 15
-                elif ret_1m > 0 and ret_6m < -15: ptsBase -= 20
-                elif ret_6m <= 0: ptsBase -= 15
+                if v_1m > 0 and v_6m > 0: ptsBase += 15
+                elif v_1m > 0 and v_6m < -15: ptsBase -= 20
+                elif v_6m <= 0: ptsBase -= 15
                 else: ptsBase += 5
                 
-                myAlpha = ret_1m - (alphaSPY if region_activa == "EEUU" else 0)
+                myAlpha = v_1m - (alphaSPY if region_activa == "EEUU" else 0)
                 if myAlpha > 5: ptsBase += 10
                 elif myAlpha < -5: ptsBase -= 10
                 
@@ -450,8 +465,8 @@ with tab2:
                     elif dist_max > -5 and vol_hoy > (vol_medio * 1.8) and pct_hoy > 0: ptsBase += 15
                 
                 isFenix = False
-                if dist_max <= -20 and per > 0 and vol_medio > 400000 and ret_1m > 2 and pct_hoy > 1.5:
-                    fuerzaGiro = (15 if ret_1m > 8 else 5) + (15 if vol_hoy > vol_medio * 1.2 else 0) + (10 if pct_hoy > 2 else 5)
+                if dist_max <= -20 and per > 0 and vol_medio > 400000 and v_1m > 2 and pct_hoy > 1.5:
+                    fuerzaGiro = (15 if v_1m > 8 else 5) + (15 if vol_hoy > vol_medio * 1.2 else 0) + (10 if pct_hoy > 2 else 5)
                     scoreFenix = 65 + fuerzaGiro
                     if scoreFenix > ptsBase: 
                         ptsBase = scoreFenix
@@ -470,24 +485,28 @@ with tab2:
                 simbolos_moneda = {"USD": "$", "EUR": "€", "GBP": "£", "GBp": "GBp", "JPY": "¥"}
                 s_mon = simbolos_moneda.get(moneda, moneda)
 
-                # Diccionario con claves en MAYÚSCULAS para forzar que destaquen las cabeceras
+                def fmt_pct(val): return f"{val:+.2f}%" if val is not None else "N/A"
+
                 resultados_radar.append({
                     "TICKER": ticker,
                     "NOMBRE": nombre_empresa,
                     "PUNTOS": pts,
                     "RECOMENDACIÓN": recomendacion,
                     "PRECIO": f"{precio_actual:.2f} {s_mon}",
-                    "% HOY": f"{pct_hoy:+.2f}%",
-                    "% 1 MES": f"{ret_1m:+.2f}%",
-                    "% 6 MESES": f"{ret_6m:+.2f}%",
-                    "% 1 AÑO": f"{ret_1y:+.2f}%",
-                    "% MÁX": f"{ret_max:+.2f}%",
+                    "% HOY": fmt_pct(pct_hoy),
+                    "% 1 MES": fmt_pct(ret_1m),
+                    "% 6 MESES": fmt_pct(ret_6m),
+                    "% 1 AÑO": fmt_pct(ret_1y),
+                    "% 5 AÑOS": fmt_pct(ret_5y),
+                    "% 10 AÑOS": fmt_pct(ret_10y),
+                    "% 20 AÑOS": fmt_pct(ret_20y),
+                    "% MÁX": fmt_pct(ret_max),
                     "PER": f"{per:.1f}" if per != 999 else "N/A",
                     "SECTOR": sector,
                     "VOLUMEN": f"{vol_hoy:,.0f}",
                     "VOL. MEDIO": f"{vol_medio:,.0f}",
-                    "SUELO (52s)": f"{dist_suelo:+.2f}%",
-                    "MAX (52s)": f"{dist_max:+.2f}%"
+                    "SUELO (52s)": fmt_pct(dist_suelo),
+                    "MAX (52s)": fmt_pct(dist_max)
                 })
                 
             except Exception: continue
@@ -498,29 +517,29 @@ with tab2:
             df = pd.DataFrame(resultados_radar)
             df = df.sort_values(by="PUNTOS", ascending=False).reset_index(drop=True)
             
-            # --- ESTILOS DE LA TABLA (VERDE OSCURO Y SIN NEGRITA EN DATOS) ---
+            # --- ESTILOS DE LA TABLA ---
             def color_porcentajes(val):
                 if isinstance(val, str) and '%' in val:
-                    # Verde oscuro idéntico a la gráfica, sin negrita
-                    if val.startswith('+'): return 'color: #228B22;' 
-                    # Rojo estándar, sin negrita
-                    elif val.startswith('-'): return 'color: #FF3333;' 
+                    if val.startswith('+'): return 'color: #228B22;' # Verde oscuro idéntico a la gráfica
+                    elif val.startswith('-'): return 'color: #FF3333;' # Rojo alerta
                 return ''
 
             def negrita_ticker(val):
-                # Solo el ticker en negrita
                 return 'font-weight: bold;' 
 
-            columnas_pct = ["% HOY", "% 1 MES", "% 6 MESES", "% 1 AÑO", "% MÁX", "SUELO (52s)", "MAX (52s)"]
+            columnas_pct = ["% HOY", "% 1 MES", "% 6 MESES", "% 1 AÑO", "% 5 AÑOS", "% 10 AÑOS", "% 20 AÑOS", "% MÁX", "SUELO (52s)", "MAX (52s)"]
             
             try:
+                # set_table_styles inyecta las clases para forzar las cabeceras
                 styled_df = df.style.map(color_porcentajes, subset=columnas_pct)\
-                                    .map(negrita_ticker, subset=['TICKER'])
+                                    .map(negrita_ticker, subset=['TICKER'])\
+                                    .set_table_styles([dict(selector="th", props=[("font-weight", "900")])])
             except AttributeError:
                 styled_df = df.style.applymap(color_porcentajes, subset=columnas_pct)\
-                                    .applymap(negrita_ticker, subset=['TICKER'])
+                                    .applymap(negrita_ticker, subset=['TICKER'])\
+                                    .set_table_styles([dict(selector="th", props=[("font-weight", "900")])])
 
-            st.success("Caza terminada. Resultados del radar:")
+            st.success("Caza terminada. Pasa el ratón sobre los títulos de las columnas para ver qué significan:")
             
             st.dataframe(
                 styled_df, 
@@ -533,6 +552,9 @@ with tab2:
                     "% 1 MES": st.column_config.TextColumn(help="Rendimiento en 21 días laborables."),
                     "% 6 MESES": st.column_config.TextColumn(help="Rendimiento en 126 días laborables."),
                     "% 1 AÑO": st.column_config.TextColumn(help="Rendimiento en 252 sesiones."),
+                    "% 5 AÑOS": st.column_config.TextColumn(help="Rendimiento a medio plazo (1260 sesiones)."),
+                    "% 10 AÑOS": st.column_config.TextColumn(help="Rendimiento a largo plazo (2520 sesiones)."),
+                    "% 20 AÑOS": st.column_config.TextColumn(help="Rendimiento a súper largo plazo (5040 sesiones)."),
                     "% MÁX": st.column_config.TextColumn(help="Rendimiento histórico total."),
                     "PER": st.column_config.TextColumn(help="Price-to-Earnings."),
                     "SECTOR": st.column_config.TextColumn(help="Sector económico."),
