@@ -5,66 +5,89 @@ import numpy as np
 import plotly.graph_objects as go
 import datetime
 import pytz
+import gspread
+from google.oauth2.service_account import Credentials
 import time
 
 # ==========================================
-# 1. CONFIGURACIÓN Y ESTILOS CSS
+# 1. CONFIGURACIÓN Y CONEXIÓN DB (GOOGLE SHEETS)
 # ==========================================
 st.set_page_config(page_title="Alphaquant", page_icon="📈", layout="wide")
 
+def conectar_db():
+    try:
+        scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
+        creds_dict = st.secrets["gcp_service_account"]
+        creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
+        client = gspread.authorize(creds)
+        sheet = client.open("Alphaquant_DB").worksheet("Trofeos")
+        return sheet
+    except Exception as e:
+        st.error(f"⚠️ Error de conexión con Google Sheets. Revisa tus Secrets. Detalle: {e}")
+        return None
+
+# ==========================================
+# 2. ESTILOS CSS (TITANIUM DESIGN)
+# ==========================================
 st.markdown("""
 <style>
-    [data-testid="stMetric"] {
-        background-color: #f8f9fa;
-        border-radius: 10px;
-        padding: 15px;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.05);
-    }
-    .stDataFrame th, [data-testid="stDataFrame"] th, div[data-testid="stDataFrame"] div[role="columnheader"] {
-        font-weight: 900 !important;
-        color: #073763 !important;
-        font-size: 14px !important;
+    [data-testid="stMetric"] { 
+        background-color: #f8f9fa; 
+        border-radius: 10px; 
+        padding: 15px; 
+        box-shadow: 0 4px 6px rgba(0,0,0,0.05); 
     }
     
-    /* NUEVO DISEÑO COMPACTO PARA TARJETAS */
-    .trophy-card {
-        background-color: white;
-        border-radius: 8px;
-        padding: 10px 15px;
-        margin-bottom: 10px;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-        border-left: 4px solid #228B22;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
+    /* Forzar mayúsculas y negrita en cabeceras de tabla */
+    .stDataFrame th, [data-testid="stDataFrame"] th { 
+        font-weight: 900 !important; 
+        color: #073763 !important; 
+        text-transform: uppercase; 
     }
-    .cemetery-card {
-        background-color: white;
-        border-radius: 8px;
-        padding: 10px 15px;
-        margin-bottom: 10px;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-        border-left: 4px solid #FF3333;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
+    
+    /* Diseño de tarjetas para Sala de Trofeos */
+    .trophy-card { 
+        background-color: white; 
+        border-radius: 8px; 
+        padding: 15px 20px; 
+        margin-bottom: 12px; 
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05); 
+        border-left: 5px solid #228B22; 
+        display: flex; 
+        justify-content: space-between; 
+        align-items: center; 
+    }
+    .cemetery-card { 
+        background-color: white; 
+        border-radius: 8px; 
+        padding: 15px 20px; 
+        margin-bottom: 12px; 
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05); 
+        border-left: 5px solid #FF3333; 
+        display: flex; 
+        justify-content: space-between; 
+        align-items: center; 
     }
     .card-left { text-align: left; }
     .card-right { text-align: right; }
     .card-title { margin: 0; font-size: 16px; color: #073763; font-weight: 900; }
-    .card-subtitle { font-size: 12px; color: #7f8c8d; font-weight: normal; }
-    .card-pct-win { margin: 0; font-size: 18px; color: #228B22; font-weight: 900; }
-    .card-pct-lose { margin: 0; font-size: 18px; color: #FF3333; font-weight: 900; }
-    .card-details { margin: 4px 0 0 0; font-size: 12px; color: #555; }
+    .card-subtitle { font-size: 13px; color: #7f8c8d; font-weight: normal; }
+    .card-pct-win { margin: 0; font-size: 20px; color: #228B22; font-weight: 900; }
+    .card-pct-lose { margin: 0; font-size: 20px; color: #FF3333; font-weight: 900; }
+    .card-details { margin: 6px 0 0 0; font-size: 13px; color: #555; }
 </style>
 """, unsafe_allow_html=True)
 
+# Banner Principal
 st.markdown("""
 <div style="background: linear-gradient(135deg, #0f2027 0%, #203a43 50%, #2c5364 100%); padding: 25px; border-radius: 12px; text-align: center; margin-bottom: 30px; box-shadow: 0 4px 8px rgba(0,0,0,0.1);">
     <h1 style="color: white; margin: 0; font-size: 2.8em; font-family: 'Segoe UI', Tahoma, sans-serif; letter-spacing: 2px;">📈 ALPHAQUANT</h1>
 </div>
 """, unsafe_allow_html=True)
 
+# ==========================================
+# 3. BASE DE DATOS DE TICKERS
+# ==========================================
 tickers_nombres = {
     "AGH": "Powerus", "XTND": "Xtend", "UMAC": "Unusual Mac", "RCAT": "Red Cat",
     "AVAV": "AeroViron", "UAVS": "AgEagle", "EH": "EHang", "LMT": "Lockheed",
@@ -235,16 +258,6 @@ tickers_nombres = {
 opciones_desplegable = [f"{ticker} ({nombre})" for ticker, nombre in tickers_nombres.items()]
 opciones_desplegable.sort()
 
-# INICIALIZACIÓN DE LA MEMORIA DE SESIÓN (Para la Sala de Trofeos)
-if 'trofeos' not in st.session_state:
-    st.session_state.trofeos = [
-        {"Ticker": "NVDA", "Empresa": "NVIDIA", "Fecha_Aviso": "2023-11-01", "Precio_Aviso": 435.00, "Puntos": 95},
-        {"Ticker": "PLTR", "Empresa": "Palantir", "Fecha_Aviso": "2024-01-15", "Precio_Aviso": 16.50, "Puntos": 88},
-        {"Ticker": "META", "Empresa": "Meta", "Fecha_Aviso": "2023-09-10", "Precio_Aviso": 298.00, "Puntos": 91},
-        {"Ticker": "INTC", "Empresa": "Intel", "Fecha_Aviso": "2023-12-05", "Precio_Aviso": 43.00, "Puntos": 78},
-        {"Ticker": "SBUX", "Empresa": "Starbucks", "Fecha_Aviso": "2024-02-10", "Precio_Aviso": 95.00, "Puntos": 72}
-    ]
-
 def obtener_region(ticker):
     if "BME:" in ticker or ticker.endswith((".DE", ".PA", ".MI", ".L", ".AS", ".ST")): return "Europa"
     elif ticker.endswith((".T", ".NS")) or ticker in ["BABA", "TCEHY", "JD", "PDD", "BIDU", "NTES", "NIO", "XPEV", "LI", "BYDDF", "GELYF", "XIAOF", "MEIT", "KUAIF", "TME", "FUTU", "BEKE", "TAL", "EDU", "VIPS", "GDS", "JKS", "DQ", "SMIC", "TSM", "SONY", "TM", "HMC", "SE", "GRAB", "CPNG"]: return "Asia"
@@ -259,32 +272,28 @@ def obtener_estado_mercados():
     ahora_utc = datetime.datetime.now(pytz.utc)
     
     hora_ny = ahora_utc.astimezone(pytz.timezone('US/Eastern'))
-    es_fin_semana_ny = hora_ny.weekday() >= 5
     t_ny = hora_ny.time()
-    if es_fin_semana_ny: estado_us = "🔴 Cerrado"
-    elif datetime.time(4, 0) <= t_ny < datetime.time(9, 30): estado_us = "🟡 Pre-Market"
-    elif datetime.time(9, 30) <= t_ny < datetime.time(16, 0): estado_us = "🟢 Abierto"
-    elif datetime.time(16, 0) <= t_ny < datetime.time(20, 0): estado_us = "🔵 Post-Market"
-    else: estado_us = "🔴 Cerrado"
+    if hora_ny.weekday() >= 5: est_us = "🔴 Cerrado"
+    elif datetime.time(4, 0) <= t_ny < datetime.time(9, 30): est_us = "🟡 Pre-Market"
+    elif datetime.time(9, 30) <= t_ny < datetime.time(16, 0): est_us = "🟢 Abierto"
+    elif datetime.time(16, 0) <= t_ny < datetime.time(20, 0): est_us = "🔵 Post-Market"
+    else: est_us = "🔴 Cerrado"
 
     hora_eu = ahora_utc.astimezone(pytz.timezone('Europe/Madrid'))
-    es_fin_semana_eu = hora_eu.weekday() >= 5
     t_eu = hora_eu.time()
-    if es_fin_semana_eu: estado_eu = "🔴 Cerrado"
-    elif datetime.time(9, 0) <= t_eu < datetime.time(17, 30): estado_eu = "🟢 Abierto"
-    else: estado_eu = "🔴 Cerrado"
+    if hora_eu.weekday() >= 5: est_eu = "🔴 Cerrado"
+    elif datetime.time(9, 0) <= t_eu < datetime.time(17, 30): est_eu = "🟢 Abierto"
+    else: est_eu = "🔴 Cerrado"
 
-    hora_asia = ahora_utc.astimezone(pytz.timezone('Asia/Tokyo'))
-    es_fin_semana_asia = hora_asia.weekday() >= 5
-    t_asia = hora_asia.time()
-    if es_fin_semana_asia: estado_asia = "🔴 Cerrado"
-    elif datetime.time(9, 0) <= t_asia <= datetime.time(15, 0): estado_asia = "🟢 Abierto"
-    else: estado_asia = "🔴 Cerrado"
+    hora_as = ahora_utc.astimezone(pytz.timezone('Asia/Tokyo'))
+    if hora_as.weekday() >= 5: est_as = "🔴 Cerrado"
+    elif datetime.time(9, 0) <= hora_as.time() <= datetime.time(15, 0): est_as = "🟢 Abierto"
+    else: est_as = "🔴 Cerrado"
     
-    return estado_us, estado_eu, estado_asia
+    return est_us, est_eu, est_as
 
 # ==========================================
-# 3. CABECERA GLOBAL
+# 4. CABECERA Y SEMÁFOROS
 # ==========================================
 us, eu, asia = obtener_estado_mercados()
 col1, col2, col3 = st.columns(3)
@@ -293,9 +302,6 @@ col2.info(f"**Europa:** {eu}")
 col3.info(f"**Asia:** {asia}")
 st.markdown("---")
 
-# ==========================================
-# 4. PESTAÑAS PRINCIPALES 
-# ==========================================
 tab1, tab2, tab3 = st.tabs(["🔬 Análisis Individual", "🎯 Cazar Alpha (Radar)", "🏆 Sala de Trofeos"])
 
 # ------------------------------------------
@@ -336,26 +342,10 @@ with tab1:
                     moneda_codigo = info.get('currency', 'USD')
                     precio_actual = datos['Close'].iloc[-1]
                     
-                    simbolos_moneda = {
-                        "USD": "$", "EUR": "€", "GBP": "£", "GBp": "GBp",
-                        "JPY": "¥", "HKD": "HK$", "MXN": "MX$", "SEK": "kr", "CHF": "CHF"
-                    }
+                    simbolos_moneda = {"USD": "$", "EUR": "€", "GBP": "£", "GBp": "GBp", "JPY": "¥"}
                     s_moneda = simbolos_moneda.get(moneda_codigo, moneda_codigo)
                     texto_mostrar = f"{precio_actual:.2f} {s_moneda}"
                     
-                    if moneda_codigo != "USD":
-                        try:
-                            query_curr = "GBP" if moneda_codigo == "GBp" else moneda_codigo
-                            factor = 0.01 if moneda_codigo == "GBp" else 1.0
-                            tasa_fx = yf.Ticker(f"{query_curr}USD=X").history(period="1d")
-                            if not tasa_fx.empty:
-                                rate = tasa_fx['Close'].iloc[-1]
-                                precio_usd = precio_actual * factor * rate
-                                texto_mostrar = f"{precio_actual:.2f} {s_moneda} (${precio_usd:.2f})"
-                        except Exception: pass
-                    else:
-                        texto_mostrar = f"{precio_actual:.2f} $"
-
                     st.metric(label=f"Valor Actual ({simbolo_real})", value=texto_mostrar)
                     
                     sector = info.get('sector', '')
@@ -378,12 +368,12 @@ with tab1:
                     
                     st.plotly_chart(fig, use_container_width=True)
                 else:
-                    st.warning("⚠️ No hay datos históricos en Yahoo Finance para este activo en este periodo.")
+                    st.warning("⚠️ No hay datos históricos en Yahoo Finance para este activo.")
             except Exception as e:
-                st.error("⚠️ Ha ocurrido un error al cargar la gráfica y los datos corporativos.")
+                st.error("⚠️ Error al cargar la gráfica y los datos corporativos.")
 
 # ------------------------------------------
-# PESTAÑA 2: EL RADAR DE CAZA 
+# PESTAÑA 2: RADAR DE CAZA CON AUTO-GUARDADO
 # ------------------------------------------
 with tab2:
     st.markdown("### 🎯 Selecciona tu Objetivo")
@@ -405,9 +395,9 @@ with tab2:
     if mercado_objetivo:
         tickers_a_escanear = [t for t in tickers_nombres.keys() if mercado_objetivo == "Todos" or obtener_region(t) == mercado_objetivo]
         
-        st.info(f"Iniciando radar para: **{mercado_objetivo}** ({len(tickers_a_escanear)} activos)...")
+        st.info(f"Iniciando Radar Cuantitativo V4 Adaptativo para: **{mercado_objetivo}** ({len(tickers_a_escanear)} activos)...")
         
-        barra_progreso = st.progress(0, text="Conectando con Wall Street...")
+        barra_progreso = st.progress(0, text="Conectando con Wall Street y calculando benchmark (SPY)...")
         resultados_radar = []
         
         alphaSPY = 0
@@ -416,6 +406,16 @@ with tab2:
             if len(spy_hist) >= 21:
                 alphaSPY = ((spy_hist['Close'].iloc[-1] / spy_hist['Close'].iloc[-21]) - 1) * 100
         except Exception: pass
+
+        # Nos conectamos a Sheets al principio para saber a quién NO duplicar
+        ws = conectar_db()
+        existentes_en_db = []
+        if ws:
+            try:
+                # Obtenemos todos los tickers que ya están en la columna A (Ticker)
+                existentes_en_db = ws.col_values(1)
+            except Exception:
+                pass
 
         for i, ticker in enumerate(tickers_a_escanear):
             porcentaje = int(((i + 1) / len(tickers_a_escanear)) * 100)
@@ -428,6 +428,7 @@ with tab2:
                 sym_yahoo = a_yahoo(ticker)
                 stock = yf.Ticker(sym_yahoo)
                 
+                # FILTRO ANTIFALLOS ("nan")
                 hist_full = stock.history(period="max").dropna(subset=['Close'])
                 if hist_full.empty or len(hist_full) < 2: continue
                 
@@ -442,6 +443,7 @@ with tab2:
                 dist_suelo = ((precio_actual / min_52) - 1) * 100 if min_52 > 0 else 0
                 dist_max = ((precio_actual / max_52) - 1) * 100 if max_52 > 0 else 0
                 
+                # Función segura para sacar % históricos
                 def get_ret(days):
                     if len(hist_full) >= days and not pd.isna(hist_full['Close'].iloc[-days]) and hist_full['Close'].iloc[-days] > 0:
                         return ((precio_actual / hist_full['Close'].iloc[-days]) - 1) * 100
@@ -514,6 +516,18 @@ with tab2:
                 
                 pts = max(0, min(100, int(ptsBase)))
 
+                # =======================================================
+                # AUTO-GUARDADO EN LA SALA DE TROFEOS (Google Sheets)
+                # =======================================================
+                # Si la puntuación es alta y el ticker NO estaba en la base de datos...
+                if pts >= 80 and ticker not in existentes_en_db and ws is not None:
+                    fecha_hoy = datetime.datetime.now().strftime("%Y-%m-%d")
+                    # Añadimos la fila: [Ticker, Empresa, Fecha, Precio_Aviso, Puntos]
+                    ws.append_row([ticker, nombre_empresa, fecha_hoy, float(precio_actual), int(pts)])
+                    # Lo añadimos a la lista local para no duplicarlo si repetimos escaneo
+                    existentes_en_db.append(ticker)
+                # =======================================================
+
                 recomendacion = "❌ Esperar"
                 if pts >= 65:
                     if pts >= 85: 
@@ -563,8 +577,7 @@ with tab2:
                     elif val.startswith('-'): return 'color: #FF3333;' 
                 return ''
 
-            def negrita_ticker(val):
-                return 'font-weight: bold;' 
+            def negrita_ticker(val): return 'font-weight: bold;' 
 
             columnas_pct = ["% HOY", "% 1 MES", "% 6 MESES", "% 1 AÑO", "% 5 AÑOS", "% 10 AÑOS", "% 20 AÑOS", "% MÁX", "SUELO (52s)", "MAX (52s)"]
             
@@ -575,7 +588,7 @@ with tab2:
                 styled_df = df.style.applymap(color_porcentajes, subset=columnas_pct)\
                                     .applymap(negrita_ticker, subset=['TICKER'])
 
-            st.success("Caza terminada. Pasa el ratón sobre los títulos de las columnas para ver qué significan:")
+            st.success("Caza terminada. Las empresas con más de 80 puntos se han guardado automáticamente en la Sala de Trofeos.")
             
             st.dataframe(
                 styled_df, 
@@ -605,131 +618,121 @@ with tab2:
 
 
 # ------------------------------------------
-# PESTAÑA 3: SALA DE TROFEOS (NUEVO DISEÑO COMPACTO + MEMORIA DE SESIÓN)
+# PESTAÑA 3: SALA DE TROFEOS (DB REAL Y BORRADO MANUAL)
 # ------------------------------------------
 with tab3:
     st.markdown("### 🏆 Sala de Trofeos")
-    st.write("Verifica en tiempo real si el algoritmo está acertando o fallando. *Nota: La memoria se reinicia si actualizas la página (F5).*")
+    st.write("Verifica en tiempo real si el algoritmo V4 está acertando. Las acciones que superan los 80 puntos en el Radar se guardan aquí de forma permanente.")
     
-    # --- PANEL GESTOR DE TROFEOS ---
-    with st.expander("⚙️ Gestor de Memoria (Añadir / Eliminar)"):
-        c_add, c_del = st.columns(2)
-        with c_add:
-            st.markdown("**Añadir nueva alerta manual**")
-            with st.form("form_add"):
-                n_ticker = st.selectbox("Ticker", list(tickers_nombres.keys()))
-                n_precio = st.number_input("Precio al que avisó ($ o €)", min_value=0.01, value=100.00)
-                n_fecha = st.date_input("Fecha de la señal")
-                n_pts = st.number_input("Puntos que sacó", min_value=0, max_value=100, value=85)
-                if st.form_submit_button("➕ Guardar en memoria"):
-                    st.session_state.trofeos.append({
-                        "Ticker": n_ticker, 
-                        "Empresa": tickers_nombres[n_ticker], 
-                        "Fecha_Aviso": n_fecha.strftime("%Y-%m-%d"), 
-                        "Precio_Aviso": float(n_precio), 
-                        "Puntos": int(n_pts)
-                    })
-                    st.rerun()
-                    
-        with c_del:
-            st.markdown("**Eliminar de la memoria**")
-            if len(st.session_state.trofeos) > 0:
-                with st.form("form_del"):
-                    d_ticker = st.selectbox("Selecciona para borrar", [t["Ticker"] for t in st.session_state.trofeos])
-                    if st.form_submit_button("🗑️ Eliminar"):
-                        st.session_state.trofeos = [t for t in st.session_state.trofeos if t["Ticker"] != d_ticker]
-                        st.rerun()
-            else:
-                st.info("No hay activos en memoria.")
-
-    # --- BOTÓN DE AUDITORÍA ---
-    if st.button("🔄 Auditar Cartera de Memoria", use_container_width=True):
+    ws = conectar_db()
+    
+    if ws is not None:
+        # Obtenemos todo el contenido de la hoja
+        data_sheet = ws.get_all_records()
         
-        if len(st.session_state.trofeos) == 0:
-            st.warning("La memoria está vacía. Añade un Ticker en el panel superior.")
+        if not data_sheet:
+            st.info("Tu Google Sheets está vacío. Ve a la pestaña de Radar y haz un escaneo para cazar nuevas acciones.")
         else:
-            with st.spinner("Conectando con Wall Street para actualizar precios en tiempo real..."):
-                exitos = []
-                fracasos = []
-                alpha_total = 0
-                
-                for alerta in st.session_state.trofeos:
-                    try:
-                        sym_yahoo = a_yahoo(alerta["Ticker"])
-                        stock = yf.Ticker(sym_yahoo)
-                        hist = stock.history(period="1d")
-                        
-                        if not hist.empty:
-                            precio_hoy = float(hist['Close'].iloc[-1])
-                            rentabilidad = ((precio_hoy / alerta["Precio_Aviso"]) - 1) * 100
+            # --- PANEL PARA ELIMINAR TICKERS MANUALMENTE ---
+            with st.expander("🗑️ Gestionar Base de Datos (Eliminar Tickers)"):
+                st.write("Si alguna acción ya no te interesa, puedes borrarla de tu Google Sheets desde aquí:")
+                with st.form("form_del"):
+                    # Listamos los tickers que hay en la base de datos
+                    tk_borrar = st.selectbox("Selecciona el Ticker a eliminar:", [d['Ticker'] for d in data_sheet])
+                    
+                    if st.form_submit_button("Borrar permanentemente"):
+                        # Buscamos en qué fila está el ticker (solo en la columna 1 para ser seguros)
+                        cell = ws.find(tk_borrar, in_column=1)
+                        if cell:
+                            ws.delete_rows(cell.row)
+                            st.success(f"✅ El ticker {tk_borrar} se ha eliminado de Google Sheets.")
+                            time.sleep(1.5) # Pausa corta para que el usuario lea el mensaje
+                            st.rerun() # Refresca la página para actualizar la lista
+                        else:
+                            st.error("No se ha encontrado el ticker en la hoja.")
+            # ------------------------------------------------
+
+            if st.button("🔄 Auditar Rendimiento Actual", use_container_width=True):
+                with st.spinner("Conectando con Wall Street para actualizar precios en tiempo real..."):
+                    exitos = []
+                    fracasos = []
+                    alpha_total = 0
+                    
+                    for d in data_sheet:
+                        try:
+                            # Sacamos el precio actual de cada activo guardado
+                            tk_y = a_yahoo(d['Ticker'])
+                            tk = yf.Ticker(tk_y)
+                            p_hoy = tk.history(period="1d")['Close'].iloc[-1]
                             
-                            resultado_obj = {
-                                "Ticker": alerta["Ticker"],
-                                "Empresa": alerta["Empresa"],
-                                "Aviso": alerta["Fecha_Aviso"],
-                                "Entrada": alerta["Precio_Aviso"],
-                                "Actual": precio_hoy,
-                                "Rentabilidad": rentabilidad,
-                                "Puntos": alerta["Puntos"]
+                            # Calculamos rentabilidad desde el día que se cazó
+                            rent = ((p_hoy / float(d['Precio_Aviso'])) - 1) * 100
+                            
+                            obj = {
+                                "T": d['Ticker'], 
+                                "N": d['Empresa'], 
+                                "E": float(d['Precio_Aviso']), 
+                                "A": p_hoy, 
+                                "R": rent, 
+                                "F": d['Fecha']
                             }
                             
-                            alpha_total += rentabilidad
-                            if rentabilidad > 0: exitos.append(resultado_obj)
-                            else: fracasos.append(resultado_obj)
-                    except Exception: continue
-                
-                total_operaciones = len(exitos) + len(fracasos)
-                
-                if total_operaciones > 0:
-                    win_rate = (len(exitos) / total_operaciones) * 100
-                    alpha_medio = alpha_total / total_operaciones
+                            alpha_total += rent
+                            if rent > 0: exitos.append(obj)
+                            else: fracasos.append(obj)
+                        except Exception: 
+                            continue
                     
-                    st.markdown("---")
-                    m1, m2, m3 = st.columns(3)
-                    m1.metric(label="🎯 Precisión (Win Rate)", value=f"{win_rate:.1f}%", help="Porcentaje de alertas históricas que actualmente están en positivo (ganancias).")
-                    m2.metric(label="⚔️ Alpha Medio", value=f"{alpha_medio:+.2f}%", delta=f"{alpha_medio:+.2f}%", help="Rentabilidad media generada por todas las alertas combinadas desde su precio de aviso.")
-                    m3.metric(label="⏱️ Tiempo de Ignición", value="14 Días", help="Media de tiempo que tarda una acción en subir un 5% después de que el radar avisa.")
-                    st.markdown("---")
+                    tot = len(exitos) + len(fracasos)
                     
-                    col_win, col_lose = st.columns(2)
-                    
-                    with col_win:
-                        st.markdown("#### 🏆 Casos de Éxito")
-                        if exitos:
-                            for exito in sorted(exitos, key=lambda x: x["Rentabilidad"], reverse=True):
-                                # TARJETA HORIZONTAL COMPACTA
-                                st.markdown(f"""
-                                <div class="trophy-card">
-                                    <div class="card-left">
-                                        <p class="card-title">{exito['Ticker']} <span class="card-subtitle">({exito['Empresa']})</span></p>
-                                        <p class="card-details"><b>Entrada:</b> ${exito['Entrada']:.2f} ({exito['Aviso']}) ➔ <b>Hoy:</b> ${exito['Actual']:.2f}</p>
+                    if tot > 0:
+                        win_rate = (len(exitos) / tot) * 100
+                        alpha_medio = alpha_total / tot
+                        
+                        st.markdown("---")
+                        m1, m2, m3 = st.columns(3)
+                        m1.metric(label="🎯 Precisión (Win Rate)", value=f"{win_rate:.1f}%", help="Porcentaje de alertas históricas que actualmente están en positivo (ganancias).")
+                        m2.metric(label="⚔️ Alpha Medio", value=f"{alpha_medio:+.2f}%", delta=f"{alpha_medio:+.2f}%", help="Rentabilidad media generada por todas las alertas combinadas desde su precio de aviso.")
+                        m3.metric(label="⏱️ Base de Datos", value=f"{tot} Activos", help="Número total de acciones que el algoritmo está vigilando en tu Google Sheets.")
+                        st.markdown("---")
+                        
+                        c_w, c_l = st.columns(2)
+                        
+                        with c_w:
+                            st.markdown("#### 🏆 Casos de Éxito")
+                            if exitos:
+                                for e in sorted(exitos, key=lambda x: x["R"], reverse=True):
+                                    st.markdown(f"""
+                                    <div class="trophy-card">
+                                        <div class="card-left">
+                                            <p class="card-title">{e["T"]} <span class="card-subtitle">({e["N"]})</span></p>
+                                            <p class="card-details"><b>Entrada:</b> ${e["E"]:.2f} ({e["F"]}) ➔ <b>Hoy:</b> ${e["A"]:.2f}</p>
+                                        </div>
+                                        <div class="card-right">
+                                            <p class="card-pct-win">+{e["R"]:.2f}%</p>
+                                        </div>
                                     </div>
-                                    <div class="card-right">
-                                        <p class="card-pct-win">+{exito['Rentabilidad']:.2f}%</p>
+                                    """, unsafe_allow_html=True)
+                            else:
+                                st.info("Aún no hay casos de éxito registrados.")
+                                
+                        with c_l:
+                            st.markdown("#### 🪦 Cementerio (Fallos)")
+                            if fracasos:
+                                for f in sorted(fracasos, key=lambda x: x["R"]):
+                                    st.markdown(f"""
+                                    <div class="cemetery-card">
+                                        <div class="card-left">
+                                            <p class="card-title">{f["T"]} <span class="card-subtitle">({f["N"]})</span></p>
+                                            <p class="card-details"><b>Entrada:</b> ${f["E"]:.2f} ({f["F"]}) ➔ <b>Hoy:</b> ${f["A"]:.2f}</p>
+                                        </div>
+                                        <div class="card-right">
+                                            <p class="card-pct-lose">{f["R"]:.2f}%</p>
+                                        </div>
                                     </div>
-                                </div>
-                                """, unsafe_allow_html=True)
-                        else:
-                            st.info("No hay casos de éxito registrados.")
-                            
-                    with col_lose:
-                        st.markdown("#### 🪦 Cementerio (Fallos)")
-                        if fracasos:
-                            for fallo in sorted(fracasos, key=lambda x: x["Rentabilidad"]):
-                                # TARJETA HORIZONTAL COMPACTA
-                                st.markdown(f"""
-                                <div class="cemetery-card">
-                                    <div class="card-left">
-                                        <p class="card-title">{fallo['Ticker']} <span class="card-subtitle">({fallo['Empresa']})</span></p>
-                                        <p class="card-details"><b>Entrada:</b> ${fallo['Entrada']:.2f} ({fallo['Aviso']}) ➔ <b>Hoy:</b> ${fallo['Actual']:.2f}</p>
-                                    </div>
-                                    <div class="card-right">
-                                        <p class="card-pct-lose">{fallo['Rentabilidad']:.2f}%</p>
-                                    </div>
-                                </div>
-                                """, unsafe_allow_html=True)
-                        else:
-                            st.info("No hay fallos registrados. ¡Pleno!")
+                                    """, unsafe_allow_html=True)
+                            else:
+                                st.info("No hay fallos registrados. ¡Pleno!")
 
-                else:
-                    st.error("Error al auditar la cartera. Los servidores de Yahoo pueden estar ocupados.")
+                    else:
+                        st.error("⚠️ Error al auditar la cartera. Inténtalo de nuevo más tarde.")
