@@ -183,13 +183,10 @@ opciones_desplegable.sort()
 
 # Clasificador de regiones en la sombra
 def obtener_region(ticker):
-    # Europa: Tickers de BME o terminaciones de bolsas europeas
     if "BME:" in ticker or ticker.endswith((".DE", ".PA", ".MI", ".L", ".AS", ".ST")):
         return "Europa"
-    # Asia: Terminaciones de Japón/India o ADRs asiáticos concretos
     elif ticker.endswith((".T", ".NS")) or ticker in ["BABA", "TCEHY", "JD", "PDD", "BIDU", "NTES", "NIO", "XPEV", "LI", "BYDDF", "GELYF", "XIAOF", "MEIT", "KUAIF", "TME", "FUTU", "BEKE", "TAL", "EDU", "VIPS", "GDS", "JKS", "DQ", "SMIC", "TSM", "SONY", "TM", "HMC", "SE", "GRAB", "CPNG"]:
         return "Asia"
-    # El resto se clasifica como EEUU por defecto
     else:
         return "EEUU"
 
@@ -357,16 +354,15 @@ with tab1:
 with tab2:
     st.markdown("### 🎯 Selecciona tu Objetivo")
     
-    # 4 BOTONES ORGANIZADOS EN COLUMNAS
+    # 4 BOTONES LIMPIOS (SIN BANDERAS)
     c1, c2, c3, c4 = st.columns(4)
-    btn_todos = c1.button("🌍 Cazar Todos los Mercados", use_container_width=True)
-    btn_us = c2.button("🇺🇸 Cazar Solo EE.UU.", use_container_width=True)
-    btn_eu = c3.button("🇪🇺 Cazar Solo Europa", use_container_width=True)
-    btn_asia = c4.button("🇯🇵 Cazar Solo Asia", use_container_width=True)
+    btn_todos = c1.button("Cazar Todos los Mercados", use_container_width=True)
+    btn_us = c2.button("Cazar Solo EE.UU.", use_container_width=True)
+    btn_eu = c3.button("Cazar Solo Europa", use_container_width=True)
+    btn_asia = c4.button("Cazar Solo Asia", use_container_width=True)
     
     st.markdown("---")
 
-    # LÓGICA PARA SABER QUÉ BOTÓN SE HA PULSADO
     mercado_objetivo = None
     if btn_todos: mercado_objetivo = "Todos"
     elif btn_us: mercado_objetivo = "EEUU"
@@ -374,28 +370,26 @@ with tab2:
     elif btn_asia: mercado_objetivo = "Asia"
 
     if mercado_objetivo:
-        # 1. Filtramos la lista según el botón pulsado
         tickers_a_escanear = []
         for t in tickers_nombres.keys():
             if mercado_objetivo == "Todos" or obtener_region(t) == mercado_objetivo:
                 tickers_a_escanear.append(t)
         
-        # 2. Preparamos los textos y la barra de progreso
-        st.info(f"Iniciando radar para: **{mercado_objetivo}** ({len(tickers_a_escanear)} activos encontrados en tu base de datos)...")
+        st.info(f"Iniciando radar para: **{mercado_objetivo}** ({len(tickers_a_escanear)} activos encontrados)...")
         
-        barra_progreso = st.progress(0)
-        texto_estado = st.empty()
+        # LA NUEVA BARRA DE PROGRESO SIN PARPADEO
+        barra_progreso = st.progress(0, text="Iniciando motores...")
+        texto_exito = st.empty() 
         
-        # 3. BUCLE SIMULADOR DE ESCANEO
         for i, ticker in enumerate(tickers_a_escanear):
             porcentaje = int(((i + 1) / len(tickers_a_escanear)) * 100)
-            
-            # Actualizamos la barra y el texto visual
-            barra_progreso.progress(porcentaje)
             nombre_empresa = tickers_nombres[ticker]
-            texto_estado.write(f"⏳ Evaluando **{ticker}** ({nombre_empresa})... completado al **{porcentaje}%**")
             
-            # Simulamos el tiempo que tardará Yahoo Finance luego (0.02 segundos por empresa)
+            # Al usar el parámetro "text" directamente dentro de progress(), no parpadea.
+            texto_barra = f"⏳ Completado: {porcentaje}% | Evaluando: {ticker} ({nombre_empresa})"
+            barra_progreso.progress(porcentaje, text=texto_barra)
+            
             time.sleep(0.02)
             
-        texto_estado.success(f"✅ ¡Caza completada con éxito para el mercado de {mercado_objetivo}!")
+        texto_exito.success(f"✅ ¡Caza completada con éxito para el mercado de {mercado_objetivo}!")
+        barra_progreso.progress(100, text="✅ 100% Completado")
