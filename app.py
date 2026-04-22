@@ -1,10 +1,13 @@
 import streamlit as st
+import yfinance as yf
+import plotly.graph_objects as go
 
-# 1. TÍTULO CON ICONO
-st.set_page_config(page_title="Alphaquant", page_icon="📈", layout="wide")
-st.title("📈 Alphaquant")
+# ==========================================
+# 1. BLOQUE SELLADO (No se toca)
+# ==========================================
+st.set_page_config(page_title="alphaquant", layout="centered")
+st.title("alphaquant")
 
-# 2. BASE DE DATOS EXACTA
 tickers_nombres = {
     "AGH": "Powerus", "XTND": "Xtend", "UMAC": "Unusual Mac", "RCAT": "Red Cat",
     "AVAV": "AeroViron", "UAVS": "AgEagle", "EH": "EHang", "LMT": "Lockheed",
@@ -172,10 +175,64 @@ tickers_nombres = {
     "BIO": "BioRad", "MTD": "Mettler", "TECH": "BioTechne", "CTLT": "Catalent"
 }
 
-# 3. CREAR LA LISTA FORMATO "TICKER (Nombre)"
 opciones_desplegable = [f"{ticker} ({nombre})" for ticker, nombre in tickers_nombres.items()]
 opciones_desplegable.sort()
 
-# 4. DESPLEGABLE EN EL PANEL IZQUIERDO
-with st.sidebar:
-    ticker_elegido = st.selectbox("Selecciona un activo:", opciones_desplegable)
+ticker_elegido = st.selectbox("Selecciona un activo:", opciones_desplegable)
+
+# ==========================================
+# 2. EL NUEVO MOTOR DE GRÁFICOS (Limpio y exacto)
+# ==========================================
+if ticker_elegido:
+    # Extraemos solo las letras del ticker (Ej: de "AAPL (Apple)" sacamos "AAPL")
+    simbolo_real = ticker_elegido.split(" ")[0]
+    
+    st.markdown("---")
+    
+    # Botones horizontales limpios para elegir el tiempo
+    periodo = st.radio(
+        "Rango de tiempo:", 
+        ["1 Mes", "3 Meses", "6 Meses", "1 Año", "Máximo"], 
+        index=1, 
+        horizontal=True
+    )
+    
+    # Traductor de tiempo para conectarse a Wall Street
+    mapa_tiempo = {
+        "1 Mes": "1mo", 
+        "3 Meses": "3mo", 
+        "6 Meses": "6mo", 
+        "1 Año": "1y", 
+        "Máximo": "max"
+    }
+    
+    with st.spinner(f"Cargando historial exacto de {simbolo_real}..."):
+        try:
+            datos = yf.Ticker(simbolo_real).history(period=mapa_tiempo[periodo])
+            
+            if not datos.empty:
+                # Dibujamos una línea limpia, sin velas anchas
+                fig = go.Figure()
+                fig.add_trace(go.Scatter(
+                    x=datos.index, 
+                    y=datos['Close'], 
+                    mode='lines', 
+                    name='Precio de Cierre',
+                    line=dict(color='#00FF41', width=2) # Línea verde estilo terminal
+                ))
+                
+                # Diseño de la gráfica: fondo oscuro, sin distracciones
+                fig.update_layout(
+                    title=f"Cotización de {ticker_elegido}",
+                    template='plotly_dark',
+                    margin=dict(l=0, r=0, t=40, b=0),
+                    xaxis_title="",
+                    yaxis_title="Precio ($)",
+                    hovermode="x unified" # Al pasar el ratón te da la info exacta
+                )
+                
+                st.plotly_chart(fig, use_container_width=True)
+            else:
+                st.warning("⚠️ No hay datos históricos en Yahoo Finance para este activo en este periodo.")
+        except Exception as e:
+            st.error("⚠️ Ha ocurrido un error de conexión al cargar la gráfica.")
