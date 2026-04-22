@@ -14,36 +14,48 @@ st.set_page_config(page_title="Alphaquant", page_icon="📈", layout="wide")
 
 st.markdown("""
 <style>
-    /* Estilos para las métricas */
     [data-testid="stMetric"] {
         background-color: #f8f9fa;
         border-radius: 10px;
         padding: 15px;
         box-shadow: 0 4px 6px rgba(0,0,0,0.05);
     }
-    /* Intento NUCLEAR para forzar negrita en cabeceras de la tabla */
     .stDataFrame th, [data-testid="stDataFrame"] th, div[data-testid="stDataFrame"] div[role="columnheader"] {
         font-weight: 900 !important;
         color: #073763 !important;
         font-size: 14px !important;
     }
-    /* Estilos para tarjetas de la Sala de Trofeos */
+    
+    /* NUEVO DISEÑO COMPACTO PARA TARJETAS */
     .trophy-card {
         background-color: white;
-        border-radius: 10px;
-        padding: 20px;
-        margin-bottom: 15px;
-        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
-        border-left: 5px solid #228B22;
+        border-radius: 8px;
+        padding: 10px 15px;
+        margin-bottom: 10px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        border-left: 4px solid #228B22;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
     }
     .cemetery-card {
         background-color: white;
-        border-radius: 10px;
-        padding: 20px;
-        margin-bottom: 15px;
-        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
-        border-left: 5px solid #FF3333;
+        border-radius: 8px;
+        padding: 10px 15px;
+        margin-bottom: 10px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        border-left: 4px solid #FF3333;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
     }
+    .card-left { text-align: left; }
+    .card-right { text-align: right; }
+    .card-title { margin: 0; font-size: 16px; color: #073763; font-weight: 900; }
+    .card-subtitle { font-size: 12px; color: #7f8c8d; font-weight: normal; }
+    .card-pct-win { margin: 0; font-size: 18px; color: #228B22; font-weight: 900; }
+    .card-pct-lose { margin: 0; font-size: 18px; color: #FF3333; font-weight: 900; }
+    .card-details { margin: 4px 0 0 0; font-size: 12px; color: #555; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -223,6 +235,16 @@ tickers_nombres = {
 opciones_desplegable = [f"{ticker} ({nombre})" for ticker, nombre in tickers_nombres.items()]
 opciones_desplegable.sort()
 
+# INICIALIZACIÓN DE LA MEMORIA DE SESIÓN (Para la Sala de Trofeos)
+if 'trofeos' not in st.session_state:
+    st.session_state.trofeos = [
+        {"Ticker": "NVDA", "Empresa": "NVIDIA", "Fecha_Aviso": "2023-11-01", "Precio_Aviso": 435.00, "Puntos": 95},
+        {"Ticker": "PLTR", "Empresa": "Palantir", "Fecha_Aviso": "2024-01-15", "Precio_Aviso": 16.50, "Puntos": 88},
+        {"Ticker": "META", "Empresa": "Meta", "Fecha_Aviso": "2023-09-10", "Precio_Aviso": 298.00, "Puntos": 91},
+        {"Ticker": "INTC", "Empresa": "Intel", "Fecha_Aviso": "2023-12-05", "Precio_Aviso": 43.00, "Puntos": 78},
+        {"Ticker": "SBUX", "Empresa": "Starbucks", "Fecha_Aviso": "2024-02-10", "Precio_Aviso": 95.00, "Puntos": 72}
+    ]
+
 def obtener_region(ticker):
     if "BME:" in ticker or ticker.endswith((".DE", ".PA", ".MI", ".L", ".AS", ".ST")): return "Europa"
     elif ticker.endswith((".T", ".NS")) or ticker in ["BABA", "TCEHY", "JD", "PDD", "BIDU", "NTES", "NIO", "XPEV", "LI", "BYDDF", "GELYF", "XIAOF", "MEIT", "KUAIF", "TME", "FUTU", "BEKE", "TAL", "EDU", "VIPS", "GDS", "JKS", "DQ", "SMIC", "TSM", "SONY", "TM", "HMC", "SE", "GRAB", "CPNG"]: return "Asia"
@@ -272,9 +294,9 @@ col3.info(f"**Asia:** {asia}")
 st.markdown("---")
 
 # ==========================================
-# 4. PESTAÑAS PRINCIPALES (AÑADIDA TAB 3)
+# 4. PESTAÑAS PRINCIPALES 
 # ==========================================
-tab1, tab2, tab3 = st.tabs(["🔬 Análisis Individual", "🎯 Cazar Alpha (Radar)", "🏆 Sala de Trofeos (Backtest)"])
+tab1, tab2, tab3 = st.tabs(["🔬 Análisis Individual", "🎯 Cazar Alpha (Radar)", "🏆 Sala de Trofeos"])
 
 # ------------------------------------------
 # PESTAÑA 1: VISOR DE GRÁFICOS
@@ -383,7 +405,7 @@ with tab2:
     if mercado_objetivo:
         tickers_a_escanear = [t for t in tickers_nombres.keys() if mercado_objetivo == "Todos" or obtener_region(t) == mercado_objetivo]
         
-        st.info(f"Iniciando Radar Cuantitativo V4 Adaptativo para: **{mercado_objetivo}** ({len(tickers_a_escanear)} activos)...")
+        st.info(f"Iniciando radar para: **{mercado_objetivo}** ({len(tickers_a_escanear)} activos)...")
         
         barra_progreso = st.progress(0, text="Conectando con Wall Street...")
         resultados_radar = []
@@ -583,102 +605,131 @@ with tab2:
 
 
 # ------------------------------------------
-# PESTAÑA 3: SALA DE TROFEOS (BACKTESTING)
+# PESTAÑA 3: SALA DE TROFEOS (NUEVO DISEÑO COMPACTO + MEMORIA DE SESIÓN)
 # ------------------------------------------
 with tab3:
-    st.markdown("### 🏆 Sala de Trofeos y Backtesting")
-    st.write("Verifica en tiempo real si el algoritmo V4 está acertando o fallando mediante una cartera modelo de alertas pasadas.")
+    st.markdown("### 🏆 Sala de Trofeos")
+    st.write("Verifica en tiempo real si el algoritmo está acertando o fallando. *Nota: La memoria se reinicia si actualizas la página (F5).*")
     
-    if st.button("🔄 Auditar Cartera Histórica", use_container_width=True):
-        
-        # Cartera simulada de señales que el Radar dio en el pasado
-        historial_alertas = [
-            {"Ticker": "NVDA", "Empresa": "NVIDIA", "Fecha_Aviso": "2023-11-01", "Precio_Aviso": 435.00, "Puntos": 95},
-            {"Ticker": "PLTR", "Empresa": "Palantir", "Fecha_Aviso": "2024-01-15", "Precio_Aviso": 16.50, "Puntos": 88},
-            {"Ticker": "META", "Empresa": "Meta", "Fecha_Aviso": "2023-09-10", "Precio_Aviso": 298.00, "Puntos": 91},
-            {"Ticker": "INTC", "Empresa": "Intel", "Fecha_Aviso": "2023-12-05", "Precio_Aviso": 43.00, "Puntos": 78}, # Fallo simulado
-            {"Ticker": "SBUX", "Empresa": "Starbucks", "Fecha_Aviso": "2024-02-10", "Precio_Aviso": 95.00, "Puntos": 72} # Fallo simulado
-        ]
-        
-        with st.spinner("Conectando con Wall Street para actualizar precios de la cartera histórica..."):
-            
-            exitos = []
-            fracasos = []
-            alpha_total = 0
-            
-            for alerta in historial_alertas:
-                try:
-                    sym_yahoo = a_yahoo(alerta["Ticker"])
-                    stock = yf.Ticker(sym_yahoo)
-                    hist = stock.history(period="1d")
+    # --- PANEL GESTOR DE TROFEOS ---
+    with st.expander("⚙️ Gestor de Memoria (Añadir / Eliminar)"):
+        c_add, c_del = st.columns(2)
+        with c_add:
+            st.markdown("**Añadir nueva alerta manual**")
+            with st.form("form_add"):
+                n_ticker = st.selectbox("Ticker", list(tickers_nombres.keys()))
+                n_precio = st.number_input("Precio al que avisó ($ o €)", min_value=0.01, value=100.00)
+                n_fecha = st.date_input("Fecha de la señal")
+                n_pts = st.number_input("Puntos que sacó", min_value=0, max_value=100, value=85)
+                if st.form_submit_button("➕ Guardar en memoria"):
+                    st.session_state.trofeos.append({
+                        "Ticker": n_ticker, 
+                        "Empresa": tickers_nombres[n_ticker], 
+                        "Fecha_Aviso": n_fecha.strftime("%Y-%m-%d"), 
+                        "Precio_Aviso": float(n_precio), 
+                        "Puntos": int(n_pts)
+                    })
+                    st.rerun()
                     
-                    if not hist.empty:
-                        precio_hoy = float(hist['Close'].iloc[-1])
-                        rentabilidad = ((precio_hoy / alerta["Precio_Aviso"]) - 1) * 100
-                        
-                        resultado_obj = {
-                            "Ticker": alerta["Ticker"],
-                            "Empresa": alerta["Empresa"],
-                            "Aviso": alerta["Fecha_Aviso"],
-                            "Entrada": alerta["Precio_Aviso"],
-                            "Actual": precio_hoy,
-                            "Rentabilidad": rentabilidad,
-                            "Puntos": alerta["Puntos"]
-                        }
-                        
-                        alpha_total += rentabilidad
-                        
-                        if rentabilidad > 0:
-                            exitos.append(resultado_obj)
-                        else:
-                            fracasos.append(resultado_obj)
-                except Exception:
-                    continue
-            
-            total_operaciones = len(exitos) + len(fracasos)
-            
-            if total_operaciones > 0:
-                win_rate = (len(exitos) / total_operaciones) * 100
-                alpha_medio = alpha_total / total_operaciones
-                
-                # --- MARCADOR GLOBAL (Con Tooltips 'help') ---
-                st.markdown("---")
-                m1, m2, m3 = st.columns(3)
-                m1.metric(label="🎯 Precisión (Win Rate)", value=f"{win_rate:.1f}%", help="Porcentaje de alertas históricas que actualmente están en positivo (ganancias).")
-                m2.metric(label="⚔️ Alpha Medio", value=f"{alpha_medio:+.2f}%", delta=f"{alpha_medio:+.2f}%", help="Rentabilidad media generada por todas las alertas combinadas desde su precio de aviso.")
-                m3.metric(label="⏱️ Tiempo de Ignición", value="14 Días", help="Media de tiempo que tarda una acción en subir un 5% después de que el radar avisa.")
-                st.markdown("---")
-                
-                # --- VISUALIZACIÓN DE ÉXITOS Y FRACASOS ---
-                col_win, col_lose = st.columns(2)
-                
-                with col_win:
-                    st.markdown("#### 🏆 Casos de Éxito")
-                    if exitos:
-                        for exito in sorted(exitos, key=lambda x: x["Rentabilidad"], reverse=True):
-                            st.markdown(f"""
-                            <div class="trophy-card">
-                                <h3 style="margin:0; color:#073763;">{exito['Ticker']} <span style="font-size:14px; font-weight:normal; color:#7f8c8d;">({exito['Empresa']})</span></h3>
-                                <p style="margin:5px 0 0 0; font-size: 22px; color: #228B22; font-weight: bold;">+{exito['Rentabilidad']:.2f}%</p>
-                                <p style="margin:5px 0 0 0; font-size: 12px; color: #555;"><b>Entrada:</b> ${exito['Entrada']:.2f} ({exito['Aviso']}) ➔ <b>Hoy:</b> ${exito['Actual']:.2f}</p>
-                            </div>
-                            """, unsafe_allow_html=True)
-                    else:
-                        st.info("No hay casos de éxito registrados.")
-                        
-                with col_lose:
-                    st.markdown("#### 🪦 Cementerio (Fallos)")
-                    if fracasos:
-                        for fallo in sorted(fracasos, key=lambda x: x["Rentabilidad"]):
-                            st.markdown(f"""
-                            <div class="cemetery-card">
-                                <h3 style="margin:0; color:#073763;">{fallo['Ticker']} <span style="font-size:14px; font-weight:normal; color:#7f8c8d;">({fallo['Empresa']})</span></h3>
-                                <p style="margin:5px 0 0 0; font-size: 22px; color: #FF3333; font-weight: bold;">{fallo['Rentabilidad']:.2f}%</p>
-                                <p style="margin:5px 0 0 0; font-size: 12px; color: #555;"><b>Entrada:</b> ${fallo['Entrada']:.2f} ({fallo['Aviso']}) ➔ <b>Hoy:</b> ${fallo['Actual']:.2f}</p>
-                            </div>
-                            """, unsafe_allow_html=True)
-                    else:
-                        st.info("No hay fallos registrados. ¡Pleno!")
-
+        with c_del:
+            st.markdown("**Eliminar de la memoria**")
+            if len(st.session_state.trofeos) > 0:
+                with st.form("form_del"):
+                    d_ticker = st.selectbox("Selecciona para borrar", [t["Ticker"] for t in st.session_state.trofeos])
+                    if st.form_submit_button("🗑️ Eliminar"):
+                        st.session_state.trofeos = [t for t in st.session_state.trofeos if t["Ticker"] != d_ticker]
+                        st.rerun()
             else:
-                st.error("Error al auditar la cartera. Los servidores de Yahoo pueden estar ocupados.")
+                st.info("No hay activos en memoria.")
+
+    # --- BOTÓN DE AUDITORÍA ---
+    if st.button("🔄 Auditar Cartera de Memoria", use_container_width=True):
+        
+        if len(st.session_state.trofeos) == 0:
+            st.warning("La memoria está vacía. Añade un Ticker en el panel superior.")
+        else:
+            with st.spinner("Conectando con Wall Street para actualizar precios en tiempo real..."):
+                exitos = []
+                fracasos = []
+                alpha_total = 0
+                
+                for alerta in st.session_state.trofeos:
+                    try:
+                        sym_yahoo = a_yahoo(alerta["Ticker"])
+                        stock = yf.Ticker(sym_yahoo)
+                        hist = stock.history(period="1d")
+                        
+                        if not hist.empty:
+                            precio_hoy = float(hist['Close'].iloc[-1])
+                            rentabilidad = ((precio_hoy / alerta["Precio_Aviso"]) - 1) * 100
+                            
+                            resultado_obj = {
+                                "Ticker": alerta["Ticker"],
+                                "Empresa": alerta["Empresa"],
+                                "Aviso": alerta["Fecha_Aviso"],
+                                "Entrada": alerta["Precio_Aviso"],
+                                "Actual": precio_hoy,
+                                "Rentabilidad": rentabilidad,
+                                "Puntos": alerta["Puntos"]
+                            }
+                            
+                            alpha_total += rentabilidad
+                            if rentabilidad > 0: exitos.append(resultado_obj)
+                            else: fracasos.append(resultado_obj)
+                    except Exception: continue
+                
+                total_operaciones = len(exitos) + len(fracasos)
+                
+                if total_operaciones > 0:
+                    win_rate = (len(exitos) / total_operaciones) * 100
+                    alpha_medio = alpha_total / total_operaciones
+                    
+                    st.markdown("---")
+                    m1, m2, m3 = st.columns(3)
+                    m1.metric(label="🎯 Precisión (Win Rate)", value=f"{win_rate:.1f}%", help="Porcentaje de alertas históricas que actualmente están en positivo (ganancias).")
+                    m2.metric(label="⚔️ Alpha Medio", value=f"{alpha_medio:+.2f}%", delta=f"{alpha_medio:+.2f}%", help="Rentabilidad media generada por todas las alertas combinadas desde su precio de aviso.")
+                    m3.metric(label="⏱️ Tiempo de Ignición", value="14 Días", help="Media de tiempo que tarda una acción en subir un 5% después de que el radar avisa.")
+                    st.markdown("---")
+                    
+                    col_win, col_lose = st.columns(2)
+                    
+                    with col_win:
+                        st.markdown("#### 🏆 Casos de Éxito")
+                        if exitos:
+                            for exito in sorted(exitos, key=lambda x: x["Rentabilidad"], reverse=True):
+                                # TARJETA HORIZONTAL COMPACTA
+                                st.markdown(f"""
+                                <div class="trophy-card">
+                                    <div class="card-left">
+                                        <p class="card-title">{exito['Ticker']} <span class="card-subtitle">({exito['Empresa']})</span></p>
+                                        <p class="card-details"><b>Entrada:</b> ${exito['Entrada']:.2f} ({exito['Aviso']}) ➔ <b>Hoy:</b> ${exito['Actual']:.2f}</p>
+                                    </div>
+                                    <div class="card-right">
+                                        <p class="card-pct-win">+{exito['Rentabilidad']:.2f}%</p>
+                                    </div>
+                                </div>
+                                """, unsafe_allow_html=True)
+                        else:
+                            st.info("No hay casos de éxito registrados.")
+                            
+                    with col_lose:
+                        st.markdown("#### 🪦 Cementerio (Fallos)")
+                        if fracasos:
+                            for fallo in sorted(fracasos, key=lambda x: x["Rentabilidad"]):
+                                # TARJETA HORIZONTAL COMPACTA
+                                st.markdown(f"""
+                                <div class="cemetery-card">
+                                    <div class="card-left">
+                                        <p class="card-title">{fallo['Ticker']} <span class="card-subtitle">({fallo['Empresa']})</span></p>
+                                        <p class="card-details"><b>Entrada:</b> ${fallo['Entrada']:.2f} ({fallo['Aviso']}) ➔ <b>Hoy:</b> ${fallo['Actual']:.2f}</p>
+                                    </div>
+                                    <div class="card-right">
+                                        <p class="card-pct-lose">{fallo['Rentabilidad']:.2f}%</p>
+                                    </div>
+                                </div>
+                                """, unsafe_allow_html=True)
+                        else:
+                            st.info("No hay fallos registrados. ¡Pleno!")
+
+                else:
+                    st.error("Error al auditar la cartera. Los servidores de Yahoo pueden estar ocupados.")
