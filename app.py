@@ -215,7 +215,7 @@ def obtener_estado_mercados():
     return estado_us, estado_eu, estado_asia
 
 # ==========================================
-# 3. PANEL IZQUIERDO (Sellado y sin banderas raras)
+# 3. PANEL IZQUIERDO
 # ==========================================
 with st.sidebar:
     st.markdown("### 🚦 Estado Global")
@@ -228,18 +228,16 @@ with st.sidebar:
     ticker_elegido = st.selectbox("Selecciona un activo:", opciones_desplegable)
 
 # ==========================================
-# 4. MOTOR DE GRÁFICOS (Ahora con Traductor a Dólares)
+# 4. MOTOR DE GRÁFICOS (Ahora con Resumen Corporativo)
 # ==========================================
 if ticker_elegido:
     simbolo_real = ticker_elegido.split(" ")[0]
     
-    # --- TRADUCTOR INVISIBLE PARA YAHOO FINANCE ---
     simbolo_yahoo = simbolo_real
     if simbolo_yahoo.startswith("BME:"):
         simbolo_yahoo = simbolo_yahoo.replace("BME:", "") + ".MC"
     elif simbolo_yahoo.startswith("NYSE:"):
         simbolo_yahoo = simbolo_yahoo.replace("NYSE:", "")
-    # ----------------------------------------------
     
     st.markdown("---")
     
@@ -255,48 +253,65 @@ if ticker_elegido:
         "1 Año": "1y", "Máximo": "max"
     }
     
-    with st.spinner(f"Cargando historial de {simbolo_real}..."):
+    with st.spinner(f"Cargando datos en vivo de {simbolo_real}..."):
         try:
             ticker_obj = yf.Ticker(simbolo_yahoo)
             datos = ticker_obj.history(period=mapa_tiempo[periodo])
             
             if not datos.empty:
                 info = ticker_obj.info
+                
+                # --- LÓGICA DE DIVISAS ---
                 moneda_codigo = info.get('currency', 'USD')
                 precio_actual = datos['Close'].iloc[-1]
                 
-                # Símbolos bonitos
                 simbolos_moneda = {
                     "USD": "$", "EUR": "€", "GBP": "£", "GBp": "GBp",
                     "JPY": "¥", "HKD": "HK$", "MXN": "MX$", "SEK": "kr", "CHF": "CHF"
                 }
                 s_moneda = simbolos_moneda.get(moneda_codigo, moneda_codigo)
 
-                # --- EL TRADUCTOR A DÓLARES EN VIVO ---
                 texto_mostrar = f"{precio_actual:.2f} {s_moneda}"
                 
                 if moneda_codigo != "USD":
                     try:
-                        # Si es GBp (Peniques de UK), hay que pedir 'GBP' y dividir entre 100
                         query_curr = "GBP" if moneda_codigo == "GBp" else moneda_codigo
                         factor = 0.01 if moneda_codigo == "GBp" else 1.0
-                        
-                        # Pedimos el tipo de cambio a Yahoo Finance
                         tasa_fx = yf.Ticker(f"{query_curr}USD=X").history(period="1d")
                         if not tasa_fx.empty:
                             rate = tasa_fx['Close'].iloc[-1]
                             precio_usd = precio_actual * factor * rate
                             texto_mostrar = f"{precio_actual:.2f} {s_moneda} (${precio_usd:.2f})"
                     except Exception:
-                        pass # Si falla internet al buscar el FX, no mostramos el paréntesis y listos
+                        pass
                 else:
                     texto_mostrar = f"{precio_actual:.2f} $"
-                # --------------------------------------
 
-                # Mostramos el precio con o sin conversión
+                # --- 1. MOSTRAMOS EL VALOR ---
                 st.metric(label=f"Valor Actual ({simbolo_real})", value=texto_mostrar)
                 
-                # Dibujamos la gráfica
+                # --- 2. MOSTRAMOS EL PERFIL CORPORATIVO (NUEVO) ---
+                sector = info.get('sector', '')
+                industria = info.get('industry', '')
+                resumen_largo = info.get('longBusinessSummary', '')
+                
+                if sector and industria:
+                    st.caption(f"🏢 **Sector:** {sector} | **Industria:** {industria}")
+                
+                if resumen_largo:
+                    # Acortamos el texto dividiéndolo por puntos y cogiendo las dos primeras frases
+                    frases = resumen_largo.split('. ')
+                    if len(frases) > 2:
+                        resumen_corto = '. '.join(frases[:2]) + '.'
+                    else:
+                        resumen_corto = resumen_largo
+                    # Lo imprimimos en cursiva
+                    st.markdown(f"*{resumen_corto}*")
+                
+                st.write("") # Un pequeño espacio en blanco para separar
+                # ----------------------------------------------------
+
+                # --- 3. DIBUJAMOS LA GRÁFICA ---
                 fig = go.Figure()
                 fig.add_trace(go.Scatter(
                     x=datos.index, 
@@ -319,4 +334,4 @@ if ticker_elegido:
             else:
                 st.warning("⚠️ No hay datos históricos en Yahoo Finance para este activo en este periodo.")
         except Exception as e:
-            st.error("⚠️ Ha ocurrido un error al cargar la gráfica.")
+            st.error("⚠️ Ha ocurrido un error al cargar la gráfica y los datos corporativos.")
