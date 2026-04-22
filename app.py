@@ -5,6 +5,7 @@ import numpy as np
 import plotly.graph_objects as go
 import datetime
 import pytz
+import time
 
 # ==========================================
 # 1. BLOQUE SELLADO (Título y Base de Datos)
@@ -106,7 +107,7 @@ tickers_nombres = {
     "GELYF": "Geely", "XIAOF": "Xiaomi", "MEIT": "Meituan", "KUAIF": "Kuaishou",
     "TME": "TencMusic", "FUTU": "Futu", "BEKE": "KE Hold", "TAL": "TAL Edu",
     "EDU": "NewOrient", "VIPS": "Vipshop", "GDS": "GDS", "JKS": "JinkoSolar",
-    "DQ": "Daqo", "SMICS": "SMIC", "TSM": "TSMC", "SONY": "Sony", "TM": "Toyota",
+    "DQ": "Daqo", "SMIC": "SMIC", "TSM": "TSMC", "SONY": "Sony", "TM": "Toyota",
     "HMC": "Honda", "9984.T": "SoftBank", "RELIANCE.NS": "Reliance", "HDFCBANK.NS": "HDFC",
     "INFY": "Infosys", "NU": "Nubank", "PBR": "Petrobras", "VALE": "Vale",
     "WALMEX.MX": "Walmex", "SE": "Sea Ltd", "GRAB": "Grab", "CPNG": "Coupang",
@@ -182,16 +183,12 @@ tickers_nombres = {
 opciones_desplegable = [f"{ticker} ({nombre})" for ticker, nombre in tickers_nombres.items()]
 opciones_desplegable.sort()
 
-# Clasificador de regiones
+# CLASIFICADOR GEOGRÁFICO
 def obtener_region(ticker):
-    if "BME:" in ticker or ticker.endswith((".DE", ".PA", ".MI", ".L", ".AS", ".ST")):
-        return "Europa"
-    elif ticker.endswith((".T", ".NS")) or ticker in ["BABA", "TCEHY", "JD", "PDD", "BIDU", "NTES", "NIO", "XPEV", "LI", "BYDDF", "GELYF", "XIAOF", "MEIT", "KUAIF", "TME", "FUTU", "BEKE", "TAL", "EDU", "VIPS", "GDS", "JKS", "DQ", "SMIC", "TSM", "SONY", "TM", "HMC", "SE", "GRAB", "CPNG"]:
-        return "Asia"
-    else:
-        return "EEUU"
+    if "BME:" in ticker or ticker.endswith((".DE", ".PA", ".MI", ".L", ".AS", ".ST")): return "Europa"
+    elif ticker.endswith((".T", ".NS")) or ticker in ["BABA", "TCEHY", "JD", "PDD", "BIDU", "NTES", "NIO", "XPEV", "LI", "BYDDF", "GELYF", "XIAOF", "MEIT", "KUAIF", "TME", "FUTU", "BEKE", "TAL", "EDU", "VIPS", "GDS", "JKS", "DQ", "SMIC", "TSM", "SONY", "TM", "HMC", "SE", "GRAB", "CPNG"]: return "Asia"
+    else: return "EEUU"
 
-# Traductor de Yahoo
 def a_yahoo(ticker):
     if ticker.startswith("BME:"): return ticker.replace("BME:", "") + ".MC"
     if ticker.startswith("NYSE:"): return ticker.replace("NYSE:", "")
@@ -206,7 +203,6 @@ def obtener_estado_mercados():
     hora_ny = ahora_utc.astimezone(pytz.timezone('US/Eastern'))
     es_fin_semana_ny = hora_ny.weekday() >= 5
     t_ny = hora_ny.time()
-    
     if es_fin_semana_ny: estado_us = "🔴 Cerrado"
     elif datetime.time(4, 0) <= t_ny < datetime.time(9, 30): estado_us = "🟡 Pre-Market"
     elif datetime.time(9, 30) <= t_ny < datetime.time(16, 0): estado_us = "🟢 Abierto"
@@ -216,7 +212,6 @@ def obtener_estado_mercados():
     hora_eu = ahora_utc.astimezone(pytz.timezone('Europe/Madrid'))
     es_fin_semana_eu = hora_eu.weekday() >= 5
     t_eu = hora_eu.time()
-    
     if es_fin_semana_eu: estado_eu = "🔴 Cerrado"
     elif datetime.time(9, 0) <= t_eu < datetime.time(17, 30): estado_eu = "🟢 Abierto"
     else: estado_eu = "🔴 Cerrado"
@@ -224,7 +219,6 @@ def obtener_estado_mercados():
     hora_asia = ahora_utc.astimezone(pytz.timezone('Asia/Tokyo'))
     es_fin_semana_asia = hora_asia.weekday() >= 5
     t_asia = hora_asia.time()
-    
     if es_fin_semana_asia: estado_asia = "🔴 Cerrado"
     elif datetime.time(9, 0) <= t_asia <= datetime.time(15, 0): estado_asia = "🟢 Abierto"
     else: estado_asia = "🔴 Cerrado"
@@ -329,7 +323,7 @@ with tab1:
                 st.error("⚠️ Ha ocurrido un error al cargar la gráfica y los datos corporativos.")
 
 # ------------------------------------------
-# PESTAÑA 2: EL RADAR DE CAZA
+# PESTAÑA 2: EL RADAR DE CAZA 
 # ------------------------------------------
 with tab2:
     st.markdown("### 🎯 Selecciona tu Objetivo")
@@ -351,15 +345,15 @@ with tab2:
     if mercado_objetivo:
         tickers_a_escanear = [t for t in tickers_nombres.keys() if mercado_objetivo == "Todos" or obtener_region(t) == mercado_objetivo]
         
-        st.info(f"Iniciando radar para: **{mercado_objetivo}** ({len(tickers_a_escanear)} activos encontrados)...")
+        st.info(f"Iniciando radar inteligente para: **{mercado_objetivo}** ({len(tickers_a_escanear)} activos)...")
         
         barra_progreso = st.progress(0, text="Iniciando conexión con Wall Street...")
-        
         resultados_radar = []
         
         for i, ticker in enumerate(tickers_a_escanear):
             porcentaje = int(((i + 1) / len(tickers_a_escanear)) * 100)
             nombre_empresa = tickers_nombres[ticker]
+            region_activa = obtener_region(ticker)
             
             barra_progreso.progress(porcentaje, text=f"⏳ Evaluando: {ticker} ({nombre_empresa}) | {porcentaje}%")
             
@@ -367,16 +361,13 @@ with tab2:
                 sym_yahoo = a_yahoo(ticker)
                 stock = yf.Ticker(sym_yahoo)
                 
-                # Pedimos el máximo historial posible para el % Máximo
                 hist_full = stock.history(period="max")
                 if hist_full.empty or len(hist_full) < 2: continue
                 
-                # Precios y Variaciones
                 precio_actual = float(hist_full['Close'].iloc[-1])
                 precio_ayer = float(hist_full['Close'].iloc[-2])
                 pct_hoy = ((precio_actual / precio_ayer) - 1) * 100
                 
-                # Rangos de 1 año (252 sesiones)
                 hist_1y = hist_full.iloc[-252:] if len(hist_full) >= 252 else hist_full
                 max_52 = float(hist_1y['High'].max())
                 min_52 = float(hist_1y['Low'].min())
@@ -384,47 +375,73 @@ with tab2:
                 dist_suelo = ((precio_actual / min_52) - 1) * 100
                 dist_max = ((precio_actual / max_52) - 1) * 100
                 
-                # Momentum y Otros periodos
                 ret_1m = ((precio_actual / hist_full['Close'].iloc[-21]) - 1) * 100 if len(hist_full) >= 21 else 0
                 ret_6m = ((precio_actual / hist_full['Close'].iloc[-126]) - 1) * 100 if len(hist_full) >= 126 else 0
                 ret_1y = ((precio_actual / hist_full['Close'].iloc[-252]) - 1) * 100 if len(hist_full) >= 252 else 0
                 ret_max = ((precio_actual / hist_full['Close'].iloc[0]) - 1) * 100
                 
-                # Fundamentales
                 info = stock.info
                 sector = info.get('sector', 'N/A')
                 per = info.get('trailingPE', 999)
                 vol_hoy = float(hist_full['Volume'].iloc[-1])
                 vol_medio = float(hist_full['Volume'].tail(20).mean())
                 
-                # Sistema de Puntuación
+                # ========================================================
+                # 🧠 EL CEREBRO MULTI-MOTOR (Lógica adaptativa por región)
+                # ========================================================
                 pts = 0
-                if ret_1m > 0: pts += 20
-                if ret_6m > 0: pts += 20
-                if vol_hoy > (vol_medio * 1.2): pts += 20
-                if per != 999 and per < 45: pts += 40
-                elif per != 999 and per < 100 and ret_1m > 5: pts += 30
-                else: pts += 5
+                
+                if region_activa == "EEUU":
+                    if ret_6m > 20: pts += 20
+                    elif ret_6m > 5: pts += 10
+                    if ret_1m > 8: pts += 15
+                    elif ret_1m > 0: pts += 5
+                    if dist_max > -10: pts += 20
+                    elif dist_max > -25: pts += 10
+                    if vol_hoy > (vol_medio * 1.5): pts += 25
+                    elif vol_hoy > vol_medio: pts += 10
+                    if per != 999 and 0 < per <= 45: pts += 20
+                    
+                elif region_activa == "Europa":
+                    if ret_6m > 10: pts += 20
+                    elif ret_6m > 0: pts += 10
+                    if ret_1m > 4: pts += 15
+                    elif ret_1m > 0: pts += 5
+                    if dist_max > -10: pts += 20
+                    elif dist_max > -25: pts += 10
+                    if vol_hoy > (vol_medio * 1.3): pts += 25
+                    elif vol_hoy > vol_medio: pts += 10
+                    if per != 999 and 0 < per <= 15: pts += 20
+                    
+                elif region_activa == "Asia":
+                    if ret_6m > 15: pts += 20
+                    elif ret_6m > 0: pts += 10
+                    if ret_1m > 10: pts += 15
+                    elif ret_1m > 0: pts += 5
+                    if dist_max > -15: pts += 20
+                    elif dist_max > -30: pts += 10
+                    if vol_hoy > (vol_medio * 1.8): pts += 25
+                    elif vol_hoy > vol_medio: pts += 10
+                    if per != 999 and 0 < per <= 30: pts += 20
 
-                # Recomendación
-                is_whale = vol_hoy >= (vol_medio * 1.5)
-                is_fenix = ret_6m < -10 and ret_1m > 5
-                is_momentum = ret_6m > 10 and ret_1m > 5
+                # --------------------------------------------------------
+                
+                is_whale = vol_hoy >= (vol_medio * 2.0) and ret_1m > 0 
+                is_fenix = ret_6m < -15 and ret_1m > 10
+                is_momentum = pts >= 80 and dist_max > -10 
                 is_impulsivo = ret_1m > 15
 
-                recomendacion = "Esperar"
+                recomendacion = "❌ Esperar"
                 if is_fenix and pts >= 60: recomendacion = "🦅 COMPRA FÉNIX"
-                elif is_momentum and pts >= 80: recomendacion = "🔥 MOMENTUM"
+                elif is_momentum: recomendacion = "🔥 MOMENTUM"
                 elif is_whale and pts >= 60: recomendacion = "🐋 BALLENA"
                 elif is_impulsivo: recomendacion = "⚡ IMPULSO"
-                elif pts >= 60: recomendacion = "💎 VIGILAR"
+                elif pts >= 65: recomendacion = "💎 VIGILAR"
                 
-                # Formateo de moneda
                 moneda = info.get('currency', 'USD')
                 simbolos_moneda = {"USD": "$", "EUR": "€", "GBP": "£", "GBp": "GBp", "JPY": "¥"}
                 s_mon = simbolos_moneda.get(moneda, moneda)
 
-                # FILA ORDENADA LÓGICAMENTE
                 resultados_radar.append({
                     "Ticker": ticker,
                     "Nombre": nombre_empresa,
@@ -451,7 +468,27 @@ with tab2:
         if resultados_radar:
             df = pd.DataFrame(resultados_radar)
             df = df.sort_values(by="PUNTOS", ascending=False).reset_index(drop=True)
-            st.success("Caza terminada. Tabla organizada por potencial (Puntos):")
-            st.dataframe(df, use_container_width=True, hide_index=True)
+            st.success("Caza terminada. Pasa el ratón sobre los títulos de las columnas para ver qué significan:")
+            
+            st.dataframe(
+                df, 
+                use_container_width=True, 
+                hide_index=True,
+                column_config={
+                    "PUNTOS": st.column_config.NumberColumn(help="De 0 a 100. Puntuación calculada con un motor dinámico adaptado a cada región geográfica."),
+                    "RECOMENDACIÓN": st.column_config.TextColumn(help="Señal del algoritmo estricto: Momentum (Cerca de máx), Ballena (Doble volumen), Fénix (Rebote fuerte)."),
+                    "% HOY": st.column_config.TextColumn(help="Variación del precio en la sesión actual."),
+                    "% 1 mes": st.column_config.TextColumn(help="Rendimiento en los últimos 21 días laborables. Mide el impulso a corto plazo."),
+                    "% 6 meses": st.column_config.TextColumn(help="Rendimiento en los últimos 126 días laborables. Mide la tendencia principal."),
+                    "% 1 año": st.column_config.TextColumn(help="Rendimiento en el último año natural (252 sesiones)."),
+                    "% Máx": st.column_config.TextColumn(help="Rendimiento histórico total desde que existen registros."),
+                    "PER": st.column_config.TextColumn(help="El límite exigido cambia por región (EEUU: <45, Europa: <15, Asia: <30)."),
+                    "Sector": st.column_config.TextColumn(help="Sector económico al que pertenece."),
+                    "Volumen": st.column_config.TextColumn(help="Cantidad total de acciones negociadas en la última sesión."),
+                    "Vol. Medio": st.column_config.TextColumn(help="Media diaria de acciones negociadas en los últimos 20 días."),
+                    "Suelo (52s)": st.column_config.TextColumn(help="Distancia en % desde el precio actual hasta el precio MÍNIMO del último año. Útil para saber cuánto ha subido desde el fondo."),
+                    "Max (52s)": st.column_config.TextColumn(help="Distancia en % desde el precio actual hasta el precio MÁXIMO del último año. Útil para buscar roturas al alza (breakouts).")
+                }
+            )
         else:
-            st.error("No se han podido descargar datos.")
+            st.error("No se han podido descargar datos en este momento.")
