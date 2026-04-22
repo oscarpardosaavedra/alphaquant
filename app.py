@@ -622,7 +622,7 @@ with tab2:
 # ------------------------------------------
 with tab3:
     st.markdown("### 🏆 Sala de Trofeos")
-    st.write("Verifica en tiempo real si el algoritmo V4 está acertando. Las acciones que superan los 80 puntos en el Radar se guardan aquí de forma permanente.")
+    st.write("Verifica en tiempo real si el algoritmo está acertando. Las acciones que superan los 80 puntos en el Radar se guardan aquí de forma permanente.")
     
     ws = conectar_db()
     
