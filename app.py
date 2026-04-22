@@ -236,8 +236,8 @@ tab1, tab2 = st.tabs(["🔬 Análisis Individual", "🎯 Cazar Alpha (Radar)"])
 with tab1:
     st.markdown("### 🔍 Selector de Activos")
     
-    # AHORA EL BUSCADOR VIVE AQUÍ: En una columna para no ocupar todo el ancho
-    col_buscador, col_espacio = st.columns([1, 2])
+    # AJUSTE FINO: Proporción 1 a 3 para que sea más corto, justo como pedías
+    col_buscador, col_espacio = st.columns([1, 3])
     with col_buscador:
         ticker_elegido = st.selectbox("Elige la empresa que quieres revisar:", opciones_desplegable)
     
