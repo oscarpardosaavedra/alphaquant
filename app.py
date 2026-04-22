@@ -20,10 +20,11 @@ st.markdown("""
         padding: 15px;
         box-shadow: 0 4px 6px rgba(0,0,0,0.05);
     }
-    /* Intento máximo de forzar negrita en cabeceras Canvas/HTML */
-    th, [data-testid="stDataFrame"] th, .stDataFrame th, .col_heading {
+    /* Intento NUCLEAR para forzar negrita en cabeceras de la tabla */
+    .stDataFrame th, [data-testid="stDataFrame"] th, div[data-testid="stDataFrame"] div[role="columnheader"] {
         font-weight: 900 !important;
         color: #073763 !important;
+        font-size: 14px !important;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -216,6 +217,7 @@ def a_yahoo(ticker):
 
 def obtener_estado_mercados():
     ahora_utc = datetime.datetime.now(pytz.utc)
+    
     hora_ny = ahora_utc.astimezone(pytz.timezone('US/Eastern'))
     es_fin_semana_ny = hora_ny.weekday() >= 5
     t_ny = hora_ny.time()
@@ -272,14 +274,18 @@ with tab1:
         
         st.markdown("---")
         
+        # AÑADIDOS 5 AÑOS y 10 AÑOS A LOS BOTONES
         periodo = st.radio(
             "Rango de tiempo:", 
-            ["1 Mes", "3 Meses", "6 Meses", "1 Año", "Máximo"], 
+            ["1 Mes", "3 Meses", "6 Meses", "1 Año", "5 Años", "10 Años", "Máximo"], 
             index=1, 
             horizontal=True
         )
         
-        mapa_tiempo = {"1 Mes": "1mo", "3 Meses": "3mo", "6 Meses": "6mo", "1 Año": "1y", "Máximo": "max"}
+        mapa_tiempo = {
+            "1 Mes": "1mo", "3 Meses": "3mo", "6 Meses": "6mo", 
+            "1 Año": "1y", "5 Años": "5y", "10 Años": "10y", "Máximo": "max"
+        }
         
         with st.spinner(f"Cargando datos en vivo de {simbolo_real}..."):
             try:
@@ -383,14 +389,12 @@ with tab2:
                 sym_yahoo = a_yahoo(ticker)
                 stock = yf.Ticker(sym_yahoo)
                 
-                # FILTRO ANTIFALLOS: Eliminamos datos vacíos de Yahoo para evitar los "nan"
+                # FILTRO ANTIFALLOS ("nan")
                 hist_full = stock.history(period="max").dropna(subset=['Close'])
                 if hist_full.empty or len(hist_full) < 2: continue
                 
                 precio_actual = float(hist_full['Close'].iloc[-1])
                 precio_ayer = float(hist_full['Close'].iloc[-2])
-                
-                # Evitar división por cero
                 pct_hoy = ((precio_actual / precio_ayer) - 1) * 100 if precio_ayer > 0 else 0
                 
                 hist_1y = hist_full.iloc[-252:] if len(hist_full) >= 252 else hist_full
@@ -400,7 +404,6 @@ with tab2:
                 dist_suelo = ((precio_actual / min_52) - 1) * 100 if min_52 > 0 else 0
                 dist_max = ((precio_actual / max_52) - 1) * 100 if max_52 > 0 else 0
                 
-                # Funciones seguras para calcular rendimientos históricos y evitar errores
                 def get_ret(days):
                     if len(hist_full) >= days and not pd.isna(hist_full['Close'].iloc[-days]) and hist_full['Close'].iloc[-days] > 0:
                         return ((precio_actual / hist_full['Close'].iloc[-days]) - 1) * 100
@@ -422,7 +425,6 @@ with tab2:
                 vol_hoy = float(hist_full['Volume'].iloc[-1])
                 vol_medio = float(hist_full['Volume'].tail(20).mean())
                 
-                # Variables seguras para el algoritmo (si falta dato, asume 0 para no romper el cálculo)
                 v_1m = ret_1m if ret_1m is not None else 0
                 v_6m = ret_6m if ret_6m is not None else 0
                 
@@ -517,11 +519,10 @@ with tab2:
             df = pd.DataFrame(resultados_radar)
             df = df.sort_values(by="PUNTOS", ascending=False).reset_index(drop=True)
             
-            # --- ESTILOS DE LA TABLA ---
             def color_porcentajes(val):
                 if isinstance(val, str) and '%' in val:
-                    if val.startswith('+'): return 'color: #228B22;' # Verde oscuro idéntico a la gráfica
-                    elif val.startswith('-'): return 'color: #FF3333;' # Rojo alerta
+                    if val.startswith('+'): return 'color: #228B22;' 
+                    elif val.startswith('-'): return 'color: #FF3333;' 
                 return ''
 
             def negrita_ticker(val):
@@ -530,14 +531,11 @@ with tab2:
             columnas_pct = ["% HOY", "% 1 MES", "% 6 MESES", "% 1 AÑO", "% 5 AÑOS", "% 10 AÑOS", "% 20 AÑOS", "% MÁX", "SUELO (52s)", "MAX (52s)"]
             
             try:
-                # set_table_styles inyecta las clases para forzar las cabeceras
                 styled_df = df.style.map(color_porcentajes, subset=columnas_pct)\
-                                    .map(negrita_ticker, subset=['TICKER'])\
-                                    .set_table_styles([dict(selector="th", props=[("font-weight", "900")])])
+                                    .map(negrita_ticker, subset=['TICKER'])
             except AttributeError:
                 styled_df = df.style.applymap(color_porcentajes, subset=columnas_pct)\
-                                    .applymap(negrita_ticker, subset=['TICKER'])\
-                                    .set_table_styles([dict(selector="th", props=[("font-weight", "900")])])
+                                    .applymap(negrita_ticker, subset=['TICKER'])
 
             st.success("Caza terminada. Pasa el ratón sobre los títulos de las columnas para ver qué significan:")
             
