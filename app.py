@@ -3,152 +3,146 @@ import yfinance as yf
 import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
+import re
 
-st.set_page_config(page_title="AlphaQuant Maestra", layout="wide", initial_sidebar_state="expanded")
-st.title("🧙‍♂️ ALPHAQUANT V7: LA MATRIZ MAESTRA")
+st.set_page_config(page_title="AlphaQuant Replica", layout="wide")
+st.title("📊 ALPHAQUANT: RÉPLICA EXACTA DEL EXCEL")
 st.markdown("---")
 
-# 1. BASE DE DATOS INTERNA (Añade aquí tus 600 si quieres)
-TICKERS_PREDEFINIDOS = [
-    "NVDA", "AAPL", "MSFT", "META", "AMZN", "GOOGL", "TSLA", "PLTR", "ASML", "AVGO",
-    "AMD", "NFLX", "CRM", "INTC", "QCOM", "TXN", "ADBE", "CSCO", "IBM", "ORCL",
-    "ENG.MC", "IBE.MC", "REP.MC", "SAN.MC", "ITX.MC", "BAS.DE", "SAP.DE", "VOW3.DE"
-]
-
 with st.sidebar:
-    st.header("⚙️ Gestión Monetaria")
+    st.header("1️⃣ Tu Cartera")
     capital = st.number_input("Capital Disponible (€)", value=10000, step=1000)
-    riesgo_pct = st.slider("Riesgo por Operación (%)", 0.5, 5.0, 1.0, 0.1) / 100
-    riesgo_euros = capital * riesgo_pct
-    st.info(f"Riesgo fijo: **{riesgo_euros:.2f} €** por operación")
+    riesgo_euros = st.number_input("Riesgo Fijo por Operación (€)", value=100, help="Cuánto estás dispuesto a perder si salta el Stop Loss")
     
     st.markdown("---")
-    st.header("📥 Universo de Acciones")
-    # Desplegable inteligente (Multiselect)
-    tickers_seleccionados = st.multiselect(
-        "Elige tus tickers (Puedes escribir para buscar):",
-        options=TICKERS_PREDEFINIDOS,
-        default=["NVDA", "PLTR", "META", "ASML", "TSLA"]
-    )
+    st.header("2️⃣ Pegar Tickers")
+    st.caption("Ve a tu Excel, copia la columna entera con tus 600 tickers y pégala aquí dentro:")
     
-    # Opción para añadir tickers raros a mano
-    ticker_extra = st.text_input("¿Falta alguno? Añádelo aquí (ej: COIN):")
-    if ticker_extra:
-        tickers_seleccionados.append(ticker_extra.upper())
+    # Text area gigante ideal para copiar/pegar columnas de Excel
+    default_tickers = "NVDA\nAAPL\nMSFT\nMETA\nAMZN\nGOOGL\nTSLA\nPLTR\nASML\nAVGO"
+    tickers_input = st.text_area("Universo de Acciones", default_tickers, height=300)
 
-# 2. PESTAÑAS DEL SISTEMA
-tab1, tab2, tab3 = st.tabs(["🎯 SEÑALES DE COMPRA (Filtrado)", "🌍 MATRIZ COMPLETA", "🔬 GRÁFICOS INTERACTIVOS"])
-
-matriz_final = []
-historicos = {}
-
-# 3. MOTOR DE CÁLCULO
-if st.button("🚀 CAZAR ALPHA (Ejecutar Escáner)", type="primary"):
-    if not tickers_seleccionados:
-        st.warning("Selecciona al menos un ticker en el panel lateral.")
-    else:
-        progress_text = "Buscando Gacelas, Fénix y Ballenas..."
-        my_bar = st.progress(0, text=progress_text)
-        
-        for i, t in enumerate(tickers_seleccionados):
-            my_bar.progress(int(((i + 1) / len(tickers_seleccionados)) * 100), text=f"Analizando {t}...")
+if st.button("🚀 EJECUTAR RADAR (Igual que en Excel)", type="primary"):
+    # Separar por saltos de línea, comas o espacios (A prueba de balas al pegar desde Excel)
+    tickers_raw = re.split(r'[,\s]+', tickers_input.strip())
+    tickers = list(set([t.upper() for t in tickers_raw if t])) 
+    
+    matriz_final = []
+    historicos = {}
+    
+    my_bar = st.progress(0, text=f"Escaneando {len(tickers)} activos...")
+    
+    for i, t in enumerate(tickers):
+        my_bar.progress(int(((i + 1) / len(tickers)) * 100), text=f"Analizando {t}...")
+        try:
+            stock = yf.Ticker(t)
+            hist = stock.history(period="6mo")
+            if hist.empty: continue
+            historicos[t] = hist
             
-            try:
-                stock = yf.Ticker(t)
-                hist = stock.history(period="6mo")
-                if hist.empty: continue
-                historicos[t] = hist
-                
-                precio = float(hist['Close'].iloc[-1])
-                info = stock.info
-                per = float(info.get('trailingPE', 999)) if isinstance(info, dict) else 999
-                
-                ret_1m = float((precio / hist['Close'].iloc[-21]) - 1)
-                ret_6m = float((precio / hist['Close'].iloc[0]) - 1)
-                vol_hoy = float(hist['Volume'].iloc[-1])
-                vol_medio = float(hist['Volume'].mean())
+            precio = float(hist['Close'].iloc[-1])
+            info = stock.info
+            per = float(info.get('trailingPE', 999)) if isinstance(info, dict) else 999
+            
+            ret_1m = float((precio / hist['Close'].iloc[-21]) - 1)
+            ret_6m = float((precio / hist['Close'].iloc[0]) - 1)
+            vol_hoy = float(hist['Volume'].iloc[-1])
+            vol_medio = float(hist['Volume'].mean())
 
-                # --- LÓGICA DE EXCEL EXACTA (Categorías Mágicas) ---
-                pts = 0
-                if ret_1m > 0: pts += 20
-                if ret_6m > 0: pts += 20
-                if vol_hoy > (vol_medio * 1.2): pts += 20
-                if per < 45: pts += 40
-                elif per < 100 and ret_1m > 0.05: pts += 30
-                else: pts += 5
+            # Scoring exacto de tu sistema
+            pts = 0
+            if ret_1m > 0: pts += 20
+            if ret_6m > 0: pts += 20
+            if vol_hoy > (vol_medio * 1.2): pts += 20
+            if per < 45: pts += 40
+            elif per < 100 and ret_1m > 0.05: pts += 30
+            else: pts += 5
 
-                # Detección de Patrones
-                is_whale = vol_hoy >= (vol_medio * 1.5)
-                is_fenix = ret_6m < -0.10 and ret_1m > 0.05
-                is_momentum = ret_6m > 0.10 and ret_1m > 0.05
-                is_impulsivo = ret_1m > 0.15
+            # Etiquetas del Excel (Magia Pura)
+            is_whale = vol_hoy >= (vol_medio * 1.5)
+            is_fenix = ret_6m < -0.10 and ret_1m > 0.05
+            is_momentum = ret_6m > 0.10 and ret_1m > 0.05
+            is_impulsivo = ret_1m > 0.15
 
-                veredicto = "❌ ESPERAR"
-                if is_fenix and pts >= 60: veredicto = "🦅 COMPRA FÉNIX"
-                elif is_momentum and pts >= 80: veredicto = "🔥 COMPRA MOMENTUM"
-                elif is_whale and pts >= 60: veredicto = "🐋 RASTRO BALLENA"
-                elif is_impulsivo: veredicto = "⚡ RADAR IMPULSIVO"
-                elif pts >= 60: veredicto = "💎 VIGILAR"
+            estado = "❌ ESPERAR"
+            if is_fenix and pts >= 60: estado = "🦅 COMPRA FÉNIX"
+            elif is_momentum and pts >= 80: estado = "🔥 COMPRA MOMENTUM"
+            elif is_whale and pts >= 60: estado = "🐋 RASTRO BALLENA"
+            elif is_impulsivo: estado = "⚡ RADAR IMPULSIVO"
+            elif pts >= 60: estado = "💎 VIGILAR"
 
-                # Gestión de Riesgo Kelly/ATR
-                high_low = hist['High'] - hist['Low']
-                high_close = np.abs(hist['High'] - hist['Close'].shift())
-                low_close = np.abs(hist['Low'] - hist['Close'].shift())
-                ranges = pd.concat([high_low, high_close, low_close], axis=1)
-                atr = float(np.max(ranges, axis=1).rolling(14).mean().iloc[-1])
-                
-                distancia_stop = atr * 2
-                stop_loss = precio - distancia_stop
-                acciones = round(riesgo_euros / distancia_stop, 2)
-                
-                if acciones > 0:
-                    matriz_final.append({
-                        "SCORE": pts,
-                        "ESTADO": veredicto,
-                        "ACTIVO": t,
-                        "PRECIO": f"{precio:.2f} $",
-                        "ACCIONES": acciones,
-                        "INVERSIÓN": f"{acciones * precio:.2f} $",
-                        "STOP LOSS": f"{stop_loss:.2f} $",
-                        "PER": f"{per:.1f}" if per != 999 else "N/A"
-                    })
-            except Exception:
-                continue
-                
-        my_bar.empty()
-        
-        if matriz_final:
-            df = pd.DataFrame(matriz_final).sort_values(by="SCORE", ascending=False).reset_index(drop=True)
-            st.session_state['df_completo'] = df
-            st.session_state['historicos'] = historicos
-
-# --- RENDERIZADO DE LAS PESTAÑAS ---
-if 'df_completo' in st.session_state:
-    df = st.session_state['df_completo']
+            # Gestión simple (Réplica de las columnas de tu Excel)
+            high_low = hist['High'] - hist['Low']
+            high_close = np.abs(hist['High'] - hist['Close'].shift())
+            low_close = np.abs(hist['Low'] - hist['Close'].shift())
+            ranges = pd.concat([high_low, high_close, low_close], axis=1)
+            atr = float(np.max(ranges, axis=1).rolling(14).mean().iloc[-1])
+            
+            distancia_stop = atr * 2
+            stop_loss = precio - distancia_stop
+            acciones = round(riesgo_euros / distancia_stop, 2) if distancia_stop > 0 else 0
+            
+            inversion = acciones * precio
+            ratio_tp = 3 if pts >= 80 else 2
+            take_profit = precio + (distancia_stop * ratio_tp)
+            beneficio = acciones * (take_profit - precio)
+            
+            matriz_final.append({
+                "SCORE": pts,
+                "ESTADO": estado,
+                "ACTIVO": t,
+                "PRECIO": f"{precio:.2f} $",
+                "ACCIONES": acciones,
+                "INVERSIÓN": f"{inversion:.2f} $",
+                "STOP LOSS": f"{stop_loss:.2f} $",
+                "TAKE PROFIT": f"{take_profit:.2f} $",
+                "RIESGO": f"-{riesgo_euros:.2f} $",
+                "BENEFICIO ESP.": f"+{beneficio:.2f} $"
+            })
+        except Exception:
+            continue
+            
+    my_bar.empty() # Quitar barra al terminar
     
-    with tab1:
-        st.subheader("🎯 Oportunidades Listas para Ejecutar")
-        st.write("Aquí solo ves lo que tu Excel mandaría comprar (Fénix, Momentum, Ballena o Impulsivo). Basura fuera.")
-        # Filtramos la tabla
-        df_compras = df[df['ESTADO'].str.contains("COMPRA|BALLENA|IMPULSIVO")]
-        if not df_compras.empty:
-            st.dataframe(df_compras, use_container_width=True)
+    if matriz_final:
+        df = pd.DataFrame(matriz_final).sort_values(by="SCORE", ascending=False).reset_index(drop=True)
+        
+        # 1. RESUMEN GLOBAL DE LA CARTERA (Lo que querías ver)
+        st.subheader("⚖️ Balance Global de la Operación")
+        # Sumamos solo las que el sistema nos dice de COMPRAR o VIGILAR
+        df_activas = df[df['ESTADO'].str.contains("COMPRA|BALLENA|IMPULSIVO")]
+        
+        total_inv = sum([float(str(r).replace(' $','')) for r in df_activas['INVERSIÓN']]) if not df_activas.empty else 0
+        total_riesgo = sum([float(str(r).replace(' $','').replace('-','')) for r in df_activas['RIESGO']]) if not df_activas.empty else 0
+        total_ben = sum([float(str(r).replace(' $','').replace('+','')) for r in df_activas['BENEFICIO ESP.']]) if not df_activas.empty else 0
+        
+        c1, c2, c3 = st.columns(3)
+        c1.metric("💰 CAPITAL TOTAL INVERTIDO", f"{total_inv:.2f} $")
+        c2.metric("⚠️ RIESGO TOTAL ASUMIDO", f"-{total_riesgo:.2f} $")
+        c3.metric("🎯 BENEFICIO POTENCIAL", f"+{total_ben:.2f} $")
+        st.markdown("*(Los totales suman automáticamente solo las acciones con señal de Compra, Ballena o Impulso)*")
+        st.markdown("---")
+        
+        # 2. TABLA PRINCIPAL (Filtro exacto de tu Excel)
+        st.subheader("📋 MATRIZ DE COMPRAS (El Radar)")
+        df_buenas = df[df['ESTADO'].str.contains("COMPRA|BALLENA|IMPULSIVO|VIGILAR")]
+        if not df_buenas.empty:
+            st.dataframe(df_buenas, use_container_width=True)
         else:
-            st.info("Hoy no hay señales claras de compra. El mercado manda esperar.")
+            st.warning("Hoy el mercado manda estar quieto. No hay señales claras.")
             
-    with tab2:
-        st.subheader("🌍 Matriz Completa (Todas las analizadas)")
-        st.dataframe(df, use_container_width=True)
-
-if 'historicos' in st.session_state:
-    with tab3:
-        st.subheader("🔬 Sala de Gráficos de Wall Street")
-        c1, c2 = st.columns([1, 3])
-        with c1:
-            ticker_grafico = st.selectbox("Selecciona un activo analizado:", list(st.session_state['historicos'].keys()))
-        with c2:
-            if ticker_grafico:
-                h = st.session_state['historicos'][ticker_grafico]
-                fig = go.Figure(data=[go.Candlestick(x=h.index, open=h['Open'], high=h['High'], low=h['Low'], close=h['Close'])])
-                fig.update_layout(title=f"Acción del Precio: {ticker_grafico} (6 Meses)", template='plotly_dark', xaxis_rangeslider_visible=False, height=500)
-                st.plotly_chart(fig, use_container_width=True)
+        with st.expander("Ver tabla completa (Incluidas las de '❌ ESPERAR')"):
+            st.dataframe(df, use_container_width=True)
+            
+        st.markdown("---")
+        
+        # 3. GRÁFICAS INTEGRADAS
+        st.subheader("🔬 Gráficas Interactivas")
+        tickers_validos = df['ACTIVO'].tolist()
+        ticker_elegido = st.selectbox("Selecciona un activo de la tabla para ver su gráfica:", tickers_validos)
+        
+        if ticker_elegido:
+            h = historicos[ticker_elegido]
+            fig = go.Figure(data=[go.Candlestick(x=h.index, open=h['Open'], high=h['High'], low=h['Low'], close=h['Close'])])
+            fig.update_layout(title=f"Acción del Precio: {ticker_elegido} (Últimos 6 meses)", template='plotly_dark', xaxis_rangeslider_visible=False, height=550)
+            st.plotly_chart(fig, use_container_width=True)
