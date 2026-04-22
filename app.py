@@ -215,123 +215,134 @@ def obtener_estado_mercados():
     return estado_us, estado_eu, estado_asia
 
 # ==========================================
-# 3. PANEL IZQUIERDO
+# 3. CABECERA GLOBAL (Fuera del menú lateral)
 # ==========================================
-with st.sidebar:
-    st.markdown("### 🚦 Estado Global")
-    us, eu, asia = obtener_estado_mercados()
-    st.write(f"**EEUU:** {us}")
-    st.write(f"**Europa:** {eu}")
-    st.write(f"**Asia:** {asia}")
-    st.markdown("---")
-    
-    ticker_elegido = st.selectbox("Selecciona un activo:", opciones_desplegable)
+# Pintamos los semáforos arriba del todo, siempre visibles
+st.markdown("### 🚦 Estado Global de los Mercados")
+us, eu, asia = obtener_estado_mercados()
+col1, col2, col3 = st.columns(3)
+col1.info(f"**EEUU:** {us}")
+col2.info(f"**Europa:** {eu}")
+col3.info(f"**Asia:** {asia}")
+st.markdown("---")
 
 # ==========================================
-# 4. MOTOR DE GRÁFICOS (Ahora con Resumen Corporativo)
+# 4. PESTAÑAS PRINCIPALES 
 # ==========================================
-if ticker_elegido:
-    simbolo_real = ticker_elegido.split(" ")[0]
-    
-    simbolo_yahoo = simbolo_real
-    if simbolo_yahoo.startswith("BME:"):
-        simbolo_yahoo = simbolo_yahoo.replace("BME:", "") + ".MC"
-    elif simbolo_yahoo.startswith("NYSE:"):
-        simbolo_yahoo = simbolo_yahoo.replace("NYSE:", "")
-    
-    st.markdown("---")
-    
-    periodo = st.radio(
-        "Rango de tiempo:", 
-        ["1 Mes", "3 Meses", "6 Meses", "1 Año", "Máximo"], 
-        index=1, 
-        horizontal=True
-    )
-    
-    mapa_tiempo = {
-        "1 Mes": "1mo", "3 Meses": "3mo", "6 Meses": "6mo", 
-        "1 Año": "1y", "Máximo": "max"
-    }
-    
-    with st.spinner(f"Cargando datos en vivo de {simbolo_real}..."):
-        try:
-            ticker_obj = yf.Ticker(simbolo_yahoo)
-            datos = ticker_obj.history(period=mapa_tiempo[periodo])
-            
-            if not datos.empty:
-                info = ticker_obj.info
-                
-                # --- LÓGICA DE DIVISAS ---
-                moneda_codigo = info.get('currency', 'USD')
-                precio_actual = datos['Close'].iloc[-1]
-                
-                simbolos_moneda = {
-                    "USD": "$", "EUR": "€", "GBP": "£", "GBp": "GBp",
-                    "JPY": "¥", "HKD": "HK$", "MXN": "MX$", "SEK": "kr", "CHF": "CHF"
-                }
-                s_moneda = simbolos_moneda.get(moneda_codigo, moneda_codigo)
+tab1, tab2 = st.tabs(["🔬 Análisis Individual", "🎯 Cazar Alpha (Radar)"])
 
-                texto_mostrar = f"{precio_actual:.2f} {s_moneda}"
+# ------------------------------------------
+# PESTAÑA 1: VISOR DE GRÁFICOS
+# ------------------------------------------
+with tab1:
+    st.markdown("### 🔍 Selector de Activos")
+    # EL BUSCADOR VIVE AQUÍ: Solo se ve si estás en la Pestaña 1
+    ticker_elegido = st.selectbox("Elige la empresa que quieres revisar:", opciones_desplegable)
+    
+    if ticker_elegido:
+        simbolo_real = ticker_elegido.split(" ")[0]
+        
+        simbolo_yahoo = simbolo_real
+        if simbolo_yahoo.startswith("BME:"):
+            simbolo_yahoo = simbolo_yahoo.replace("BME:", "") + ".MC"
+        elif simbolo_yahoo.startswith("NYSE:"):
+            simbolo_yahoo = simbolo_yahoo.replace("NYSE:", "")
+        
+        st.markdown("---")
+        
+        periodo = st.radio(
+            "Rango de tiempo:", 
+            ["1 Mes", "3 Meses", "6 Meses", "1 Año", "Máximo"], 
+            index=1, 
+            horizontal=True
+        )
+        
+        mapa_tiempo = {
+            "1 Mes": "1mo", "3 Meses": "3mo", "6 Meses": "6mo", 
+            "1 Año": "1y", "Máximo": "max"
+        }
+        
+        with st.spinner(f"Cargando datos en vivo de {simbolo_real}..."):
+            try:
+                ticker_obj = yf.Ticker(simbolo_yahoo)
+                datos = ticker_obj.history(period=mapa_tiempo[periodo])
                 
-                if moneda_codigo != "USD":
-                    try:
-                        query_curr = "GBP" if moneda_codigo == "GBp" else moneda_codigo
-                        factor = 0.01 if moneda_codigo == "GBp" else 1.0
-                        tasa_fx = yf.Ticker(f"{query_curr}USD=X").history(period="1d")
-                        if not tasa_fx.empty:
-                            rate = tasa_fx['Close'].iloc[-1]
-                            precio_usd = precio_actual * factor * rate
-                            texto_mostrar = f"{precio_actual:.2f} {s_moneda} (${precio_usd:.2f})"
-                    except Exception:
-                        pass
-                else:
-                    texto_mostrar = f"{precio_actual:.2f} $"
+                if not datos.empty:
+                    info = ticker_obj.info
+                    moneda_codigo = info.get('currency', 'USD')
+                    precio_actual = datos['Close'].iloc[-1]
+                    
+                    simbolos_moneda = {
+                        "USD": "$", "EUR": "€", "GBP": "£", "GBp": "GBp",
+                        "JPY": "¥", "HKD": "HK$", "MXN": "MX$", "SEK": "kr", "CHF": "CHF"
+                    }
+                    s_moneda = simbolos_moneda.get(moneda_codigo, moneda_codigo)
 
-                # --- 1. MOSTRAMOS EL VALOR ---
-                st.metric(label=f"Valor Actual ({simbolo_real})", value=texto_mostrar)
-                
-                # --- 2. MOSTRAMOS EL PERFIL CORPORATIVO (NUEVO) ---
-                sector = info.get('sector', '')
-                industria = info.get('industry', '')
-                resumen_largo = info.get('longBusinessSummary', '')
-                
-                if sector and industria:
-                    st.caption(f"🏢 **Sector:** {sector} | **Industria:** {industria}")
-                
-                if resumen_largo:
-                    # Acortamos el texto dividiéndolo por puntos y cogiendo las dos primeras frases
-                    frases = resumen_largo.split('. ')
-                    if len(frases) > 2:
-                        resumen_corto = '. '.join(frases[:2]) + '.'
+                    texto_mostrar = f"{precio_actual:.2f} {s_moneda}"
+                    
+                    if moneda_codigo != "USD":
+                        try:
+                            query_curr = "GBP" if moneda_codigo == "GBp" else moneda_codigo
+                            factor = 0.01 if moneda_codigo == "GBp" else 1.0
+                            tasa_fx = yf.Ticker(f"{query_curr}USD=X").history(period="1d")
+                            if not tasa_fx.empty:
+                                rate = tasa_fx['Close'].iloc[-1]
+                                precio_usd = precio_actual * factor * rate
+                                texto_mostrar = f"{precio_actual:.2f} {s_moneda} (${precio_usd:.2f})"
+                        except Exception:
+                            pass
                     else:
-                        resumen_corto = resumen_largo
-                    # Lo imprimimos en cursiva
-                    st.markdown(f"*{resumen_corto}*")
-                
-                st.write("") # Un pequeño espacio en blanco para separar
-                # ----------------------------------------------------
+                        texto_mostrar = f"{precio_actual:.2f} $"
 
-                # --- 3. DIBUJAMOS LA GRÁFICA ---
-                fig = go.Figure()
-                fig.add_trace(go.Scatter(
-                    x=datos.index, 
-                    y=datos['Close'], 
-                    mode='lines', 
-                    name='Precio',
-                    line=dict(color='#228B22', width=2)
-                ))
-                
-                fig.update_layout(
-                    title=f"Cotización: {ticker_elegido}",
-                    template='plotly_dark',
-                    margin=dict(l=0, r=0, t=40, b=0),
-                    xaxis_title="",
-                    yaxis_title=f"Precio ({s_moneda})",
-                    hovermode="x unified"
-                )
-                
-                st.plotly_chart(fig, use_container_width=True)
-            else:
-                st.warning("⚠️ No hay datos históricos en Yahoo Finance para este activo en este periodo.")
-        except Exception as e:
-            st.error("⚠️ Ha ocurrido un error al cargar la gráfica y los datos corporativos.")
+                    st.metric(label=f"Valor Actual ({simbolo_real})", value=texto_mostrar)
+                    
+                    sector = info.get('sector', '')
+                    industria = info.get('industry', '')
+                    resumen_largo = info.get('longBusinessSummary', '')
+                    
+                    if sector and industria:
+                        st.caption(f"🏢 **Sector:** {sector} | **Industria:** {industria}")
+                    
+                    if resumen_largo:
+                        frases = resumen_largo.split('. ')
+                        if len(frases) > 2:
+                            resumen_corto = '. '.join(frases[:2]) + '.'
+                        else:
+                            resumen_corto = resumen_largo
+                        st.markdown(f"*{resumen_corto}*")
+                    
+                    st.write("")
+                    
+                    fig = go.Figure()
+                    fig.add_trace(go.Scatter(
+                        x=datos.index, 
+                        y=datos['Close'], 
+                        mode='lines', 
+                        name='Precio',
+                        line=dict(color='#228B22', width=2)
+                    ))
+                    
+                    fig.update_layout(
+                        title=f"Cotización: {ticker_elegido}",
+                        template='plotly_dark',
+                        margin=dict(l=0, r=0, t=40, b=0),
+                        xaxis_title="",
+                        yaxis_title=f"Precio ({s_moneda})",
+                        hovermode="x unified"
+                    )
+                    
+                    st.plotly_chart(fig, use_container_width=True)
+                else:
+                    st.warning("⚠️ No hay datos históricos en Yahoo Finance para este activo en este periodo.")
+            except Exception as e:
+                st.error("⚠️ Ha ocurrido un error al cargar la gráfica y los datos corporativos.")
+
+# ------------------------------------------
+# PESTAÑA 2: EL RADAR DE CAZA 
+# ------------------------------------------
+with tab2:
+    st.markdown("### 🎯 Radar de Mercado")
+    st.write("Escanea toda tu base de datos para cazar oportunidades de inversión.")
+    
+    if st.button("🚀 Iniciar Caza Mayor"):
+        st.info("¡Motor de Radar activado! (Próximamente conectaremos la tabla Excel aquí).")
