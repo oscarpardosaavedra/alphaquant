@@ -10,7 +10,7 @@ import time
 # ==========================================
 # 1. CONFIGURACIÓN Y ESTILOS CSS (DISEÑO PREMIUM)
 # ==========================================
-st.set_page_config(page_title="Alphaquant", page_icon="📈", layout="wide")
+st.set_page_config(page_title="Alphaquant Titanium", page_icon="📈", layout="wide")
 
 # Inyección de CSS para forzar cabeceras en negrita y mejorar el diseño
 st.markdown("""
