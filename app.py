@@ -183,7 +183,7 @@ with st.sidebar:
     ticker_elegido = st.selectbox("Selecciona un activo:", opciones_desplegable)
 
 # ==========================================
-# 2. MOTOR DE GRÁFICOS (Limpio y exacto)
+# 2. MOTOR DE GRÁFICOS (Añadido Precio y Verde Oscuro)
 # ==========================================
 if ticker_elegido:
     # Extraemos solo el ticker para Yahoo Finance
@@ -208,29 +208,35 @@ if ticker_elegido:
         "Máximo": "max"
     }
     
-    with st.spinner(f"Cargando historial exacto de {simbolo_real}..."):
+    with st.spinner(f"Cargando historial de {simbolo_real}..."):
         try:
             datos = yf.Ticker(simbolo_real).history(period=mapa_tiempo[periodo])
             
             if not datos.empty:
-                # Dibujamos una línea limpia, sin velas anchas
+                # EXTRAEMOS EL VALOR ACTUAL (El último cierre registrado)
+                precio_actual = datos['Close'].iloc[-1]
+                
+                # MOSTRAMOS EL VALOR ACTUAL EN GRANDE
+                st.metric(label=f"Valor Actual ({simbolo_real})", value=f"{precio_actual:.2f} $")
+                
+                # Dibujamos la gráfica
                 fig = go.Figure()
                 fig.add_trace(go.Scatter(
                     x=datos.index, 
                     y=datos['Close'], 
                     mode='lines', 
-                    name='Precio de Cierre',
-                    line=dict(color='#00FF41', width=2) # Línea verde neón
+                    name='Precio',
+                    line=dict(color='#228B22', width=2) # Verde oscuro (Forest Green)
                 ))
                 
-                # Diseño de la gráfica
+                # Diseño limpio de la gráfica
                 fig.update_layout(
-                    title=f"Cotización de {ticker_elegido}",
+                    title=f"Cotización: {ticker_elegido}",
                     template='plotly_dark',
                     margin=dict(l=0, r=0, t=40, b=0),
                     xaxis_title="",
                     yaxis_title="Precio ($)",
-                    hovermode="x unified" # Al pasar el ratón te da la info exacta
+                    hovermode="x unified" # Muestra la info exacta al pasar el ratón
                 )
                 
                 st.plotly_chart(fig, use_container_width=True)
