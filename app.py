@@ -10,7 +10,7 @@ from google.oauth2.service_account import Credentials
 import time
 
 # ==========================================
-# 1. CONFIGURACIÓN Y CONEXIÓN DB (GOOGLE SHEETS)
+# 1. CONFIGURACIÓN Y CONEXIÓN DB (BASE DE DATOS)
 # ==========================================
 st.set_page_config(page_title="Alphaquant", page_icon="📈", layout="wide")
 
@@ -23,7 +23,7 @@ def conectar_db():
         sheet = client.open("Alphaquant_DB").worksheet("Trofeos")
         return sheet
     except Exception as e:
-        st.error(f"⚠️ Error de conexión con Google Sheets. Revisa tus Secrets. Detalle: {e}")
+        st.error(f"⚠️ Error de conexión con la base de datos. Revisa tus Secrets. Detalle: {e}")
         return None
 
 # ==========================================
@@ -395,7 +395,7 @@ with tab2:
     if mercado_objetivo:
         tickers_a_escanear = [t for t in tickers_nombres.keys() if mercado_objetivo == "Todos" or obtener_region(t) == mercado_objetivo]
         
-        st.info(f"Iniciando Radar Cuantitativo V4 Adaptativo para: **{mercado_objetivo}** ({len(tickers_a_escanear)} activos)...")
+        st.info(f"Iniciando escaneo del algoritmo para: **{mercado_objetivo}** ({len(tickers_a_escanear)} activos)...")
         
         barra_progreso = st.progress(0, text="Conectando con Wall Street y calculando benchmark (SPY)...")
         resultados_radar = []
@@ -407,11 +407,12 @@ with tab2:
                 alphaSPY = ((spy_hist['Close'].iloc[-1] / spy_hist['Close'].iloc[-21]) - 1) * 100
         except Exception: pass
 
-        # Nos conectamos a Sheets al principio para saber a quién NO duplicar
+        # Nos conectamos a la base de datos al principio para saber a quién NO duplicar
         ws = conectar_db()
         existentes_en_db = []
         if ws:
             try:
+                # Obtenemos todos los tickers que ya están en la columna A (Ticker)
                 existentes_en_db = ws.col_values(1)
             except Exception:
                 pass
@@ -442,6 +443,7 @@ with tab2:
                 dist_suelo = ((precio_actual / min_52) - 1) * 100 if min_52 > 0 else 0
                 dist_max = ((precio_actual / max_52) - 1) * 100 if max_52 > 0 else 0
                 
+                # Función segura para sacar % históricos
                 def get_ret(days):
                     if len(hist_full) >= days and not pd.isna(hist_full['Close'].iloc[-days]) and hist_full['Close'].iloc[-days] > 0:
                         return ((precio_actual / hist_full['Close'].iloc[-days]) - 1) * 100
@@ -466,6 +468,7 @@ with tab2:
                 v_1m = ret_1m if ret_1m is not None else 0
                 v_6m = ret_6m if ret_6m is not None else 0
                 
+                # Evaluación del Algoritmo
                 ptsBase = 50
                 
                 if v_1m > 0 and v_6m > 0: ptsBase += 15
@@ -515,12 +518,14 @@ with tab2:
                 pts = max(0, min(100, int(ptsBase)))
 
                 # =======================================================
-                # AUTO-GUARDADO EN LA SALA DE TROFEOS (Google Sheets)
-                # UMBRAL SUBIDO A >= 90 PUNTOS
+                # AUTO-GUARDADO EN LA SALA DE TROFEOS (Base de Datos)
                 # =======================================================
+                # Si la puntuación es alta y el ticker NO estaba en la base de datos...
                 if pts >= 90 and ticker not in existentes_en_db and ws is not None:
                     fecha_hoy = datetime.datetime.now().strftime("%Y-%m-%d")
+                    # Añadimos la fila: [Ticker, Empresa, Fecha, Precio_Aviso, Puntos]
                     ws.append_row([ticker, nombre_empresa, fecha_hoy, float(precio_actual), int(pts)])
+                    # Lo añadimos a la lista local para no duplicarlo si repetimos escaneo
                     existentes_en_db.append(ticker)
                 # =======================================================
 
@@ -591,7 +596,7 @@ with tab2:
                 use_container_width=True, 
                 hide_index=True,
                 column_config={
-                    "PUNTOS": st.column_config.NumberColumn(help="Evaluación del algoritmo (0 a 100)."),
+                    "PUNTOS": st.column_config.NumberColumn(help="Puntuación del algoritmo: Evalúa Alpha relativo, fundamentales y volumen según la región."),
                     "RECOMENDACIÓN": st.column_config.TextColumn(help="Requiere mínimo de 65 puntos para dar señal."),
                     "% HOY": st.column_config.TextColumn(help="Variación en la sesión actual."),
                     "% 1 MES": st.column_config.TextColumn(help="Rendimiento en 21 días laborables."),
@@ -601,7 +606,7 @@ with tab2:
                     "% 10 AÑOS": st.column_config.TextColumn(help="Rendimiento a largo plazo (2520 sesiones)."),
                     "% 20 AÑOS": st.column_config.TextColumn(help="Rendimiento a súper largo plazo (5040 sesiones)."),
                     "% MÁX": st.column_config.TextColumn(help="Rendimiento histórico total."),
-                    "PER": st.column_config.TextColumn(help="Price-to-Earnings."),
+                    "PER": st.column_config.TextColumn(help="Price-to-Earnings. El algoritmo pondera los PER altos si hay hipercrecimiento, ajustado por mercado."),
                     "SECTOR": st.column_config.TextColumn(help="Sector económico."),
                     "VOLUMEN": st.column_config.TextColumn(help="Volumen de la última sesión."),
                     "VOL. MEDIO": st.column_config.TextColumn(help="Media diaria de acciones negociadas (20d)."),
@@ -618,7 +623,7 @@ with tab2:
 # ------------------------------------------
 with tab3:
     st.markdown("### 🏆 Sala de Trofeos")
-    st.write("Verifica en tiempo real si el algoritmo V4 está acertando. Las acciones que alcanzan o superan los 90 puntos en el Radar se guardan aquí de forma permanente.")
+    st.write("Verifica en tiempo real el porcentaje de acierto. Las acciones que alcanzan o superan los 90 puntos en el Radar se guardan aquí de forma permanente.")
     
     ws = conectar_db()
     
@@ -638,7 +643,7 @@ with tab3:
                         cell = ws.find(tk_borrar, in_column=1)
                         if cell:
                             ws.delete_rows(cell.row)
-                            st.success(f"✅ El ticker {tk_borrar} se ha eliminado.")
+                            st.success(f"✅ El ticker {tk_borrar} se ha eliminado de la base de datos.")
                             time.sleep(1.5) 
                             st.rerun() 
                         else:
@@ -684,7 +689,7 @@ with tab3:
                         m1, m2, m3 = st.columns(3)
                         m1.metric(label="🎯 Precisión (Win Rate)", value=f"{win_rate:.1f}%", help="Porcentaje de alertas históricas que actualmente están en positivo (ganancias).")
                         m2.metric(label="⚔️ Alpha Medio", value=f"{alpha_medio:+.2f}%", delta=f"{alpha_medio:+.2f}%", help="Rentabilidad media generada por todas las alertas combinadas desde su precio de aviso.")
-                        m3.metric(label="⏱️ Base de Datos", value=f"{tot} Activos", help="Número total de acciones que el algoritmo está vigilando en tu Google Sheets.")
+                        m3.metric(label="⏱️ Base de Datos", value=f"{tot} Activos", help="Número total de acciones vigiladas en la base de datos.")
                         st.markdown("---")
                         
                         c_w, c_l = st.columns(2)
