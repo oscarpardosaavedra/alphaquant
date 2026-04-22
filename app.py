@@ -181,7 +181,7 @@ opciones_desplegable = [f"{ticker} ({nombre})" for ticker, nombre in tickers_nom
 opciones_desplegable.sort()
 
 # ==========================================
-# 2. MOTOR DE RELOJES Y SEMÁFOROS (NUEVO)
+# 2. MOTOR DE RELOJES Y SEMÁFOROS
 # ==========================================
 def obtener_estado_mercados():
     ahora_utc = datetime.datetime.now(pytz.utc)
@@ -218,25 +218,34 @@ def obtener_estado_mercados():
     return estado_us, estado_eu, estado_asia
 
 # ==========================================
-# 3. PANEL IZQUIERDO (Con Semáforos)
+# 3. PANEL IZQUIERDO (Sellado y Respetado)
 # ==========================================
 with st.sidebar:
-    # Mostramos los semáforos en la parte superior del panel
     st.markdown("### 🚦 Estado Global")
     us, eu, asia = obtener_estado_mercados()
-    st.write(f"**EEUU:** {us}")
-    st.write(f"**Europa:** {eu}")
-    st.write(f"**Asia:** {asia}")
+    st.write(f"🇺🇸 **EEUU:** {us}")
+    st.write(f"🇪🇺 **Europa:** {eu}")
+    st.write(f"🇯🇵 **Asia:** {asia}")
     st.markdown("---")
     
-    # El desplegable original intacto
     ticker_elegido = st.selectbox("Selecciona un activo:", opciones_desplegable)
 
 # ==========================================
-# 4. MOTOR DE GRÁFICOS (Sellado con Verde Oscuro)
+# 4. MOTOR DE GRÁFICOS (Ahora con Traductor)
 # ==========================================
 if ticker_elegido:
     simbolo_real = ticker_elegido.split(" ")[0]
+    
+    # --- TRADUCTOR INVISIBLE PARA YAHOO FINANCE ---
+    simbolo_yahoo = simbolo_real
+    if simbolo_yahoo.startswith("BME:"):
+        # "BME:REP" se convierte en "REP.MC"
+        simbolo_yahoo = simbolo_yahoo.replace("BME:", "") + ".MC"
+    elif simbolo_yahoo.startswith("NYSE:"):
+        # "NYSE:SMAR" se convierte en "SMAR"
+        simbolo_yahoo = simbolo_yahoo.replace("NYSE:", "")
+    # ----------------------------------------------
+    
     st.markdown("---")
     
     periodo = st.radio(
@@ -253,7 +262,8 @@ if ticker_elegido:
     
     with st.spinner(f"Cargando historial de {simbolo_real}..."):
         try:
-            datos = yf.Ticker(simbolo_real).history(period=mapa_tiempo[periodo])
+            # Ahora le pasamos simbolo_yahoo en lugar de simbolo_real
+            datos = yf.Ticker(simbolo_yahoo).history(period=mapa_tiempo[periodo])
             
             if not datos.empty:
                 precio_actual = datos['Close'].iloc[-1]
