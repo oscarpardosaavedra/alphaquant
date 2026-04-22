@@ -319,7 +319,7 @@ with tab1:
                 st.error("⚠️ Ha ocurrido un error al cargar la gráfica y los datos corporativos.")
 
 # ------------------------------------------
-# PESTAÑA 2: EL RADAR DE CAZA (MOTOR V4 ADAPTATIVO + ESTILOS)
+# PESTAÑA 2: EL RADAR DE CAZA 
 # ------------------------------------------
 with tab2:
     st.markdown("### 🎯 Selecciona tu Objetivo")
@@ -389,9 +389,6 @@ with tab2:
                 vol_hoy = float(hist_full['Volume'].iloc[-1])
                 vol_medio = float(hist_full['Volume'].tail(20).mean())
                 
-                # ========================================================
-                # 🧠 MOTOR QUANT V4 (Adaptado a las Regiones)
-                # ========================================================
                 ptsBase = 50
                 
                 if ret_1m > 0 and ret_6m > 0: ptsBase += 15
@@ -405,7 +402,6 @@ with tab2:
                 
                 isHyperGrowth = (myAlpha > 10 and vol_medio > 1000000)
                 
-                # Sensibilidad al PER adaptada a la región
                 if region_activa == "EEUU":
                     if 0 < per <= 45: ptsBase += 15
                     elif 45 < per <= 120 and isHyperGrowth: ptsBase += 15
@@ -422,18 +418,15 @@ with tab2:
                 if abs(pct_hoy) > 4 and vol_hoy < vol_medio: 
                     ptsBase -= 15 
                 
-                # Sensibilidad al Volumen adaptada a la región
                 if region_activa == "EEUU" or region_activa == "Europa":
                     if abs(pct_hoy) <= 1.5 and vol_hoy >= (vol_medio * 1.5): ptsBase += 20
                     elif dist_max > -5 and vol_hoy >= (vol_medio * 2.0) and pct_hoy > 2: ptsBase += 25
                     elif dist_max > -2 and vol_hoy > (vol_medio * 1.5) and pct_hoy > 0: ptsBase += 15
                 elif region_activa == "Asia":
-                    # Asia exige velas de volumen más brutales para confirmar roturas
                     if abs(pct_hoy) <= 2.0 and vol_hoy >= (vol_medio * 2.0): ptsBase += 20
                     elif dist_max > -10 and vol_hoy >= (vol_medio * 2.5) and pct_hoy > 3: ptsBase += 25
                     elif dist_max > -5 and vol_hoy > (vol_medio * 1.8) and pct_hoy > 0: ptsBase += 15
                 
-                # PATRÓN FÉNIX DE ORO
                 isFenix = False
                 if dist_max <= -20 and per > 0 and vol_medio > 400000 and ret_1m > 2 and pct_hoy > 1.5:
                     fuerzaGiro = (15 if ret_1m > 8 else 5) + (15 if vol_hoy > vol_medio * 1.2 else 0) + (10 if pct_hoy > 2 else 5)
@@ -450,7 +443,6 @@ with tab2:
                         recomendacion = "🔥 COMPRA (FÉNIX ORO)" if isFenix else "🚀 COMPRA INSTITUCIONAL"
                     elif pts >= 70: 
                         recomendacion = "👀 VIGILAR (FÉNIX)" if isFenix else "💎 VIGILAR (BREAKOUT/WHALE)"
-                # ========================================================
                 
                 moneda = info.get('currency', 'USD')
                 simbolos_moneda = {"USD": "$", "EUR": "€", "GBP": "£", "GBp": "GBp", "JPY": "¥"}
@@ -483,24 +475,30 @@ with tab2:
             df = pd.DataFrame(resultados_radar)
             df = df.sort_values(by="PUNTOS", ascending=False).reset_index(drop=True)
             
-            # --- ESTILOS DE LA TABLA ---
+            # --- ESTILOS DE LA TABLA (AJUSTE VISUAL PERFECTO) ---
             def color_porcentajes(val):
                 if isinstance(val, str) and '%' in val:
-                    if val.startswith('+'): return 'color: #228B22; font-weight: bold;' # Verde del gráfico principal
-                    elif val.startswith('-'): return 'color: #FF3333; font-weight: bold;' # Rojo alerta
+                    # Verde oscuro idéntico a la gráfica, SIN negrita
+                    if val.startswith('+'): return 'color: #228B22;' 
+                    # Rojo estándar, SIN negrita
+                    elif val.startswith('-'): return 'color: #FF3333;' 
                 return ''
 
             def negrita_ticker(val):
-                return 'font-weight: bold;' # Sin color blanco forzado
+                # Solo negrita, sin forzar el color a blanco
+                return 'font-weight: bold;' 
 
             columnas_pct = ["% HOY", "% 1 mes", "% 6 meses", "% 1 año", "% Máx", "Suelo (52s)", "Max (52s)"]
             
             try:
+                # set_table_styles refuerza las cabeceras para que sean bold
                 styled_df = df.style.map(color_porcentajes, subset=columnas_pct)\
-                                    .map(negrita_ticker, subset=['Ticker'])
+                                    .map(negrita_ticker, subset=['Ticker'])\
+                                    .set_table_styles([dict(selector="th", props=[("font-weight", "bold")])])
             except AttributeError:
                 styled_df = df.style.applymap(color_porcentajes, subset=columnas_pct)\
-                                    .applymap(negrita_ticker, subset=['Ticker'])
+                                    .applymap(negrita_ticker, subset=['Ticker'])\
+                                    .set_table_styles([dict(selector="th", props=[("font-weight", "bold")])])
 
             st.success("Caza terminada. Tu Matriz Cuantitativa V4 (Adaptativa) está lista:")
             
