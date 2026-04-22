@@ -5,7 +5,7 @@ import datetime
 import pytz
 
 # ==========================================
-# 1. BLOQUE SELLADO (Título)
+# 1. BLOQUE SELLADO (Título y Base de Datos)
 # ==========================================
 st.set_page_config(page_title="Alphaquant", page_icon="📈", layout="wide")
 st.title("📈 Alphaquant")
@@ -186,7 +186,6 @@ opciones_desplegable.sort()
 def obtener_estado_mercados():
     ahora_utc = datetime.datetime.now(pytz.utc)
     
-    # EEUU (Nueva York - EST)
     hora_ny = ahora_utc.astimezone(pytz.timezone('US/Eastern'))
     es_fin_semana_ny = hora_ny.weekday() >= 5
     t_ny = hora_ny.time()
@@ -197,7 +196,6 @@ def obtener_estado_mercados():
     elif datetime.time(16, 0) <= t_ny < datetime.time(20, 0): estado_us = "🔵 Post-Market"
     else: estado_us = "🔴 Cerrado"
 
-    # EUROPA (Madrid/París - CET)
     hora_eu = ahora_utc.astimezone(pytz.timezone('Europe/Madrid'))
     es_fin_semana_eu = hora_eu.weekday() >= 5
     t_eu = hora_eu.time()
@@ -206,7 +204,6 @@ def obtener_estado_mercados():
     elif datetime.time(9, 0) <= t_eu < datetime.time(17, 30): estado_eu = "🟢 Abierto"
     else: estado_eu = "🔴 Cerrado"
 
-    # ASIA (Tokio - JST)
     hora_asia = ahora_utc.astimezone(pytz.timezone('Asia/Tokyo'))
     es_fin_semana_asia = hora_asia.weekday() >= 5
     t_asia = hora_asia.time()
@@ -218,33 +215,29 @@ def obtener_estado_mercados():
     return estado_us, estado_eu, estado_asia
 
 # ==========================================
-# 3. PANEL IZQUIERDO (Sellado y Respetado)
+# 3. PANEL IZQUIERDO (Banderas eliminadas)
 # ==========================================
 with st.sidebar:
     st.markdown("### 🚦 Estado Global")
     us, eu, asia = obtener_estado_mercados()
-    st.write(f"🇺🇸 **EEUU:** {us}")
-    st.write(f"🇪🇺 **Europa:** {eu}")
-    st.write(f"🇯🇵 **Asia:** {asia}")
+    st.write(f"**EEUU:** {us}")
+    st.write(f"**Europa:** {eu}")
+    st.write(f"**Asia:** {asia}")
     st.markdown("---")
     
     ticker_elegido = st.selectbox("Selecciona un activo:", opciones_desplegable)
 
 # ==========================================
-# 4. MOTOR DE GRÁFICOS (Ahora con Traductor)
+# 4. MOTOR DE GRÁFICOS
 # ==========================================
 if ticker_elegido:
     simbolo_real = ticker_elegido.split(" ")[0]
     
-    # --- TRADUCTOR INVISIBLE PARA YAHOO FINANCE ---
     simbolo_yahoo = simbolo_real
     if simbolo_yahoo.startswith("BME:"):
-        # "BME:REP" se convierte en "REP.MC"
         simbolo_yahoo = simbolo_yahoo.replace("BME:", "") + ".MC"
     elif simbolo_yahoo.startswith("NYSE:"):
-        # "NYSE:SMAR" se convierte en "SMAR"
         simbolo_yahoo = simbolo_yahoo.replace("NYSE:", "")
-    # ----------------------------------------------
     
     st.markdown("---")
     
@@ -262,12 +255,27 @@ if ticker_elegido:
     
     with st.spinner(f"Cargando historial de {simbolo_real}..."):
         try:
-            # Ahora le pasamos simbolo_yahoo en lugar de simbolo_real
-            datos = yf.Ticker(simbolo_yahoo).history(period=mapa_tiempo[periodo])
+            ticker_obj = yf.Ticker(simbolo_yahoo)
+            datos = ticker_obj.history(period=mapa_tiempo[periodo])
             
             if not datos.empty:
+                info = ticker_obj.info
+                moneda_codigo = info.get('currency', 'USD')
+                
+                simbolos_moneda = {
+                    "USD": "$",
+                    "EUR": "€",
+                    "GBP": "£",
+                    "JPY": "¥",
+                    "HKD": "HK$",
+                    "MXN": "MX$",
+                    "SEK": "kr",
+                    "CHF": "CHF"
+                }
+                s_moneda = simbolos_moneda.get(moneda_codigo, moneda_codigo)
+
                 precio_actual = datos['Close'].iloc[-1]
-                st.metric(label=f"Valor Actual ({simbolo_real})", value=f"{precio_actual:.2f} $")
+                st.metric(label=f"Valor Actual ({simbolo_real})", value=f"{precio_actual:.2f} {s_moneda}")
                 
                 fig = go.Figure()
                 fig.add_trace(go.Scatter(
@@ -283,7 +291,7 @@ if ticker_elegido:
                     template='plotly_dark',
                     margin=dict(l=0, r=0, t=40, b=0),
                     xaxis_title="",
-                    yaxis_title="Precio ($)",
+                    yaxis_title=f"Precio ({s_moneda})",
                     hovermode="x unified"
                 )
                 
