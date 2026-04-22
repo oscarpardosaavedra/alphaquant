@@ -3,13 +3,40 @@ import yfinance as yf
 import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
+import re
 
-st.set_page_config(page_title="AlphaQuant Radar", layout="wide")
-st.title("🎯 ALPHAQUANT: RADAR Y GRÁFICOS (Modo Excel)")
+st.set_page_config(page_title="AlphaQuant Excel", layout="wide")
+st.title("🎯 ALPHAQUANT: RADAR Y GRÁFICOS V10")
 st.markdown("---")
 
-# 1. LA BASE DE DATOS GIGANTE (Extraída de tu lista)
-TICKERS = [
+# ==========================================
+# 1. DICCIONARIO DE NOMBRES (Para el desplegable)
+# ==========================================
+# He metido las de tu Excel (Defensa, Tech, Ibex, etc.)
+NOMBRES = {
+    "NVDA": "Nvidia", "AAPL": "Apple", "MSFT": "Microsoft", "GOOGL": "Alphabet",
+    "AMZN": "Amazon", "META": "Meta Platforms", "TSLA": "Tesla", "PLTR": "Palantir",
+    "ASML": "ASML Holding", "AVGO": "Broadcom", "AMD": "Advanced Micro Devices",
+    "AGH": "Powerus", "XTND": "Xtend", "UMAC": "Unusual Mac", "RCAT": "Red Cat",
+    "AVAV": "AeroVironment", "UAVS": "AgEagle", "EH": "EHang", "LMT": "Lockheed Martin",
+    "RTX": "Raytheon", "NOC": "Northrop Grumman", "GD": "General Dynamics",
+    "LHX": "L3Harris", "LDOS": "Leidos", "TXT": "Textron", "HII": "Huntington",
+    "KTOS": "Kratos", "HWM": "Howmet", "BA": "Boeing", "TDG": "TransDigm",
+    "HEI": "Heico", "WWD": "Woodward", "SPR": "SpiritAero", "BWXT": "BWX Tech",
+    "NNE": "Nano Nuc", "RHM.DE": "Rheinmetall", "SAAB-B.ST": "Saab", "BA.L": "BAE Sys",
+    "BME:SAN": "Banco Santander", "BME:BBVA": "BBVA", "BME:IBE": "Iberdrola",
+    "BME:ITX": "Inditex", "BME:TEF": "Telefónica", "BME:REP": "Repsol",
+    "BME:CABK": "CaixaBank", "BME:AENA": "Aena", "BME:FER": "Ferrovial",
+    "JPM": "JPMorgan Chase", "V": "Visa", "MA": "Mastercard", "LLY": "Eli Lilly",
+    "UNH": "UnitedHealth", "JNJ": "Johnson & Johnson", "XOM": "Exxon Mobil",
+    "PG": "Procter & Gamble", "HD": "Home Depot", "COST": "Costco", "MRK": "Merck",
+    "KO": "Coca-Cola", "PEP": "PepsiCo", "WMT": "Walmart", "BAC": "Bank of America",
+    "CRM": "Salesforce", "NFLX": "Netflix", "DIS": "Walt Disney", "MCD": "McDonald's",
+    "INTC": "Intel", "CSCO": "Cisco", "ORCL": "Oracle", "IBM": "IBM", "SMCI": "Super Micro"
+}
+
+# La base que ya teníamos
+TICKERS_BASE = [
     "NVDA","MSFT","GOOGL","AMZN","META","AAPL","TSLA","PLTR","AMD","AVGO","SMCI","ASML","CRM","ADBE","ORCL","NOW",
     "CRWD","PANW","SNOW","DDOG","MDB","TEAM","NET","ZS","FTNT","OKTA","AI","SOUN","PATH","APP","TTD","NFLX","ANET",
     "VRT","SYM","HPE","DELL","PSTG","MRVL","ARM","BABA","IGFA","IONQ","QUBT","LAES","MSTR","COIN","MARA","RIOT",
@@ -33,30 +60,56 @@ TICKERS = [
     "ADYEN.AS","TCEHY","JD","PDD","BIDU","NTES","NIO","XPEV","LI","BYDDY","FZKG","ELY","FXI","AOFM","EITK","UAIF",
     "TME","FUTU","BEKE","TAL","EDU","VIPS","GDS","JKS","DQ","SMIC","TSM","SONY","TM","HMC","9984.T","RELIANCE.NS",
     "HDFCBANK.NS","INFY","NUPBR","VALE","WALMEX.MX","SE","GRAB","CPNG","TV","AGH","XTN","DUM","ACR","AVAV","UAVS",
-    "EHL","MTR","TXN","OCG","DLH","XLD","OSTX","THI","IKT","OSH","WMB","ATD","GHE","IWW","DSP","RBW","XTN","NER",
-    "HM.DE","SAAB-B.ST","BA.L","HO.PA","AM.PA","PLR.MI"
+    "EHL","MTR","TXN","OCG","DLH","XLD","OSTX","THI","IKT","OSH","WMB","ATD","GHE","IWW","DSP","RBW","NER","HM.DE",
+    "SAAB-B.ST","BA.L","HO.PA","AM.PA","PLR.MI", "UMAC", "RCAT", "EH", "LMT", "RTX", "NOC", "GD", "LHX", "LDOS", 
+    "TXT", "HII", "KTOS", "HWM", "BA", "TDG", "HEI", "WWD", "SPR", "BWXT", "NNE"
 ]
-# Limpiar duplicados por si acaso
-TICKERS = sorted(list(set(TICKERS)))
+
+# Panel lateral para inyectar las que falten
+with st.sidebar:
+    st.header("📥 Añadir Tickers del Excel")
+    st.caption("Si tu Excel tiene más de 400 acciones, copia la columna entera de tickers y pégala aquí para sumarlas a la base de datos:")
+    tickers_extra = st.text_area("Pegar Tickers Extra:", "")
+
+# Unir y limpiar la lista final (Quitar repetidos)
+tickers_raw = TICKERS_BASE + re.split(r'[,\s]+', tickers_extra.strip())
+ALL_TICKERS = sorted(list(set([t.upper() for t in tickers_raw if t])))
+
+# Función para formatear el desplegable: "AAPL (Apple Inc.)"
+def format_dropdown(t):
+    nombre = NOMBRES.get(t, "")
+    if nombre:
+        return f"{t} ({nombre})"
+    return t
 
 # ==========================================
-# 1. VISOR DE GRÁFICOS INSTANTÁNEO
+# 2. VISOR DE GRÁFICOS INSTANTÁNEO
 # ==========================================
 st.subheader("🔬 1. Gráficos a la carta")
 c1, c2 = st.columns([1, 3])
 
 with c1:
-    ticker_grafico = st.selectbox("Busca cualquier acción de tu Excel:", TICKERS)
+    ticker_grafico = st.selectbox("Busca cualquier acción de tu Excel:", ALL_TICKERS, format_func=format_dropdown)
     periodo = st.radio("Temporalidad:", ["3 Meses", "6 Meses", "1 Año", "2 Años"], index=1)
 
 with c2:
     if ticker_grafico:
         p_map = {"3 Meses":"3mo", "6 Meses":"6mo", "1 Año":"1y", "2 Años":"2y"}
         try:
+            # Traemos el nombre real en vivo desde Wall Street para el título
+            info_vivo = yf.Ticker(ticker_grafico).info
+            nombre_real = info_vivo.get("shortName", ticker_grafico)
+            
             h = yf.Ticker(ticker_grafico).history(period=p_map[periodo])
             if not h.empty:
                 fig = go.Figure(data=[go.Candlestick(x=h.index, open=h['Open'], high=h['High'], low=h['Low'], close=h['Close'])])
-                fig.update_layout(title=f"{ticker_grafico} ({periodo})", template='plotly_dark', xaxis_rangeslider_visible=False, height=400, margin=dict(l=0, r=0, t=40, b=0))
+                fig.update_layout(
+                    title=f"<b>{nombre_real}</b> ({ticker_grafico}) - Acción del Precio", 
+                    template='plotly_dark', 
+                    xaxis_rangeslider_visible=False, 
+                    height=400, 
+                    margin=dict(l=0, r=0, t=40, b=0)
+                )
                 st.plotly_chart(fig, use_container_width=True)
             else:
                 st.warning("No hay datos de Yahoo Finance para graficar este ticker.")
@@ -66,18 +119,17 @@ with c2:
 st.markdown("---")
 
 # ==========================================
-# 2. EL RADAR (TU EXCEL)
+# 3. EL RADAR DE TITANIO (TU EXCEL)
 # ==========================================
 st.subheader("📊 2. El Radar de Titanio")
-st.write(f"Base de datos cargada: **{len(TICKERS)} activos** listos para escanear.")
+st.write(f"Base de datos cargada: **{len(ALL_TICKERS)} activos** listos para escanear.")
 
 if st.button("🚀 EJECUTAR ESCÁNER COMPLETO", type="primary"):
     matriz_final = []
     my_bar = st.progress(0, text="Arrancando motores...")
     
-    for i, t in enumerate(TICKERS):
-        # Actualizar barra de progreso
-        my_bar.progress(int(((i + 1) / len(TICKERS)) * 100), text=f"Analizando {t} ({i+1}/{len(TICKERS)})...")
+    for i, t in enumerate(ALL_TICKERS):
+        my_bar.progress(int(((i + 1) / len(ALL_TICKERS)) * 100), text=f"Analizando {t} ({i+1}/{len(ALL_TICKERS)})...")
         
         try:
             stock = yf.Ticker(t)
@@ -115,7 +167,7 @@ if st.button("🚀 EJECUTAR ESCÁNER COMPLETO", type="primary"):
             elif is_impulsivo: estado = "⚡ RADAR IMPULSIVO"
             elif pts >= 60: estado = "💎 VIGILAR"
 
-            # ATR y Stop Loss (Solo valor de referencia, sin riesgo en euros)
+            # ATR y Stop Loss
             high_low = hist['High'] - hist['Low']
             high_close = np.abs(hist['High'] - hist['Close'].shift())
             low_close = np.abs(hist['Low'] - hist['Close'].shift())
@@ -124,13 +176,16 @@ if st.button("🚀 EJECUTAR ESCÁNER COMPLETO", type="primary"):
             
             stop_loss = precio - (atr * 2)
 
+            # Extraemos el nombre para la tabla final
+            nombre_tabla = NOMBRES.get(t, t)
+
             matriz_final.append({
                 "SCORE": pts,
                 "ESTADO": estado,
-                "ACTIVO": t,
+                "TICKER": t,
+                "NOMBRE EMPRESA": nombre_tabla,
                 "PRECIO": f"{precio:.2f}",
-                "STOP LOSS (Nivel)": f"{stop_loss:.2f}",
-                "ATR (Volatilidad)": f"{atr:.2f}",
+                "STOP LOSS": f"{stop_loss:.2f}",
                 "PER": f"{per:.1f}" if per != 999 else "N/A"
             })
         except Exception:
@@ -140,16 +195,15 @@ if st.button("🚀 EJECUTAR ESCÁNER COMPLETO", type="primary"):
     
     if matriz_final:
         df = pd.DataFrame(matriz_final).sort_values(by="SCORE", ascending=False).reset_index(drop=True)
-        st.success(f"✅ Matriz generada con éxito. Se analizaron {len(matriz_final)} activos válidos.")
+        st.success(f"✅ Matriz generada con éxito. Se escanearon al 100% los {len(matriz_final)} activos válidos de la bolsa.")
         
-        # Filtro: Mostrar solo lo interesante arriba
         df_buenas = df[df['ESTADO'].str.contains("COMPRA|BALLENA|IMPULSIVO|VIGILAR")]
         
         if not df_buenas.empty:
-            st.write("### 🎯 Oportunidades de Entrada")
+            st.write("### 🎯 Oportunidades Listas para Disparar")
             st.dataframe(df_buenas, use_container_width=True)
         else:
-            st.warning("El mercado está rojo. No hay compras claras hoy.")
+            st.warning("El mercado no da oportunidades claras hoy.")
             
-        with st.expander("Ver lista completa (Incluyendo las de '❌ ESPERAR')"):
+        with st.expander("Ver Matriz Completa (Todas las analizadas)"):
             st.dataframe(df, use_container_width=True)
