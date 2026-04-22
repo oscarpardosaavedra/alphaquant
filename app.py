@@ -224,9 +224,9 @@ with st.sidebar:
     # Mostramos los semáforos en la parte superior del panel
     st.markdown("### 🚦 Estado Global")
     us, eu, asia = obtener_estado_mercados()
-    st.write(f"🇺🇸 **EEUU:** {us}")
-    st.write(f"🇪🇺 **Europa:** {eu}")
-    st.write(f"🇯🇵 **Asia:** {asia}")
+    st.write(f"**EEUU:** {us}")
+    st.write(f"**Europa:** {eu}")
+    st.write(f"**Asia:** {asia}")
     st.markdown("---")
     
     # El desplegable original intacto
