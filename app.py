@@ -3,6 +3,7 @@ import yfinance as yf
 import plotly.graph_objects as go
 import datetime
 import pytz
+import time
 
 # ==========================================
 # 1. BLOQUE SELLADO (Título y Base de Datos)
@@ -180,6 +181,18 @@ tickers_nombres = {
 opciones_desplegable = [f"{ticker} ({nombre})" for ticker, nombre in tickers_nombres.items()]
 opciones_desplegable.sort()
 
+# Clasificador de regiones en la sombra
+def obtener_region(ticker):
+    # Europa: Tickers de BME o terminaciones de bolsas europeas
+    if "BME:" in ticker or ticker.endswith((".DE", ".PA", ".MI", ".L", ".AS", ".ST")):
+        return "Europa"
+    # Asia: Terminaciones de Japón/India o ADRs asiáticos concretos
+    elif ticker.endswith((".T", ".NS")) or ticker in ["BABA", "TCEHY", "JD", "PDD", "BIDU", "NTES", "NIO", "XPEV", "LI", "BYDDF", "GELYF", "XIAOF", "MEIT", "KUAIF", "TME", "FUTU", "BEKE", "TAL", "EDU", "VIPS", "GDS", "JKS", "DQ", "SMIC", "TSM", "SONY", "TM", "HMC", "SE", "GRAB", "CPNG"]:
+        return "Asia"
+    # El resto se clasifica como EEUU por defecto
+    else:
+        return "EEUU"
+
 # ==========================================
 # 2. MOTOR DE RELOJES Y SEMÁFOROS
 # ==========================================
@@ -236,7 +249,6 @@ tab1, tab2 = st.tabs(["🔬 Análisis Individual", "🎯 Cazar Alpha (Radar)"])
 with tab1:
     st.markdown("### 🔍 Selector de Activos")
     
-    # AJUSTE FINO: Proporción 1 a 3 para que sea más corto, justo como pedías
     col_buscador, col_espacio = st.columns([1, 3])
     with col_buscador:
         ticker_elegido = st.selectbox("Elige la empresa que quieres revisar:", opciones_desplegable)
@@ -343,8 +355,47 @@ with tab1:
 # PESTAÑA 2: EL RADAR DE CAZA 
 # ------------------------------------------
 with tab2:
-    st.markdown("### 🎯 Radar de Mercado")
-    st.write("Escanea toda tu base de datos para cazar oportunidades de inversión.")
+    st.markdown("### 🎯 Selecciona tu Objetivo")
     
-    if st.button("🚀 Iniciar Caza Mayor"):
-        st.info("¡Motor de Radar activado! (Próximamente conectaremos la tabla Excel aquí).")
+    # 4 BOTONES ORGANIZADOS EN COLUMNAS
+    c1, c2, c3, c4 = st.columns(4)
+    btn_todos = c1.button("🌍 Cazar Todos los Mercados", use_container_width=True)
+    btn_us = c2.button("🇺🇸 Cazar Solo EE.UU.", use_container_width=True)
+    btn_eu = c3.button("🇪🇺 Cazar Solo Europa", use_container_width=True)
+    btn_asia = c4.button("🇯🇵 Cazar Solo Asia", use_container_width=True)
+    
+    st.markdown("---")
+
+    # LÓGICA PARA SABER QUÉ BOTÓN SE HA PULSADO
+    mercado_objetivo = None
+    if btn_todos: mercado_objetivo = "Todos"
+    elif btn_us: mercado_objetivo = "EEUU"
+    elif btn_eu: mercado_objetivo = "Europa"
+    elif btn_asia: mercado_objetivo = "Asia"
+
+    if mercado_objetivo:
+        # 1. Filtramos la lista según el botón pulsado
+        tickers_a_escanear = []
+        for t in tickers_nombres.keys():
+            if mercado_objetivo == "Todos" or obtener_region(t) == mercado_objetivo:
+                tickers_a_escanear.append(t)
+        
+        # 2. Preparamos los textos y la barra de progreso
+        st.info(f"Iniciando radar para: **{mercado_objetivo}** ({len(tickers_a_escanear)} activos encontrados en tu base de datos)...")
+        
+        barra_progreso = st.progress(0)
+        texto_estado = st.empty()
+        
+        # 3. BUCLE SIMULADOR DE ESCANEO
+        for i, ticker in enumerate(tickers_a_escanear):
+            porcentaje = int(((i + 1) / len(tickers_a_escanear)) * 100)
+            
+            # Actualizamos la barra y el texto visual
+            barra_progreso.progress(porcentaje)
+            nombre_empresa = tickers_nombres[ticker]
+            texto_estado.write(f"⏳ Evaluando **{ticker}** ({nombre_empresa})... completado al **{porcentaje}%**")
+            
+            # Simulamos el tiempo que tardará Yahoo Finance luego (0.02 segundos por empresa)
+            time.sleep(0.02)
+            
+        texto_estado.success(f"✅ ¡Caza completada con éxito para el mercado de {mercado_objetivo}!")
