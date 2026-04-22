@@ -319,7 +319,7 @@ with tab1:
                 st.error("⚠️ Ha ocurrido un error al cargar la gráfica y los datos corporativos.")
 
 # ------------------------------------------
-# PESTAÑA 2: EL RADAR DE CAZA 
+# PESTAÑA 2: EL RADAR DE CAZA (MOTOR V4 ADAPTATIVO + ESTILOS)
 # ------------------------------------------
 with tab2:
     st.markdown("### 🎯 Selecciona tu Objetivo")
@@ -341,11 +341,18 @@ with tab2:
     if mercado_objetivo:
         tickers_a_escanear = [t for t in tickers_nombres.keys() if mercado_objetivo == "Todos" or obtener_region(t) == mercado_objetivo]
         
-        st.info(f"Iniciando radar inteligente para: **{mercado_objetivo}** ({len(tickers_a_escanear)} activos)...")
+        st.info(f"Iniciando Radar Cuantitativo V4 Adaptativo para: **{mercado_objetivo}** ({len(tickers_a_escanear)} activos)...")
         
-        barra_progreso = st.progress(0, text="Iniciando conexión con Wall Street...")
+        barra_progreso = st.progress(0, text="Iniciando conexión con Wall Street y calculando benchmark (SPY)...")
         resultados_radar = []
         
+        alphaSPY = 0
+        try:
+            spy_hist = yf.Ticker("SPY").history(period="1mo")
+            if len(spy_hist) >= 21:
+                alphaSPY = ((spy_hist['Close'].iloc[-1] / spy_hist['Close'].iloc[-21]) - 1) * 100
+        except Exception: pass
+
         for i, ticker in enumerate(tickers_a_escanear):
             porcentaje = int(((i + 1) / len(tickers_a_escanear)) * 100)
             nombre_empresa = tickers_nombres[ticker]
@@ -382,54 +389,68 @@ with tab2:
                 vol_hoy = float(hist_full['Volume'].iloc[-1])
                 vol_medio = float(hist_full['Volume'].tail(20).mean())
                 
-                pts = 0
+                # ========================================================
+                # 🧠 MOTOR QUANT V4 (Adaptado a las Regiones)
+                # ========================================================
+                ptsBase = 50
                 
+                if ret_1m > 0 and ret_6m > 0: ptsBase += 15
+                elif ret_1m > 0 and ret_6m < -15: ptsBase -= 20
+                elif ret_6m <= 0: ptsBase -= 15
+                else: ptsBase += 5
+                
+                myAlpha = ret_1m - (alphaSPY if region_activa == "EEUU" else 0)
+                if myAlpha > 5: ptsBase += 10
+                elif myAlpha < -5: ptsBase -= 10
+                
+                isHyperGrowth = (myAlpha > 10 and vol_medio > 1000000)
+                
+                # Sensibilidad al PER adaptada a la región
                 if region_activa == "EEUU":
-                    if ret_6m > 20: pts += 20
-                    elif ret_6m > 5: pts += 10
-                    if ret_1m > 8: pts += 15
-                    elif ret_1m > 0: pts += 5
-                    if dist_max > -10: pts += 20
-                    elif dist_max > -25: pts += 10
-                    if vol_hoy > (vol_medio * 1.5): pts += 25
-                    elif vol_hoy > vol_medio: pts += 10
-                    if per != 999 and 0 < per <= 45: pts += 20
-                    
+                    if 0 < per <= 45: ptsBase += 15
+                    elif 45 < per <= 120 and isHyperGrowth: ptsBase += 15
+                    elif per > 120 or per < 0: ptsBase -= 15
                 elif region_activa == "Europa":
-                    if ret_6m > 10: pts += 20
-                    elif ret_6m > 0: pts += 10
-                    if ret_1m > 4: pts += 15
-                    elif ret_1m > 0: pts += 5
-                    if dist_max > -10: pts += 20
-                    elif dist_max > -25: pts += 10
-                    if vol_hoy > (vol_medio * 1.3): pts += 25
-                    elif vol_hoy > vol_medio: pts += 10
-                    if per != 999 and 0 < per <= 15: pts += 20
-                    
+                    if 0 < per <= 15: ptsBase += 15
+                    elif 15 < per <= 35 and isHyperGrowth: ptsBase += 15
+                    elif per > 35 or per < 0: ptsBase -= 15
                 elif region_activa == "Asia":
-                    if ret_6m > 15: pts += 20
-                    elif ret_6m > 0: pts += 10
-                    if ret_1m > 10: pts += 15
-                    elif ret_1m > 0: pts += 5
-                    if dist_max > -15: pts += 20
-                    elif dist_max > -30: pts += 10
-                    if vol_hoy > (vol_medio * 1.8): pts += 25
-                    elif vol_hoy > vol_medio: pts += 10
-                    if per != 999 and 0 < per <= 30: pts += 20
-
-                is_whale = vol_hoy >= (vol_medio * 2.0) and ret_1m > 0 
-                is_fenix = ret_6m < -15 and ret_1m > 10
-                is_momentum = dist_max > (-15 if region_activa == "Asia" else -10)
-                is_impulsivo = ret_1m > 15
+                    if 0 < per <= 30: ptsBase += 15
+                    elif 30 < per <= 80 and isHyperGrowth: ptsBase += 15
+                    elif per > 80 or per < 0: ptsBase -= 15
+                
+                if abs(pct_hoy) > 4 and vol_hoy < vol_medio: 
+                    ptsBase -= 15 
+                
+                # Sensibilidad al Volumen adaptada a la región
+                if region_activa == "EEUU" or region_activa == "Europa":
+                    if abs(pct_hoy) <= 1.5 and vol_hoy >= (vol_medio * 1.5): ptsBase += 20
+                    elif dist_max > -5 and vol_hoy >= (vol_medio * 2.0) and pct_hoy > 2: ptsBase += 25
+                    elif dist_max > -2 and vol_hoy > (vol_medio * 1.5) and pct_hoy > 0: ptsBase += 15
+                elif region_activa == "Asia":
+                    # Asia exige velas de volumen más brutales para confirmar roturas
+                    if abs(pct_hoy) <= 2.0 and vol_hoy >= (vol_medio * 2.0): ptsBase += 20
+                    elif dist_max > -10 and vol_hoy >= (vol_medio * 2.5) and pct_hoy > 3: ptsBase += 25
+                    elif dist_max > -5 and vol_hoy > (vol_medio * 1.8) and pct_hoy > 0: ptsBase += 15
+                
+                # PATRÓN FÉNIX DE ORO
+                isFenix = False
+                if dist_max <= -20 and per > 0 and vol_medio > 400000 and ret_1m > 2 and pct_hoy > 1.5:
+                    fuerzaGiro = (15 if ret_1m > 8 else 5) + (15 if vol_hoy > vol_medio * 1.2 else 0) + (10 if pct_hoy > 2 else 5)
+                    scoreFenix = 65 + fuerzaGiro
+                    if scoreFenix > ptsBase: 
+                        ptsBase = scoreFenix
+                        isFenix = True
+                
+                pts = max(0, min(100, int(ptsBase)))
 
                 recomendacion = "❌ Esperar"
-                
                 if pts >= 65:
-                    if is_momentum and pts >= 80: recomendacion = "🔥 MOMENTUM"
-                    elif is_fenix: recomendacion = "🦅 COMPRA FÉNIX"
-                    elif is_whale: recomendacion = "🐋 BALLENA"
-                    elif is_impulsivo: recomendacion = "⚡ IMPULSO"
-                    else: recomendacion = "💎 VIGILAR"
+                    if pts >= 85: 
+                        recomendacion = "🔥 COMPRA (FÉNIX ORO)" if isFenix else "🚀 COMPRA INSTITUCIONAL"
+                    elif pts >= 70: 
+                        recomendacion = "👀 VIGILAR (FÉNIX)" if isFenix else "💎 VIGILAR (BREAKOUT/WHALE)"
+                # ========================================================
                 
                 moneda = info.get('currency', 'USD')
                 simbolos_moneda = {"USD": "$", "EUR": "€", "GBP": "£", "GBp": "GBp", "JPY": "¥"}
@@ -465,16 +486,15 @@ with tab2:
             # --- ESTILOS DE LA TABLA ---
             def color_porcentajes(val):
                 if isinstance(val, str) and '%' in val:
-                    if val.startswith('+'): return 'color: #00FF41;' # Verde neón
-                    elif val.startswith('-'): return 'color: #FF3333;' # Rojo alerta
+                    if val.startswith('+'): return 'color: #228B22; font-weight: bold;' # Verde del gráfico principal
+                    elif val.startswith('-'): return 'color: #FF3333; font-weight: bold;' # Rojo alerta
                 return ''
 
             def negrita_ticker(val):
-                return 'font-weight: bold; color: white;'
+                return 'font-weight: bold;' # Sin color blanco forzado
 
             columnas_pct = ["% HOY", "% 1 mes", "% 6 meses", "% 1 año", "% Máx", "Suelo (52s)", "Max (52s)"]
             
-            # Seguro de compatibilidad para diferentes versiones de Pandas
             try:
                 styled_df = df.style.map(color_porcentajes, subset=columnas_pct)\
                                     .map(negrita_ticker, subset=['Ticker'])
@@ -482,21 +502,21 @@ with tab2:
                 styled_df = df.style.applymap(color_porcentajes, subset=columnas_pct)\
                                     .applymap(negrita_ticker, subset=['Ticker'])
 
-            st.success("Caza terminada. Pasa el ratón sobre los títulos de las columnas para ver qué significan:")
+            st.success("Caza terminada. Tu Matriz Cuantitativa V4 (Adaptativa) está lista:")
             
             st.dataframe(
                 styled_df, 
                 use_container_width=True, 
                 hide_index=True,
                 column_config={
-                    "PUNTOS": st.column_config.NumberColumn(help="De 0 a 100. Puntuación calculada con un motor dinámico adaptado a cada región geográfica."),
-                    "RECOMENDACIÓN": st.column_config.TextColumn(help="Requiere un MÍNIMO de 65 puntos. Momentum (Cerca de máx), Ballena (Doble volumen), Fénix (Rebote fuerte)."),
+                    "PUNTOS": st.column_config.NumberColumn(help="Motor Quant V4 Adaptativo: Evalúa Alpha relativo, Indulto Tech y Rastros de Ballena según la región."),
+                    "RECOMENDACIÓN": st.column_config.TextColumn(help="Etiquetas oficiales: Compra Institucional (>85) y Vigilar Breakout (>70)."),
                     "% HOY": st.column_config.TextColumn(help="Variación del precio en la sesión actual."),
-                    "% 1 mes": st.column_config.TextColumn(help="Rendimiento corto plazo."),
-                    "% 6 meses": st.column_config.TextColumn(help="Tendencia principal."),
-                    "% 1 año": st.column_config.TextColumn(help="Rendimiento último año natural."),
+                    "% 1 mes": st.column_config.TextColumn(help="Rendimiento en los últimos 21 días laborables."),
+                    "% 6 meses": st.column_config.TextColumn(help="Rendimiento en los últimos 126 días laborables."),
+                    "% 1 año": st.column_config.TextColumn(help="Rendimiento en el último año natural."),
                     "% Máx": st.column_config.TextColumn(help="Rendimiento histórico total."),
-                    "PER": st.column_config.TextColumn(help="Price-to-Earnings adaptativo por región."),
+                    "PER": st.column_config.TextColumn(help="Price-to-Earnings. El Motor V4 indulta los PER altos si hay hipercrecimiento, ajustado por mercado."),
                     "Sector": st.column_config.TextColumn(help="Sector económico."),
                     "Volumen": st.column_config.TextColumn(help="Volumen última sesión."),
                     "Vol. Medio": st.column_config.TextColumn(help="Volumen medio 20 días."),
