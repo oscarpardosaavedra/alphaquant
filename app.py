@@ -183,7 +183,6 @@ tickers_nombres = {
 opciones_desplegable = [f"{ticker} ({nombre})" for ticker, nombre in tickers_nombres.items()]
 opciones_desplegable.sort()
 
-# CLASIFICADOR GEOGRÁFICO
 def obtener_region(ticker):
     if "BME:" in ticker or ticker.endswith((".DE", ".PA", ".MI", ".L", ".AS", ".ST")): return "Europa"
     elif ticker.endswith((".T", ".NS")) or ticker in ["BABA", "TCEHY", "JD", "PDD", "BIDU", "NTES", "NIO", "XPEV", "LI", "BYDDF", "GELYF", "XIAOF", "MEIT", "KUAIF", "TME", "FUTU", "BEKE", "TAL", "EDU", "VIPS", "GDS", "JKS", "DQ", "SMIC", "TSM", "SONY", "TM", "HMC", "SE", "GRAB", "CPNG"]: return "Asia"
@@ -194,9 +193,6 @@ def a_yahoo(ticker):
     if ticker.startswith("NYSE:"): return ticker.replace("NYSE:", "")
     return ticker
 
-# ==========================================
-# 2. MOTOR DE RELOJES Y SEMÁFOROS
-# ==========================================
 def obtener_estado_mercados():
     ahora_utc = datetime.datetime.now(pytz.utc)
     
@@ -386,9 +382,6 @@ with tab2:
                 vol_hoy = float(hist_full['Volume'].iloc[-1])
                 vol_medio = float(hist_full['Volume'].tail(20).mean())
                 
-                # ========================================================
-                # 🧠 EL CEREBRO MULTI-MOTOR (Lógica adaptativa por región)
-                # ========================================================
                 pts = 0
                 
                 if region_activa == "EEUU":
@@ -424,19 +417,19 @@ with tab2:
                     elif vol_hoy > vol_medio: pts += 10
                     if per != 999 and 0 < per <= 30: pts += 20
 
-                # --------------------------------------------------------
-                
                 is_whale = vol_hoy >= (vol_medio * 2.0) and ret_1m > 0 
                 is_fenix = ret_6m < -15 and ret_1m > 10
-                is_momentum = pts >= 80 and dist_max > -10 
+                is_momentum = dist_max > (-15 if region_activa == "Asia" else -10)
                 is_impulsivo = ret_1m > 15
 
                 recomendacion = "❌ Esperar"
-                if is_fenix and pts >= 60: recomendacion = "🦅 COMPRA FÉNIX"
-                elif is_momentum: recomendacion = "🔥 MOMENTUM"
-                elif is_whale and pts >= 60: recomendacion = "🐋 BALLENA"
-                elif is_impulsivo: recomendacion = "⚡ IMPULSO"
-                elif pts >= 65: recomendacion = "💎 VIGILAR"
+                
+                if pts >= 65:
+                    if is_momentum and pts >= 80: recomendacion = "🔥 MOMENTUM"
+                    elif is_fenix: recomendacion = "🦅 COMPRA FÉNIX"
+                    elif is_whale: recomendacion = "🐋 BALLENA"
+                    elif is_impulsivo: recomendacion = "⚡ IMPULSO"
+                    else: recomendacion = "💎 VIGILAR"
                 
                 moneda = info.get('currency', 'USD')
                 simbolos_moneda = {"USD": "$", "EUR": "€", "GBP": "£", "GBp": "GBp", "JPY": "¥"}
@@ -468,26 +461,47 @@ with tab2:
         if resultados_radar:
             df = pd.DataFrame(resultados_radar)
             df = df.sort_values(by="PUNTOS", ascending=False).reset_index(drop=True)
+            
+            # --- ESTILOS DE LA TABLA ---
+            def color_porcentajes(val):
+                if isinstance(val, str) and '%' in val:
+                    if val.startswith('+'): return 'color: #00FF41;' # Verde neón
+                    elif val.startswith('-'): return 'color: #FF3333;' # Rojo alerta
+                return ''
+
+            def negrita_ticker(val):
+                return 'font-weight: bold; color: white;'
+
+            columnas_pct = ["% HOY", "% 1 mes", "% 6 meses", "% 1 año", "% Máx", "Suelo (52s)", "Max (52s)"]
+            
+            # Seguro de compatibilidad para diferentes versiones de Pandas
+            try:
+                styled_df = df.style.map(color_porcentajes, subset=columnas_pct)\
+                                    .map(negrita_ticker, subset=['Ticker'])
+            except AttributeError:
+                styled_df = df.style.applymap(color_porcentajes, subset=columnas_pct)\
+                                    .applymap(negrita_ticker, subset=['Ticker'])
+
             st.success("Caza terminada. Pasa el ratón sobre los títulos de las columnas para ver qué significan:")
             
             st.dataframe(
-                df, 
+                styled_df, 
                 use_container_width=True, 
                 hide_index=True,
                 column_config={
                     "PUNTOS": st.column_config.NumberColumn(help="De 0 a 100. Puntuación calculada con un motor dinámico adaptado a cada región geográfica."),
-                    "RECOMENDACIÓN": st.column_config.TextColumn(help="Señal del algoritmo estricto: Momentum (Cerca de máx), Ballena (Doble volumen), Fénix (Rebote fuerte)."),
+                    "RECOMENDACIÓN": st.column_config.TextColumn(help="Requiere un MÍNIMO de 65 puntos. Momentum (Cerca de máx), Ballena (Doble volumen), Fénix (Rebote fuerte)."),
                     "% HOY": st.column_config.TextColumn(help="Variación del precio en la sesión actual."),
-                    "% 1 mes": st.column_config.TextColumn(help="Rendimiento en los últimos 21 días laborables. Mide el impulso a corto plazo."),
-                    "% 6 meses": st.column_config.TextColumn(help="Rendimiento en los últimos 126 días laborables. Mide la tendencia principal."),
-                    "% 1 año": st.column_config.TextColumn(help="Rendimiento en el último año natural (252 sesiones)."),
-                    "% Máx": st.column_config.TextColumn(help="Rendimiento histórico total desde que existen registros."),
-                    "PER": st.column_config.TextColumn(help="El límite exigido cambia por región (EEUU: <45, Europa: <15, Asia: <30)."),
-                    "Sector": st.column_config.TextColumn(help="Sector económico al que pertenece."),
-                    "Volumen": st.column_config.TextColumn(help="Cantidad total de acciones negociadas en la última sesión."),
-                    "Vol. Medio": st.column_config.TextColumn(help="Media diaria de acciones negociadas en los últimos 20 días."),
-                    "Suelo (52s)": st.column_config.TextColumn(help="Distancia en % desde el precio actual hasta el precio MÍNIMO del último año. Útil para saber cuánto ha subido desde el fondo."),
-                    "Max (52s)": st.column_config.TextColumn(help="Distancia en % desde el precio actual hasta el precio MÁXIMO del último año. Útil para buscar roturas al alza (breakouts).")
+                    "% 1 mes": st.column_config.TextColumn(help="Rendimiento corto plazo."),
+                    "% 6 meses": st.column_config.TextColumn(help="Tendencia principal."),
+                    "% 1 año": st.column_config.TextColumn(help="Rendimiento último año natural."),
+                    "% Máx": st.column_config.TextColumn(help="Rendimiento histórico total."),
+                    "PER": st.column_config.TextColumn(help="Price-to-Earnings adaptativo por región."),
+                    "Sector": st.column_config.TextColumn(help="Sector económico."),
+                    "Volumen": st.column_config.TextColumn(help="Volumen última sesión."),
+                    "Vol. Medio": st.column_config.TextColumn(help="Volumen medio 20 días."),
+                    "Suelo (52s)": st.column_config.TextColumn(help="Distancia al precio MÍNIMO del último año."),
+                    "Max (52s)": st.column_config.TextColumn(help="Distancia al precio MÁXIMO del último año.")
                 }
             )
         else:
