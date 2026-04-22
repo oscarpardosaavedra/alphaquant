@@ -340,7 +340,7 @@ with tab1:
                 if not datos.empty:
                     info = ticker_obj.info
                     moneda_codigo = info.get('currency', 'USD')
-                    precio_actual = datos['Close'].iloc[-1]
+                    precio_actual = datos['Close'].dropna().iloc[-1]
                     
                     simbolos_moneda = {"USD": "$", "EUR": "€", "GBP": "£", "GBp": "GBp", "JPY": "¥"}
                     s_moneda = simbolos_moneda.get(moneda_codigo, moneda_codigo)
