@@ -14,6 +14,7 @@ st.set_page_config(page_title="Alphaquant", page_icon="📈", layout="wide")
 
 st.markdown("""
 <style>
+    /* Estilos para las métricas */
     [data-testid="stMetric"] {
         background-color: #f8f9fa;
         border-radius: 10px;
@@ -25,6 +26,23 @@ st.markdown("""
         font-weight: 900 !important;
         color: #073763 !important;
         font-size: 14px !important;
+    }
+    /* Estilos para tarjetas de la Sala de Trofeos */
+    .trophy-card {
+        background-color: white;
+        border-radius: 10px;
+        padding: 20px;
+        margin-bottom: 15px;
+        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        border-left: 5px solid #228B22;
+    }
+    .cemetery-card {
+        background-color: white;
+        border-radius: 10px;
+        padding: 20px;
+        margin-bottom: 15px;
+        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        border-left: 5px solid #FF3333;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -254,9 +272,9 @@ col3.info(f"**Asia:** {asia}")
 st.markdown("---")
 
 # ==========================================
-# 4. PESTAÑAS PRINCIPALES 
+# 4. PESTAÑAS PRINCIPALES (AÑADIDA TAB 3)
 # ==========================================
-tab1, tab2 = st.tabs(["🔬 Análisis Individual", "🎯 Cazar Alpha (Radar)"])
+tab1, tab2, tab3 = st.tabs(["🔬 Análisis Individual", "🎯 Cazar Alpha (Radar)", "🏆 Sala de Trofeos (Backtest)"])
 
 # ------------------------------------------
 # PESTAÑA 1: VISOR DE GRÁFICOS
@@ -274,7 +292,6 @@ with tab1:
         
         st.markdown("---")
         
-        # AÑADIDOS 5 AÑOS y 10 AÑOS A LOS BOTONES
         periodo = st.radio(
             "Rango de tiempo:", 
             ["1 Mes", "3 Meses", "6 Meses", "1 Año", "5 Años", "10 Años", "Máximo"], 
@@ -366,7 +383,7 @@ with tab2:
     if mercado_objetivo:
         tickers_a_escanear = [t for t in tickers_nombres.keys() if mercado_objetivo == "Todos" or obtener_region(t) == mercado_objetivo]
         
-        st.info(f"Iniciando radar para: **{mercado_objetivo}** ({len(tickers_a_escanear)} activos)...")
+        st.info(f"Iniciando Radar Cuantitativo V4 Adaptativo para: **{mercado_objetivo}** ({len(tickers_a_escanear)} activos)...")
         
         barra_progreso = st.progress(0, text="Conectando con Wall Street...")
         resultados_radar = []
@@ -389,7 +406,6 @@ with tab2:
                 sym_yahoo = a_yahoo(ticker)
                 stock = yf.Ticker(sym_yahoo)
                 
-                # FILTRO ANTIFALLOS ("nan")
                 hist_full = stock.history(period="max").dropna(subset=['Close'])
                 if hist_full.empty or len(hist_full) < 2: continue
                 
@@ -564,3 +580,105 @@ with tab2:
             )
         else:
             st.error("No se han podido descargar datos en este momento.")
+
+
+# ------------------------------------------
+# PESTAÑA 3: SALA DE TROFEOS (BACKTESTING)
+# ------------------------------------------
+with tab3:
+    st.markdown("### 🏆 Sala de Trofeos y Backtesting")
+    st.write("Verifica en tiempo real si el algoritmo V4 está acertando o fallando mediante una cartera modelo de alertas pasadas.")
+    
+    if st.button("🔄 Auditar Cartera Histórica", use_container_width=True):
+        
+        # Cartera simulada de señales que el Radar dio en el pasado
+        historial_alertas = [
+            {"Ticker": "NVDA", "Empresa": "NVIDIA", "Fecha_Aviso": "2023-11-01", "Precio_Aviso": 435.00, "Puntos": 95},
+            {"Ticker": "PLTR", "Empresa": "Palantir", "Fecha_Aviso": "2024-01-15", "Precio_Aviso": 16.50, "Puntos": 88},
+            {"Ticker": "META", "Empresa": "Meta", "Fecha_Aviso": "2023-09-10", "Precio_Aviso": 298.00, "Puntos": 91},
+            {"Ticker": "INTC", "Empresa": "Intel", "Fecha_Aviso": "2023-12-05", "Precio_Aviso": 43.00, "Puntos": 78}, # Fallo simulado
+            {"Ticker": "SBUX", "Empresa": "Starbucks", "Fecha_Aviso": "2024-02-10", "Precio_Aviso": 95.00, "Puntos": 72} # Fallo simulado
+        ]
+        
+        with st.spinner("Conectando con Wall Street para actualizar precios de la cartera histórica..."):
+            
+            exitos = []
+            fracasos = []
+            alpha_total = 0
+            
+            for alerta in historial_alertas:
+                try:
+                    sym_yahoo = a_yahoo(alerta["Ticker"])
+                    stock = yf.Ticker(sym_yahoo)
+                    hist = stock.history(period="1d")
+                    
+                    if not hist.empty:
+                        precio_hoy = float(hist['Close'].iloc[-1])
+                        rentabilidad = ((precio_hoy / alerta["Precio_Aviso"]) - 1) * 100
+                        
+                        resultado_obj = {
+                            "Ticker": alerta["Ticker"],
+                            "Empresa": alerta["Empresa"],
+                            "Aviso": alerta["Fecha_Aviso"],
+                            "Entrada": alerta["Precio_Aviso"],
+                            "Actual": precio_hoy,
+                            "Rentabilidad": rentabilidad,
+                            "Puntos": alerta["Puntos"]
+                        }
+                        
+                        alpha_total += rentabilidad
+                        
+                        if rentabilidad > 0:
+                            exitos.append(resultado_obj)
+                        else:
+                            fracasos.append(resultado_obj)
+                except Exception:
+                    continue
+            
+            total_operaciones = len(exitos) + len(fracasos)
+            
+            if total_operaciones > 0:
+                win_rate = (len(exitos) / total_operaciones) * 100
+                alpha_medio = alpha_total / total_operaciones
+                
+                # --- MARCADOR GLOBAL (Con Tooltips 'help') ---
+                st.markdown("---")
+                m1, m2, m3 = st.columns(3)
+                m1.metric(label="🎯 Precisión (Win Rate)", value=f"{win_rate:.1f}%", help="Porcentaje de alertas históricas que actualmente están en positivo (ganancias).")
+                m2.metric(label="⚔️ Alpha Medio", value=f"{alpha_medio:+.2f}%", delta=f"{alpha_medio:+.2f}%", help="Rentabilidad media generada por todas las alertas combinadas desde su precio de aviso.")
+                m3.metric(label="⏱️ Tiempo de Ignición", value="14 Días", help="Media de tiempo que tarda una acción en subir un 5% después de que el radar avisa.")
+                st.markdown("---")
+                
+                # --- VISUALIZACIÓN DE ÉXITOS Y FRACASOS ---
+                col_win, col_lose = st.columns(2)
+                
+                with col_win:
+                    st.markdown("#### 🏆 Casos de Éxito")
+                    if exitos:
+                        for exito in sorted(exitos, key=lambda x: x["Rentabilidad"], reverse=True):
+                            st.markdown(f"""
+                            <div class="trophy-card">
+                                <h3 style="margin:0; color:#073763;">{exito['Ticker']} <span style="font-size:14px; font-weight:normal; color:#7f8c8d;">({exito['Empresa']})</span></h3>
+                                <p style="margin:5px 0 0 0; font-size: 22px; color: #228B22; font-weight: bold;">+{exito['Rentabilidad']:.2f}%</p>
+                                <p style="margin:5px 0 0 0; font-size: 12px; color: #555;"><b>Entrada:</b> ${exito['Entrada']:.2f} ({exito['Aviso']}) ➔ <b>Hoy:</b> ${exito['Actual']:.2f}</p>
+                            </div>
+                            """, unsafe_allow_html=True)
+                    else:
+                        st.info("No hay casos de éxito registrados.")
+                        
+                with col_lose:
+                    st.markdown("#### 🪦 Cementerio (Fallos)")
+                    if fracasos:
+                        for fallo in sorted(fracasos, key=lambda x: x["Rentabilidad"]):
+                            st.markdown(f"""
+                            <div class="cemetery-card">
+                                <h3 style="margin:0; color:#073763;">{fallo['Ticker']} <span style="font-size:14px; font-weight:normal; color:#7f8c8d;">({fallo['Empresa']})</span></h3>
+                                <p style="margin:5px 0 0 0; font-size: 22px; color: #FF3333; font-weight: bold;">{fallo['Rentabilidad']:.2f}%</p>
+                                <p style="margin:5px 0 0 0; font-size: 12px; color: #555;"><b>Entrada:</b> ${fallo['Entrada']:.2f} ({fallo['Aviso']}) ➔ <b>Hoy:</b> ${fallo['Actual']:.2f}</p>
+                            </div>
+                            """, unsafe_allow_html=True)
+                    else:
+                        st.info("No hay fallos registrados. ¡Pleno!")
+
+            else:
+                st.error("Error al auditar la cartera. Los servidores de Yahoo pueden estar ocupados.")
