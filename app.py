@@ -307,6 +307,8 @@ with tab1:
     col_buscador, col_espacio = st.columns([1, 3])
     with col_buscador:
         ticker_elegido = st.selectbox("Elige la empresa que quieres revisar:", opciones_desplegable)
+        # ---> AQUÍ ESTÁN LOS DOS HUECOS EN ORDEN <---
+        espacio_descripcion = st.empty()
         espacio_sector = st.empty()
     
     if ticker_elegido:
@@ -332,18 +334,25 @@ with tab1:
                     API_FINNHUB = "d7c2s5hr01quh9fcasf0d7c2s5hr01quh9fcasfg"
                     
                     try:
-                        # Extraemos Wall Street y Sector de Yahoo Finance (Porque en Finnhub es de pago)
+                        # Extraemos info de Yahoo
                         ticker_obj = yf.Ticker(simbolo_yahoo)
                         info = ticker_obj.info
                         
                         if isinstance(info, dict):
-                            # #### ESTE BLOQUE TIENE QUE ESTAR MÁS A LA DERECHA ####
+                            # Sacamos los datos básicos
                             sector = info.get('sector', 'Sin noticias')
+                            descripcion = info.get('longBusinessSummary', 'Sin descripción disponible.')
                             
-                            # Rellenamos el espacio debajo del desplegable
+                            # 1. Rellenamos la descripción en un desplegable
+                            if descripcion != 'Sin descripción disponible.':
+                                with espacio_descripcion.expander("📖 Ver descripción de la empresa"):
+                                    st.write(descripcion)
+                            
+                            # 2. Rellenamos el sector debajo
                             if sector != "Sin noticias":
                                 espacio_sector.markdown(f"🏢 **Sector:** {sector}")
                             
+                            # 3. Consenso con traductor
                             recom_raw = info.get('recommendationKey')
                             if recom_raw:
                                 traducciones = {
@@ -355,6 +364,7 @@ with tab1:
                                 }
                                 recom = traducciones.get(recom_raw.lower(), str(recom_raw).replace('_', ' ').upper())
                             
+                            # 4. Precio objetivo
                             p_obj = info.get('targetMeanPrice')
                             if p_obj and p_obj > 0: 
                                 precio_obj_str = str(p_obj)
