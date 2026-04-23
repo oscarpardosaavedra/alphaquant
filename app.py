@@ -299,7 +299,7 @@ st.markdown("---")
 tab1, tab2, tab3, tab4 = st.tabs(["🔬 Análisis Individual", "⚔️ Análisis Colectivo", "🎯 Cazar Alpha (Radar)", "🏆 Sala de Trofeos"])
 
 # ------------------------------------------
-# PESTAÑA 1: VISOR DE GRÁFICOS (DISEÑO Y POSICIONES OPTIMIZADOS)
+# PESTAÑA 1: VISOR DE GRÁFICOS (VERSIÓN CORREGIDA Y DEFINITIVA)
 # ------------------------------------------
 with tab1:
     st.markdown("### 🔍 Selector de Activos")
@@ -310,6 +310,7 @@ with tab1:
     with col_logo:
         espacio_logo = st.empty() # Hueco para el logo
         
+    # Inicializamos los espacios globalmente para evitar el NameError
     espacio_descripcion = st.empty() 
     espacio_sector = st.empty()
     
@@ -318,10 +319,10 @@ with tab1:
         simbolo_yahoo = a_yahoo(simbolo_real)
         st.markdown("---")
         
-        # ---> 1. RESERVAMOS EL SITIO ARRIBA PARA LAS CAJAS <---
+        # 1. RESERVAMOS EL SITIO ARRIBA PARA LAS CAJAS
         contenedor_cajas = st.container()
         
-        # ---> 2. PONEMOS LOS BOTONES DE TIEMPO AQUÍ ABAJO (Justo encima del gráfico) <---
+        # 2. PONEMOS LOS BOTONES DE TIEMPO AQUÍ ABAJO (Justo encima del gráfico)
         st.markdown("<br>", unsafe_allow_html=True) # Un poco de aire
         periodo = st.radio("⏱️ Rango de tiempo del gráfico:", ["1 Mes", "3 Meses", "6 Meses", "1 Año", "5 Años", "10 Años", "Máximo"], index=1, horizontal=True)
         mapa_tiempo = {"1 Mes": "1mo", "3 Meses": "3mo", "6 Meses": "6mo", "1 Año": "1y", "5 Años": "5y", "10 Años": "10y", "Máximo": "max"}
@@ -350,14 +351,14 @@ with tab1:
                             recom_raw = info.get('recommendationKey')
                             p_obj = info.get('targetMeanPrice')
                             
-                            # Descripción (Cortada y elegante)
-                            if descripcion_completa != 'Sin descripción disponible.':
+                            # Descripción (Cortada a 2 frases)
+                            if descripcion_completa != 'Sin descripción disponible.' and descripcion_completa:
                                 fragmentos = descripcion_completa.split('. ')
                                 desc_corta = '. '.join(fragmentos[:2]) + '.' if len(fragmentos) > 1 else descripcion_completa
                                 if len(desc_corta) > 300: desc_corta = desc_corta[:297] + "..."
                                 espacio_descripcion.markdown(f"<div style='font-size: 14px; color: #666; margin-top: 5px; margin-bottom: 5px;'><i>{desc_corta}</i></div>", unsafe_allow_html=True)
                             
-                            # Sector
+                            # Sector (Corregido con <b> en lugar de **)
                             if sector != "Sin noticias":
                                 espacio_sector.markdown(f"<div style='font-size: 14px; margin-bottom: 10px;'>🏢 <b>Sector:</b> {sector}</div>", unsafe_allow_html=True)
                             
@@ -484,7 +485,7 @@ with tab1:
                         </div>
                         """, unsafe_allow_html=True)
 
-                    # 5. Gráfica (Aparece de forma natural debajo de los botones de tiempo)
+                    # 5. Gráfica
                     fig = go.Figure()
                     fig.add_trace(go.Scatter(x=datos_limpios.index, y=datos_limpios['Close'], mode='lines', name='Precio', line=dict(color='#228B22', width=2)))
                     fig.update_layout(title=f"Histórico: {ticker_elegido}", template='plotly_dark', margin=dict(l=0, r=0, t=40, b=0), hovermode="x unified")
