@@ -334,23 +334,23 @@ with col_buscador:
                     API_FINNHUB = "d7c2s5hr01quh9fcasf0d7c2s5hr01quh9fcasfg"
                     
             try:
-                        # Extraemos Wall Street, Sector y Descripción de Yahoo Finance
+                        # Extraemos los datos de Yahoo Finance
                         ticker_obj = yf.Ticker(simbolo_yahoo)
                         info = ticker_obj.info
                         
                         if isinstance(info, dict):
-                            # 1. Extracción de datos
+                            # 1. Sacamos los datos del diccionario
                             sector = info.get('sector', 'Sin noticias')
                             descripcion = info.get('longBusinessSummary', 'Sin descripción disponible.')
                             recom_raw = info.get('recommendationKey')
                             p_obj = info.get('targetMeanPrice')
                             
-                            # 2. Plasmamos la DESCRIPCIÓN (en su hueco arriba)
+                            # 2. Mostramos la DESCRIPCIÓN (en su hueco)
                             if descripcion != 'Sin descripción disponible.':
                                 with espacio_descripcion.expander("📖 Ver descripción de la empresa"):
                                     st.write(descripcion)
 
-                            # 3. Plasmamos el SECTOR (justo debajo de la descripción)
+                            # 3. Mostramos el SECTOR (en su hueco)
                             if sector != "Sin noticias":
                                 espacio_sector.markdown(f"🏢 **Sector:** {sector}")
                             
@@ -369,7 +369,7 @@ with col_buscador:
                             if p_obj and p_obj > 0: 
                                 precio_obj_str = str(p_obj)
                             
-                        # Calendario de Earnings (Plan A)
+                        # Calendario de Earnings
                         try:
                             cal = ticker_obj.calendar
                             if isinstance(cal, dict) and 'Earnings Date' in cal:
@@ -378,7 +378,7 @@ with col_buscador:
                                     fecha_earnings = fechas[0].strftime("%d/%m/%Y")
                         except: pass
                             
-                    except Exception as e:
+                    except Exception:
                         pass
                         
                     # Extracción de Finnhub (Porque es mucho más rápido y preciso para Insiders)
