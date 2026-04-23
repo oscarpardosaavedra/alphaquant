@@ -303,7 +303,7 @@ st.markdown("---")
 tab1, tab2, tab3, tab4 = st.tabs(["🔬 Análisis Individual", "⚔️ Análisis Colectivo", "🎯 Radar", "🏆 Auditoría"])
 
 # ------------------------------------------
-# PESTAÑA 1: VISOR DE GRÁFICOS (DISEÑO FUTURISTA + TRADUCCIÓN)
+# PESTAÑA 1: VISOR DE GRÁFICOS (DISEÑO CLÁSICO + SECTOR MOVIDO)
 # ------------------------------------------
 with tab1:
     st.markdown("### 🔍 Selector de Activos")
@@ -311,6 +311,8 @@ with tab1:
     col_buscador, col_espacio = st.columns([1, 3])
     with col_buscador:
         ticker_elegido = st.selectbox("Elige la empresa que quieres revisar:", opciones_desplegable)
+        # ---> CREAMOS UN ESPACIO PARA EL SECTOR JUSTO AQUÍ <---
+        espacio_sector = st.empty() 
     
     if ticker_elegido:
         simbolo_real = ticker_elegido.split(" ")[0]
@@ -320,19 +322,22 @@ with tab1:
         periodo = st.radio("Rango de tiempo:", ["1 Mes", "3 Meses", "6 Meses", "1 Año", "5 Años", "10 Años", "Máximo"], index=1, horizontal=True)
         mapa_tiempo = {"1 Mes": "1mo", "3 Meses": "3mo", "6 Meses": "6mo", "1 Año": "1y", "5 Años": "5y", "10 Años": "10y", "Máximo": "max"}
         
-        with st.spinner(f"Cargando telemetría de {simbolo_real}..."):
+        with st.spinner(f"Cargando datos de {simbolo_real} y rastreando Wall Street..."):
             try:
-                # 1. Datos Yahoo
+                # 1. Datos Yahoo (Precio Histórico)
                 datos = yf.download(simbolo_yahoo, period=mapa_tiempo[periodo], progress=False)
                 if isinstance(datos.columns, pd.MultiIndex): datos.columns = datos.columns.get_level_values(0)
 
                 if not datos.empty and 'Close' in datos.columns:
-                    recom, precio_obj_str, fecha_earnings, sector, insider_trend = "Sin noticias", "Sin noticias", "Sin noticias", "Sin noticias", "Sin noticias"
                     
+                    recom, precio_obj_str, fecha_earnings, sector, insider_trend = "Sin noticias", "Sin noticias", "Sin noticias", "Sin noticias", "Sin noticias"
+                    industria = "Sin noticias"
+                    
+                    # 2. MOTOR HÍBRIDO
                     import requests
                     API_FINNHUB = "d7c2s5hr01quh9fcasf0d7c2s5hr01quh9fcasfg"
                     
-                    # ---> DICCIONARIO DE TRADUCCIÓN A CASTELLANO <---
+                    # Diccionario de traducción a español
                     traduccion_ws = {
                         "STRONG BUY": "COMPRA FUERTE 🟢",
                         "BUY": "COMPRAR ↗️",
@@ -346,9 +351,9 @@ with tab1:
                         info = ticker_obj.info
                         
                         if isinstance(info, dict):
-                            sector = info.get('sector', 'Sin Sector')
+                            sector = info.get('sector', 'Sin noticias')
+                            industria = info.get('industry', 'Sin noticias')
                             
-                            # Obtenemos en inglés y lo pasamos por el traductor
                             recom_raw = info.get('recommendationKey')
                             if recom_raw: 
                                 r_eng = str(recom_raw).replace('_', ' ').upper()
@@ -365,8 +370,10 @@ with tab1:
                                     fecha_earnings = fechas[0].strftime("%d/%m/%Y")
                         except: pass
                             
-                    except Exception as e: pass
+                    except Exception as e:
+                        pass
                         
+                    # Extracción de Finnhub (Insiders)
                     try:
                         hoy = datetime.datetime.today().strftime('%Y-%m-%d')
                         pasado = (datetime.datetime.today() - datetime.timedelta(days=180)).strftime('%Y-%m-%d')
@@ -390,6 +397,11 @@ with tab1:
                                     fecha_earnings = datetime.datetime.strptime(fecha_raw, "%Y-%m-%d").strftime("%d/%m/%Y")
                     except: pass 
 
+                    # ---> PINTAMOS EL SECTOR DEBAJO DEL DESPLEGABLE <---
+                    if sector != "Sin noticias":
+                        espacio_sector.caption(f"🏢 **Sector:** {sector} | **Industria:** {industria}")
+
+                    # 3. Datos de Precio y Conversión a Dólares
                     datos_limpios = datos.dropna(subset=['Close'])
                     precio_actual = float(datos_limpios['Close'].iloc[-1])
                     s_moneda_visual = obtener_simbolo_moneda(simbolo_real)
@@ -417,18 +429,11 @@ with tab1:
 
                     t_conv = f'<span style="font-size:18px;color:#7f8c8d;font-weight:400;margin-left:10px;">(≈ {precio_usd:,.2f} $)</span>' if precio_usd else ""
                     
-                    # 4. RENDERIZADO HTML PROFESIONAL Y REDISEÑADO
+                    # 4. RENDERIZADO HTML CLÁSICO CON TOOLTIPS
                     st.markdown(f"""
-                    <div style="background-color:#f8f9fa;padding:20px;border-radius:12px;box-shadow:0 6px 12px rgba(0,0,0,0.05);margin-bottom:20px; border-left: 5px solid #00d4ff;">
-                        <div style="display:flex;justify-content:space-between;align-items:center;">
-                            <div>
-                                <div style="display:flex; align-items:center; gap:10px; margin-bottom:5px;">
-                                    <h3 style="margin:0; font-size:18px; color:#2c3e50; font-weight:800;">{simbolo_real}</h3>
-                                    <span style="background:#e1f5fe; color:#0288d1; padding:3px 8px; border-radius:15px; font-size:12px; font-weight:bold; letter-spacing:1px;">{sector.upper()}</span>
-                                </div>
-                                <h2 style="margin:0;font-weight:900;color:#0f2027;font-size:38px; letter-spacing:-1px;">{precio_actual:,.2f} <span style="font-size:24px; color:#34495e;">{s_moneda_visual}</span>{t_conv}</h2>
-                            </div>
-                        </div>
+                    <div style="background-color:#f8f9fa;padding:15px;border-radius:10px;box-shadow:0 4px 6px rgba(0,0,0,0.05);margin-bottom:20px;">
+                        <p style="margin:0;font-size:14px;color:rgba(49,51,63,0.7);font-weight:400;">Valor Actual ({simbolo_real})</p>
+                        <h2 style="margin:0;font-weight:700;color:#1f1f1f;font-size:32px;">{precio_actual:,.2f} {s_moneda_visual}{t_conv}</h2>
                     </div>
                     
                     <div style="display:flex;gap:15px;margin-bottom:20px;">
@@ -448,85 +453,13 @@ with tab1:
                     </div>
                     """, unsafe_allow_html=True)
 
-                    # 5. Gráfica (Color Azul Neón)
+                    # 5. Gráfica (Volvemos a tu verde clásico)
                     fig = go.Figure()
-                    fig.add_trace(go.Scatter(x=datos_limpios.index, y=datos_limpios['Close'], mode='lines', name='Precio', line=dict(color='#00d4ff', width=2.5)))
-                    fig.update_layout(title=f"Histórico: {ticker_elegido}", template='plotly_dark', margin=dict(l=0, r=0, t=40, b=0), hovermode="x unified", paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
+                    fig.add_trace(go.Scatter(x=datos_limpios.index, y=datos_limpios['Close'], mode='lines', name='Precio', line=dict(color='#228B22', width=2)))
+                    fig.update_layout(title=f"Histórico: {ticker_elegido}", template='plotly_dark', margin=dict(l=0, r=0, t=40, b=0), hovermode="x unified")
                     st.plotly_chart(fig, use_container_width=True)
                 else: st.warning("⚠️ Sin datos disponibles.")
             except Exception as e: st.error(f"⚠️ Error técnico: {e}")
-# ------------------------------------------
-# PESTAÑA 2: BATALLA DE ALPHA (COMPARATIVA)
-# ------------------------------------------
-with tab2:
-    st.markdown("### ⚔️ Comparativa Múltiple")
-    st.write("Selecciona varios activos para ver cuál está rindiendo mejor en un mismo periodo de tiempo. Todos empezarán en Base 0 (0% de rendimiento) para una comparación justa.")
-    
-    col_comp1, col_comp2 = st.columns([3, 1])
-    
-    with col_comp1:
-        opciones_comp = ["SPY (S&P 500)", "QQQ (Nasdaq 100)"] + opciones_desplegable
-        seleccionados = st.multiselect(
-            "Elige los activos a enfrentar (Puedes elegir todos los que quieras):", 
-            opciones_comp, 
-            default=["SPY (S&P 500)"]
-        )
-        
-    with col_comp2:
-        periodo_comp = st.radio(
-            "Rango de tiempo:", 
-            ["1 Mes", "3 Meses", "6 Meses", "1 Año", "5 Años", "Máximo"], 
-            index=3,
-            key="radio_batalla" 
-        )
-        
-    mapa_tiempo_comp = {"1 Mes": "1mo", "3 Meses": "3mo", "6 Meses": "6mo", "1 Año": "1y", "5 Años": "5y", "Máximo": "max"}
-
-    if seleccionados:
-        if st.button("🚀 Iniciar Batalla de Rendimiento", use_container_width=True):
-            with st.spinner("Descargando históricos y sincronizando la escala a Base 100..."):
-                fig_comp = go.Figure()
-                
-                for sel in seleccionados:
-                    sym_real = sel.split(" ")[0]
-                    sym_y = "SPY" if sym_real == "SPY" else ("QQQ" if sym_real == "QQQ" else a_yahoo(sym_real))
-                    
-                    try:
-                        df_comp = yf.download(sym_y, period=mapa_tiempo_comp[periodo_comp], progress=False)
-                        if isinstance(df_comp.columns, pd.MultiIndex): 
-                            df_comp.columns = df_comp.columns.get_level_values(0)
-                        
-                        df_comp = df_comp.dropna(subset=['Close'])
-                        
-                        if not df_comp.empty:
-                            cierres_comp = df_comp['Close'].squeeze()
-                            precio_inicial = float(cierres_comp.iloc[0])
-                            pct_cambio = ((cierres_comp / precio_inicial) - 1) * 100
-                            
-                            es_indice = sym_real in ["SPY", "QQQ"]
-                            grosor = 3 if es_indice else 2
-                            estilo_linea = 'dot' if es_indice else 'solid'
-                            
-                            fig_comp.add_trace(go.Scatter(
-                                x=pct_cambio.index, 
-                                y=pct_cambio, 
-                                mode='lines', 
-                                name=sym_real,
-                                line=dict(width=grosor, dash=estilo_linea)
-                            ))
-                    except Exception as e:
-                        st.warning(f"⚠️ No se pudo cargar el histórico de {sym_real}.")
-
-                fig_comp.update_layout(
-                    title=f"Rendimiento Comparativo Acumulado",
-                    template='plotly_dark',
-                    xaxis_title="",
-                    yaxis_title="Rendimiento Acumulado (%)",
-                    hovermode="x unified",
-                    margin=dict(l=0, r=0, t=40, b=0)
-                )
-                
-                st.plotly_chart(fig_comp, use_container_width=True)
 
 # ------------------------------------------
 # PESTAÑA 3: RADAR DE CAZA CON AUTO-GUARDADO
