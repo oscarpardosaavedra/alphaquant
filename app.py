@@ -307,7 +307,8 @@ with tab1:
     col_buscador, col_espacio = st.columns([1, 3])
     with col_buscador:
         ticker_elegido = st.selectbox("Elige la empresa que quieres revisar:", opciones_desplegable)
-    
+        espacio_sector = st.empty()
+        
     if ticker_elegido:
         simbolo_real = ticker_elegido.split(" ")[0]
         simbolo_yahoo = a_yahoo(simbolo_real)
@@ -337,12 +338,32 @@ with tab1:
                         
                         if isinstance(info, dict):
                             sector = info.get('sector', 'Sin noticias')
+                            if sector != "Sin noticias":
+                               espacio_sector.markdown(f"🏢 **Sector:** {sector}")
                             
                             recom_raw = info.get('recommendationKey')
-                            if recom_raw: recom = str(recom_raw).replace('_', ' ').upper()
+                        if isinstance(info, dict):
+                            # #### ESTE BLOQUE TIENE QUE ESTAR MÁS A LA DERECHA ####
+                            sector = info.get('sector', 'Sin noticias')
+                            
+                            # Rellenamos el espacio debajo del desplegable
+                            if sector != "Sin noticias":
+                                espacio_sector.markdown(f"🏢 **Sector:** {sector}")
+                            
+                            recom_raw = info.get('recommendationKey')
+                            if recom_raw:
+                                traducciones = {
+                                    "strong_buy": "COMPRA FUERTE 🟢",
+                                    "buy": "COMPRAR ↗️",
+                                    "hold": "MANTENER 🟡",
+                                    "sell": "VENTA ↘️",
+                                    "strong_sell": "VENTA MASIVA 🔴"
+                                }
+                                recom = traducciones.get(recom_raw.lower(), str(recom_raw).replace('_', ' ').upper())
                             
                             p_obj = info.get('targetMeanPrice')
-                            if p_obj and p_obj > 0: precio_obj_str = str(p_obj)
+                            if p_obj and p_obj > 0: 
+                                precio_obj_str = str(p_obj)
                             
                         # Calendario de Yahoo (Plan A para Earnings)
                         try:
@@ -417,7 +438,6 @@ with tab1:
                         <div style="display:flex;justify-content:space-between;align-items:baseline;">
                             <div><p style="margin:0;font-size:14px;color:rgba(49,51,63,0.7);">Valor Actual ({simbolo_real})</p>
                             <h2 style="margin:0;font-weight:700;color:#1f1f1f;font-size:32px;">{precio_actual:,.2f} {s_moneda_visual}{t_conv}</h2></div>
-                            <div style="text-align:right;"><span style="font-size:12px;color:#7f8c8d;">🏢 Sector:</span><br><span style="font-weight:bold;color:#2c3e50;">{sector}</span></div>
                         </div>
                     </div>
                     <div style="display:flex;gap:15px;margin-bottom:20px;">
