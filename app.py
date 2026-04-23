@@ -14,6 +14,10 @@ import time
 # ==========================================
 st.set_page_config(page_title="Alphaquant", page_icon="📈", layout="wide")
 
+# ---> MEMORIA PERSISTENTE PARA QUE NO SE BORRE EL RADAR <---
+if 'resultados_radar' not in st.session_state:
+    st.session_state.resultados_radar = None
+
 def conectar_db():
     try:
         scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
@@ -350,9 +354,9 @@ with tab1:
                     
                     # Símbolo visual (el que ya teníamos)
                     s_moneda_visual = obtener_simbolo_moneda(simbolo_real)
-                    texto_mostrar = f"{precio_actual:,.2f} {s_moneda_visual}"
                     
-                    # 4. CONVERSIÓN A DÓLARES INTELIGENTE
+                    # ---> 4. CONVERSIÓN A DÓLARES INTELIGENTE (BLINDADA) <---
+                    precio_usd = None
                     if moneda_iso != "USD":
                         # Yahoo siempre usa el formato [MONEDA]USD=X para tipos de cambio
                         ticker_divisa = f"{moneda_iso}USD=X"
@@ -370,21 +374,17 @@ with tab1:
                                     precio_usd = (precio_actual * tasa) / 100
                                 else:
                                     precio_usd = precio_actual * tasa
-                                    
-                                texto_mostrar += f"  (≈ {precio_usd:,.2f} $)"
                         except:
-                            pass # Si falla el cambio, mostramos solo la moneda original
+                            pass # Si falla el cambio, precio_usd sigue siendo None
 
-                   # 5. Pintamos la métrica con diseño profesional (Limpieza total)
-                    s_moneda_visual = obtener_simbolo_moneda(simbolo_real)
-                    
-                    # Preparamos la parte de la conversión SOLO si no es dólar
-                    if moneda_iso != "USD":
+                    # 5. Pintamos la métrica con diseño profesional
+                    # Preparamos la parte de la conversión SOLO si logramos calcular precio_usd
+                    if precio_usd is not None:
                         texto_conversion = f'<span style="font-size: 18px; color: #7f8c8d; font-weight: 400; margin-left: 10px;">(≈ {precio_usd:,.2f} $)</span>'
                     else:
                         texto_conversion = ""
 
-                    # HTML final sin etiquetas huérfanas
+                    # HTML final
                     html_metrica = f"""
                     <div style="background-color: #f8f9fa; padding: 15px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); margin-bottom: 20px;">
                         <p style="margin: 0; font-size: 14px; color: rgba(49, 51, 63, 0.7); font-weight: 400;">Valor Actual ({simbolo_real})</p>
@@ -398,7 +398,7 @@ with tab1:
                     if sector != "N/A": 
                         st.caption(f"🏢 **Sector:** {sector} | **Industria:** {industria}")
                     
-                    # 6. Gráfica (sin tocar nada para que no rompa)
+                    # 6. Gráfica
                     fig = go.Figure()
                     x_data = datos_limpios.index.get_level_values(0) if isinstance(datos_limpios.index, pd.MultiIndex) else datos_limpios.index
                     fig.add_trace(go.Scatter(x=x_data, y=np.ravel(cierres), mode='lines', name='Precio', line=dict(color='#228B22', width=2)))
@@ -408,6 +408,7 @@ with tab1:
                     st.warning("⚠️ No se encontraron datos para este activo.")
             except Exception as e:
                 st.error(f"⚠️ Error técnico: {e}")
+
 # ------------------------------------------
 # PESTAÑA 2: RADAR DE CAZA CON AUTO-GUARDADO
 # ------------------------------------------
@@ -429,6 +430,9 @@ with tab2:
     elif btn_asia: mercado_objetivo = "Asia"
 
     if mercado_objetivo:
+        # ---> AL LANZAR UNA NUEVA CAZA, LIMPIAMOS LA MEMORIA <---
+        st.session_state.resultados_radar = None
+        
         if mercado_objetivo == "EEUU" and "Cerrado" in us["estado"]:
             st.warning("⚠️ **Aviso:** Wall Street está cerrado ahora mismo. Los datos corresponden al último cierre.")
         elif mercado_objetivo == "Europa" and "Cerrado" in eu["estado"]:
@@ -466,12 +470,9 @@ with tab2:
         for i, ticker in enumerate(tickers_a_escanear):
             porcentaje = int(((i + 1) / len(tickers_a_escanear)) * 100)
             
-            # Formateo ultra-estricto: Ticker (10 huecos) + Barra + Porcentaje (3 huecos)
-            # Usamos caracteres de fuente monoespaciada para que nada baile
             t_fijo = ticker.ljust(10).replace(" ", " ")
             p_fijo = str(porcentaje).rjust(3)
             
-            # El truco: Usar el carácter '`' para forzar fuente de código en Streamlit
             barra_progreso.progress((i + 1) / len(tickers_a_escanear), 
                                    text=f"⏳ `Evaluando: {t_fijo} | {p_fijo}%`")
             try:
@@ -599,7 +600,6 @@ with tab2:
                     if pts >= 85: recomendacion = "🔥 COMPRA (FÉNIX ORO)" if isFenix else "🚀 COMPRA INSTITUCIONAL"
                     elif pts >= 70: recomendacion = "👀 VIGILAR (FÉNIX)" if isFenix else "💎 VIGILAR (BREAKOUT/WHALE)"
                 
-                # Usamos la nueva función infalible de monedas
                 s_mon = obtener_simbolo_moneda(ticker)
 
                 def fmt_pct(val): return f"{val:+.2f}%" if val is not None else "N/A"
@@ -614,61 +614,72 @@ with tab2:
                     "SUELO (52s)": fmt_pct(dist_suelo), "MAX (52s)": fmt_pct(dist_max)
                 })
                 
-                time.sleep(0.3)
+                time.sleep(0.20)
                 
             except Exception as e: 
-                time.sleep(0.3)
+                time.sleep(0.20)
                 continue
             
         barra_progreso.progress(100, text="✅ 100% Completado")
         
-        if resultados_radar:
-            df = pd.DataFrame(resultados_radar)
-            df = df.sort_values(by="PUNTOS", ascending=False).reset_index(drop=True)
-            
-            def color_porcentajes(val):
-                if isinstance(val, str) and '%' in val:
-                    if val.startswith('+'): return 'color: #228B22;' 
-                    elif val.startswith('-'): return 'color: #FF3333;' 
-                return ''
+        # ---> GUARDAMOS EL RESULTADO EN MEMORIA AL TERMINAR LA CAZA <---
+        st.session_state.resultados_radar = resultados_radar
+        st.success("Caza terminada. Las empresas con 90 puntos o más se han guardado automáticamente en la base de datos.")
 
-            def negrita_ticker(val): return 'font-weight: bold;' 
 
-            columnas_pct = ["% HOY", "% 1 MES", "% 6 MESES", "% 1 AÑO", "% 5 AÑOS", "% 10 AÑOS", "% 20 AÑOS", "% MÁX", "SUELO (52s)", "MAX (52s)"]
-            
-            try:
-                styled_df = df.style.map(color_porcentajes, subset=columnas_pct).map(negrita_ticker, subset=['TICKER'])
-            except AttributeError:
-                styled_df = df.style.applymap(color_porcentajes, subset=columnas_pct).applymap(negrita_ticker, subset=['TICKER'])
+    # =========================================================================
+    # ---> MOSTRAR LA TABLA DEL RADAR SIEMPRE QUE HAYA ALGO EN LA MEMORIA <---
+    # =========================================================================
+    if st.session_state.resultados_radar:
+        df = pd.DataFrame(st.session_state.resultados_radar)
+        df = df.sort_values(by="PUNTOS", ascending=False).reset_index(drop=True)
+        
+        # 1. Definición para porcentajes rojo/verde
+        def color_porcentajes(val):
+            if isinstance(val, str) and '%' in val:
+                if val.startswith('+'): return 'color: #228B22;' 
+                elif val.startswith('-'): return 'color: #FF3333;' 
+            return ''
 
-            st.success("Caza terminada. Las empresas con 90 puntos o más se han guardado automáticamente en la base de datos.")
-            
-            st.dataframe(
-                styled_df, 
-                use_container_width=True, 
-                hide_index=True,
-                column_config={
-                    "PUNTOS": st.column_config.NumberColumn(help="Puntuación del algoritmo: Evalúa Alpha relativo, fundamentales y volumen según la región."),
-                    "RECOMENDACIÓN": st.column_config.TextColumn(help="Requiere mínimo de 65 puntos para dar señal."),
-                    "% HOY": st.column_config.TextColumn(help="Variación en la sesión actual."),
-                    "% 1 MES": st.column_config.TextColumn(help="Rendimiento en 21 días laborables."),
-                    "% 6 MESES": st.column_config.TextColumn(help="Rendimiento en 126 días laborables."),
-                    "% 1 AÑO": st.column_config.TextColumn(help="Rendimiento en 252 sesiones."),
-                    "% 5 AÑOS": st.column_config.TextColumn(help="Rendimiento a medio plazo (1260 sesiones)."),
-                    "% 10 AÑOS": st.column_config.TextColumn(help="Rendimiento a largo plazo (2520 sesiones)."),
-                    "% 20 AÑOS": st.column_config.TextColumn(help="Rendimiento a súper largo plazo (5040 sesiones)."),
-                    "% MÁX": st.column_config.TextColumn(help="Rendimiento histórico total."),
-                    "PER": st.column_config.TextColumn(help="Price-to-Earnings. El algoritmo pondera los PER altos si hay hipercrecimiento, ajustado por mercado."),
-                    "SECTOR": st.column_config.TextColumn(help="Sector económico."),
-                    "VOLUMEN": st.column_config.TextColumn(help="Volumen de la última sesión."),
-                    "VOL. MEDIO": st.column_config.TextColumn(help="Media diaria de acciones negociadas (20d)."),
-                    "SUELO (52s)": st.column_config.TextColumn(help="Distancia al precio MÍNIMO del último año."),
-                    "MAX (52s)": st.column_config.TextColumn(help="Distancia al precio MÁXIMO del último año.")
-                }
-            )
-        else:
-            st.error("No se han podido descargar datos. Yahoo Finance podría estar limitando temporalmente tus peticiones.")
+        # 2. ---> FUNCIÓN PARA PINTAR TICKER EN AZUL SI > 80 PUNTOS <---
+        def resaltar_azul(row):
+            estilo = [''] * len(row)
+            if row['PUNTOS'] > 80:
+                idx = row.index.get_loc('TICKER')
+                estilo[idx] = 'color: #1E90FF; font-weight: bold;'
+            return estilo
 
+        columnas_pct = ["% HOY", "% 1 MES", "% 6 MESES", "% 1 AÑO", "% 5 AÑOS", "% 10 AÑOS", "% 20 AÑOS", "% MÁX", "SUELO (52s)", "MAX (52s)"]
+        
+        # 3. Aplicamos el azul por fila, y el rojo/verde a las columnas correspondientes
+        try:
+            styled_df = df.style.apply(resaltar_azul, axis=1).map(color_porcentajes, subset=columnas_pct)
+        except AttributeError:
+            styled_df = df.style.apply(resaltar_azul, axis=1).applymap(color_porcentajes, subset=columnas_pct)
+        
+        st.dataframe(
+            styled_df, 
+            use_container_width=True, 
+            hide_index=True,
+            column_config={
+                "PUNTOS": st.column_config.NumberColumn(help="Puntuación del algoritmo: Evalúa Alpha relativo, fundamentales y volumen según la región."),
+                "RECOMENDACIÓN": st.column_config.TextColumn(help="Requiere mínimo de 65 puntos para dar señal."),
+                "% HOY": st.column_config.TextColumn(help="Variación en la sesión actual."),
+                "% 1 MES": st.column_config.TextColumn(help="Rendimiento en 21 días laborables."),
+                "% 6 MESES": st.column_config.TextColumn(help="Rendimiento en 126 días laborables."),
+                "% 1 AÑO": st.column_config.TextColumn(help="Rendimiento en 252 sesiones."),
+                "% 5 AÑOS": st.column_config.TextColumn(help="Rendimiento a medio plazo (1260 sesiones)."),
+                "% 10 AÑOS": st.column_config.TextColumn(help="Rendimiento a largo plazo (2520 sesiones)."),
+                "% 20 AÑOS": st.column_config.TextColumn(help="Rendimiento a súper largo plazo (5040 sesiones)."),
+                "% MÁX": st.column_config.TextColumn(help="Rendimiento histórico total."),
+                "PER": st.column_config.TextColumn(help="Price-to-Earnings. El algoritmo pondera los PER altos si hay hipercrecimiento, ajustado por mercado."),
+                "SECTOR": st.column_config.TextColumn(help="Sector económico."),
+                "VOLUMEN": st.column_config.TextColumn(help="Volumen de la última sesión."),
+                "VOL. MEDIO": st.column_config.TextColumn(help="Media diaria de acciones negociadas (20d)."),
+                "SUELO (52s)": st.column_config.TextColumn(help="Distancia al precio MÍNIMO del último año."),
+                "MAX (52s)": st.column_config.TextColumn(help="Distancia al precio MÁXIMO del último año.")
+            }
+        )
 
 # ------------------------------------------
 # PESTAÑA 3: SALA DE TROFEOS (DB REAL Y BORRADO MANUAL)
