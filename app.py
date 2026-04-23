@@ -333,27 +333,27 @@ with tab1:
                     import requests
                     API_FINNHUB = "d7c2s5hr01quh9fcasf0d7c2s5hr01quh9fcasfg"
                     
-                    try:
-                        # Extraemos Wall Street y Sector de Yahoo Finance (Porque en Finnhub es de pago)
+            try:
+                        # Extraemos Wall Street, Sector y Descripción de Yahoo Finance
                         ticker_obj = yf.Ticker(simbolo_yahoo)
                         info = ticker_obj.info
                         
-                    if isinstance(info, dict):
-                            # 1. Extraemos los datos de Yahoo
+                        if isinstance(info, dict):
+                            # 1. Extracción de datos
                             sector = info.get('sector', 'Sin noticias')
                             descripcion = info.get('longBusinessSummary', 'Sin descripción disponible.')
                             recom_raw = info.get('recommendationKey')
                             p_obj = info.get('targetMeanPrice')
-
-                            # 2. Plasmamos la DESCRIPCIÓN en su hueco (con un desplegable para no molestar)
+                            
+                            # 2. Plasmamos la DESCRIPCIÓN (en su hueco arriba)
                             if descripcion != 'Sin descripción disponible.':
                                 with espacio_descripcion.expander("📖 Ver descripción de la empresa"):
                                     st.write(descripcion)
 
-                            # 3. Plasmamos el SECTOR en su hueco
+                            # 3. Plasmamos el SECTOR (justo debajo de la descripción)
                             if sector != "Sin noticias":
                                 espacio_sector.markdown(f"🏢 **Sector:** {sector}")
-
+                            
                             # 4. TRADUCCIÓN del Consenso
                             if recom_raw:
                                 traducciones = {
@@ -369,7 +369,7 @@ with tab1:
                             if p_obj and p_obj > 0: 
                                 precio_obj_str = str(p_obj)
                             
-                        # Calendario de Earnings (Fuera del if info para asegurar el cierre del try)
+                        # Calendario de Earnings (Plan A)
                         try:
                             cal = ticker_obj.calendar
                             if isinstance(cal, dict) and 'Earnings Date' in cal:
