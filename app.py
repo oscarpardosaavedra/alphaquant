@@ -331,7 +331,7 @@ with tab1:
                     API_FINNHUB = "d7c2s5hr01quh9fcasf0d7c2s5hr01quh9fcasfg"
                     
                     try:
-                        # Extraemos Wall Street y Sector de Yahoo Finance (Porque en Finnhub es de pago)
+                        # Extraemos Wall Street y Sector de Yahoo Finance
                         ticker_obj = yf.Ticker(simbolo_yahoo)
                         info = ticker_obj.info
                         
@@ -356,7 +356,7 @@ with tab1:
                     except Exception as e:
                         pass
                         
-                    # Extracción de Finnhub (Porque es mucho más rápido y preciso para Insiders)
+                    # Extracción de Finnhub (Insiders)
                     try:
                         hoy = datetime.datetime.today().strftime('%Y-%m-%d')
                         pasado = (datetime.datetime.today() - datetime.timedelta(days=180)).strftime('%Y-%m-%d')
