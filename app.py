@@ -299,7 +299,7 @@ st.markdown("---")
 tab1, tab2, tab3, tab4 = st.tabs(["🔬 Análisis Individual", "⚔️ Batalla de Alpha", "🎯 Cazar Alpha (Radar)", "🏆 Sala de Trofeos"])
 
 # ------------------------------------------
-# PESTAÑA 1: VISOR DE GRÁFICOS (INDIVIDUAL CON TRIPLE TURBO)
+# PESTAÑA 1: VISOR DE GRÁFICOS (CON API FINNHUB)
 # ------------------------------------------
 with tab1:
     st.markdown("### 🔍 Selector de Activos")
@@ -311,137 +311,100 @@ with tab1:
     if ticker_elegido:
         simbolo_real = ticker_elegido.split(" ")[0]
         simbolo_yahoo = a_yahoo(simbolo_real)
-        
         st.markdown("---")
         
-        periodo = st.radio(
-            "Rango de tiempo:", 
-            ["1 Mes", "3 Meses", "6 Meses", "1 Año", "5 Años", "10 Años", "Máximo"], 
-            index=1, 
-            horizontal=True
-        )
+        periodo = st.radio("Rango de tiempo:", ["1 Mes", "3 Meses", "6 Meses", "1 Año", "5 Años", "10 Años", "Máximo"], index=1, horizontal=True)
+        mapa_tiempo = {"1 Mes": "1mo", "3 Meses": "3mo", "6 Meses": "6mo", "1 Año": "1y", "5 Años": "5y", "10 Años": "10y", "Máximo": "max"}
         
-        mapa_tiempo = {
-            "1 Mes": "1mo", "3 Meses": "3mo", "6 Meses": "6mo", 
-            "1 Año": "1y", "5 Años": "5y", "10 Años": "10y", "Máximo": "max"
-        }
-        
-        with st.spinner(f"Cargando datos de {simbolo_real} y rastreando Wall Street..."):
+        with st.spinner(f"Cargando datos de {simbolo_real} y consultando Finnhub..."):
             try:
-                # 1. Descargamos los datos del precio
+                # 1. Datos Yahoo
                 datos = yf.download(simbolo_yahoo, period=mapa_tiempo[periodo], progress=False)
-                
-                if isinstance(datos.columns, pd.MultiIndex):
-                    datos.columns = datos.columns.get_level_values(0)
+                if isinstance(datos.columns, pd.MultiIndex): datos.columns = datos.columns.get_level_values(0)
 
                 if not datos.empty and 'Close' in datos.columns:
                     
-                    # 2. VALORES POR DEFECTO PARA EL TRIPLE TURBO
-                    sector = "N/A"
-                    industria = "N/A"
-                    recom = "N/A"
-                    precio_obj_str = "N/A"
-                    potencial_html = ""
-                    fecha_earnings = "N/A"
-                    insiders_fmt = "N/A"
-                    inst_fmt = "N/A"
+                    # 2. Llamada a la API de FINNHUB (Triple Turbo VIP)
+                    import requests
+                    API_FINNHUB = "d7c2s5hr01quh9fcasf0d7c2s5hr01quh9fcasfg"
                     
-                    # Intentamos sacar la info de Yahoo con escudo anti-errores
+                    recom, precio_obj_str, fecha_earnings, sector, insider_trend = "N/A", "N/A", "N/A", "N/A", "N/A"
+                    
                     try:
-                        ticker_obj = yf.Ticker(simbolo_yahoo)
-                        info = ticker_obj.info
+                        # Recomendación
+                        r_rec = requests.get(f"https://finnhub.io/api/v1/stock/recommendation?symbol={simbolo_real}&token={API_FINNHUB}").json()
+                        if r_rec and len(r_rec) > 0:
+                            lat = r_rec[0]
+                            sb, b, h, s, ss = lat.get('strongBuy',0), lat.get('buy',0), lat.get('hold',0), lat.get('sell',0), lat.get('strongSell',0)
+                            if sb + b > h and sb + b > s + ss: recom = "COMPRA FUERTE 🟢"
+                            elif s + ss > h and s + ss > b + sb: recom = "VENTA 🔴"
+                            else: recom = "MANTENER 🟡"
+                            
+                        # Precio Objetivo
+                        r_pt = requests.get(f"https://finnhub.io/api/v1/stock/price-target?symbol={simbolo_real}&token={API_FINNHUB}").json()
+                        if r_pt and 'targetMean' in r_pt and r_pt['targetMean'] > 0:
+                            precio_obj_str = f"{r_pt['targetMean']:.2f}"
+                            
+                        # Sector
+                        r_prof = requests.get(f"https://finnhub.io/api/v1/stock/profile2?symbol={simbolo_real}&token={API_FINNHUB}").json()
+                        if r_prof and 'finnhubIndustry' in r_prof:
+                            sector = r_prof['finnhubIndustry']
+                            
+                        # Insiders
+                        hoy = datetime.datetime.today().strftime('%Y-%m-%d')
+                        pasado = (datetime.datetime.today() - datetime.timedelta(days=180)).strftime('%Y-%m-%d')
+                        futuro = (datetime.datetime.today() + datetime.timedelta(days=90)).strftime('%Y-%m-%d')
                         
-                        if isinstance(info, dict):
-                            sector = info.get('sector', 'N/A')
-                            industria = info.get('industry', 'N/A')
+                        r_ins = requests.get(f"https://finnhub.io/api/v1/stock/insider-sentiment?symbol={simbolo_real}&from={pasado}&to={hoy}&token={API_FINNHUB}").json()
+                        if r_ins and 'data' in r_ins and len(r_ins['data']) > 0:
+                            mspr = r_ins['data'][-1].get('mspr', 0)
+                            if mspr > 5: insider_trend = "COMPRA MASIVA 🟢"
+                            elif mspr > 0: insider_trend = "COMPRANDO ↗️"
+                            elif mspr < -5: insider_trend = "VENTA MASIVA 🔴"
+                            elif mspr < 0: insider_trend = "VENDIENDO ↘️"
+                            else: insider_trend = "NEUTRAL ⚪"
                             
-                            recom_raw = info.get('recommendationKey')
-                            if recom_raw: recom = str(recom_raw).replace('_', ' ').upper()
-                            
-                            precio_obj = info.get('targetMeanPrice')
-                            
-                            ins_pct = info.get('heldPercentInsiders')
-                            if ins_pct: insiders_fmt = f"{ins_pct * 100:.1f}%"
-                                
-                            inst_pct = info.get('heldPercentInstitutions')
-                            if inst_pct: inst_fmt = f"{inst_pct * 100:.1f}%"
-                            
-                        # Calendario de Earnings
-                        cal = ticker_obj.calendar
-                        if isinstance(cal, dict) and 'Earnings Date' in cal:
-                            fechas = cal['Earnings Date']
-                            if isinstance(fechas, list) and len(fechas) > 0 and pd.notnull(fechas[0]):
-                                fecha_earnings = fechas[0].strftime("%d/%m/%Y")
-                    except:
-                        pass # Si Yahoo falla, los valores por defecto "N/A" salvan la app
+                        # Earnings
+                        r_earn = requests.get(f"https://finnhub.io/api/v1/calendar/earnings?from={hoy}&to={futuro}&symbol={simbolo_real}&token={API_FINNHUB}").json()
+                        if r_earn and 'earningsCalendar' in r_earn and len(r_earn['earningsCalendar']) > 0:
+                            fecha_raw = r_earn['earningsCalendar'][0].get('date', 'N/A')
+                            if fecha_raw != 'N/A':
+                                fecha_earnings = datetime.datetime.strptime(fecha_raw, "%Y-%m-%d").strftime("%d/%m/%Y")
+                    except Exception as e:
+                        pass # Si Finnhub falla con algún ticker raro, se quedan en N/A
 
-                    # 3. Calculamos el precio actual
+                    # 3. Precio actual
                     datos_limpios = datos.dropna(subset=['Close'])
                     cierres = datos_limpios['Close'].squeeze()
                     precio_actual = float(cierres.iloc[-1])
                     s_moneda_visual = obtener_simbolo_moneda(simbolo_real)
                     
-                    # Formateo del Potencial si hay precio objetivo
-                    try:
-                        if precio_obj and isinstance(precio_obj, (int, float)) and precio_obj > 0:
-                            precio_obj_str = f"{precio_obj:,.2f} {s_moneda_visual}"
-                            potencial = ((precio_obj / precio_actual) - 1) * 100
-                            color_pot = "#228B22" if potencial > 0 else "#FF3333"
-                            potencial_html = f'<span style="color: {color_pot}; font-weight: bold; margin-left: 5px;">({potencial:+.1f}%)</span>'
-                    except:
-                        pass
-                        
-                    # 4. CONVERSIÓN A DÓLARES INFALIBLE
-                    precio_usd = None
-                    mapa_divisas = { "€": "EURUSD=X", "¥": "JPYUSD=X", "GBp": "GBPUSD=X", "kr": "SEKUSD=X", "₹": "INRUSD=X" }
-                    ticker_divisa = mapa_divisas.get(s_moneda_visual)
-                    
-                    if ticker_divisa:
-                        try:
-                            div_data = yf.download(ticker_divisa, period="1d", progress=False)
-                            if isinstance(div_data.columns, pd.MultiIndex): div_data.columns = div_data.columns.get_level_values(0)
-                            if not div_data.empty and 'Close' in div_data.columns:
-                                tasa = float(div_data['Close'].dropna().iloc[-1])
-                                precio_usd = (precio_actual * tasa) / 100 if s_moneda_visual == "GBp" else (precio_actual * tasa)
-                        except: pass
+                    # Calcular potencial si tenemos precio objetivo
+                    if precio_obj_str != "N/A":
+                        precio_obj_float = float(precio_obj_str)
+                        potencial = ((precio_obj_float / precio_actual) - 1) * 100
+                        potencial_texto = f"({potencial:+.1f}%)"
+                        precio_obj_final = f"{precio_obj_float:,.2f} {s_moneda_visual} {potencial_texto}"
+                    else:
+                        precio_obj_final = "N/A"
 
-                    # 5. PINTAR EL HTML DEL PRECIO
-                    texto_conversion = f'<span style="font-size: 18px; color: #7f8c8d; font-weight: 400; margin-left: 10px;">(≈ {precio_usd:,.2f} $)</span>' if precio_usd else ""
-                    html_metrica = f"""
-                    <div style="background-color: #f8f9fa; padding: 15px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); margin-bottom: 20px;">
-                        <p style="margin: 0; font-size: 14px; color: rgba(49, 51, 63, 0.7); font-weight: 400;">Valor Actual ({simbolo_real})</p>
-                        <h2 style="margin: 0; font-weight: 700; color: #1f1f1f; font-size: 32px;">
-                            {precio_actual:,.2f} {s_moneda_visual}{texto_conversion}
-                        </h2>
-                    </div>
-                    """
-                    st.markdown(html_metrica, unsafe_allow_html=True)
+                    # 4. Mostrar Título y Sector
+                    st.markdown(f"## {simbolo_real} - {precio_actual:,.2f} {s_moneda_visual}")
+                    st.caption(f"🏢 **Sector:** {sector}")
                     
-                    # 6. ---> PINTAR PANELES DEL TRIPLE TURBO <---
-                    html_turbos = f"""
-                    <div style="display: flex; gap: 15px; margin-bottom: 20px;">
-                        <div style="flex: 1; background: #ffffff; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); border-top: 4px solid #1E90FF;">
-                            <div style="font-size: 12px; color: #7f8c8d; text-transform: uppercase; font-weight: bold; margin-bottom: 5px;">🏦 Wall Street</div>
-                            <div style="font-size: 15px; color: #2c3e50;"><b>Consenso:</b> {recom}</div>
-                            <div style="font-size: 15px; color: #2c3e50; margin-top: 5px;"><b>Precio Obj:</b> {precio_obj_str} {potencial_html}</div>
-                        </div>
-                        <div style="flex: 1; background: #ffffff; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); border-top: 4px solid #f39c12;">
-                            <div style="font-size: 12px; color: #7f8c8d; text-transform: uppercase; font-weight: bold; margin-bottom: 5px;">📅 Próximos Earnings</div>
-                            <div style="font-size: 18px; color: #2c3e50; font-weight: bold; margin-top: 5px;">{fecha_earnings}</div>
-                        </div>
-                        <div style="flex: 1; background: #ffffff; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); border-top: 4px solid #8e44ad;">
-                            <div style="font-size: 12px; color: #7f8c8d; text-transform: uppercase; font-weight: bold; margin-bottom: 5px;">👔 Manos Fuertes</div>
-                            <div style="font-size: 15px; color: #2c3e50;"><b>Insiders:</b> {insiders_fmt}</div>
-                            <div style="font-size: 15px; color: #2c3e50; margin-top: 5px;"><b>Fondos:</b> {inst_fmt}</div>
-                        </div>
-                    </div>
-                    """
-                    st.markdown(html_turbos, unsafe_allow_html=True)
+                    # 5. PANELES TRIPLE TURBO NATIVOS DE STREAMLIT (Infalibles)
+                    st.markdown("---")
+                    c1, c2, c3 = st.columns(3)
+                    
+                    with c1:
+                        st.info(f"**🏦 Analistas Wall Street**\n\nConsenso: **{recom}**\n\nPrecio Obj: **{precio_obj_final}**")
+                    with c2:
+                        st.warning(f"**📅 Próximos Resultados**\n\nFecha Estimada:\n\n**{fecha_earnings}**")
+                    with c3:
+                        st.success(f"**👔 Directivos (Insiders)**\n\nÚltimos 6 meses:\n\n**{insider_trend}**")
+                    st.markdown("---")
 
-                    if sector != "N/A": 
-                        st.caption(f"🏢 **Sector:** {sector} | **Industria:** {industria}")
-                    
-                    # 7. Gráfica
+                    # 6. Gráfica
                     fig = go.Figure()
                     x_data = datos_limpios.index.get_level_values(0) if isinstance(datos_limpios.index, pd.MultiIndex) else datos_limpios.index
                     fig.add_trace(go.Scatter(x=x_data, y=np.ravel(cierres), mode='lines', name='Precio', line=dict(color='#228B22', width=2)))
