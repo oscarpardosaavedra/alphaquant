@@ -270,36 +270,41 @@ def a_yahoo(ticker):
 
 def obtener_estado_mercados():
     ahora_utc = datetime.datetime.now(pytz.utc)
+    hora_madrid = ahora_utc.astimezone(pytz.timezone('Europe/Madrid'))
+    t_madrid = hora_madrid.time()
     
-    hora_ny = ahora_utc.astimezone(pytz.timezone('US/Eastern'))
-    t_ny = hora_ny.time()
-    if hora_ny.weekday() >= 5: est_us = "🔴 Cerrado"
-    elif datetime.time(4, 0) <= t_ny < datetime.time(9, 30): est_us = "🟡 Pre-Market"
-    elif datetime.time(9, 30) <= t_ny < datetime.time(16, 0): est_us = "🟢 Abierto"
-    elif datetime.time(16, 0) <= t_ny < datetime.time(20, 0): est_us = "🔵 Post-Market"
-    else: est_us = "🔴 Cerrado"
+    # Horarios oficiales unificados a Hora Peninsular (Madrid)
+    horario_us = "15:30 - 22:00"
+    horario_eu = "09:00 - 17:30"
+    horario_as = "02:00 - 09:00"
 
-    hora_eu = ahora_utc.astimezone(pytz.timezone('Europe/Madrid'))
-    t_eu = hora_eu.time()
-    if hora_eu.weekday() >= 5: est_eu = "🔴 Cerrado"
-    elif datetime.time(9, 0) <= t_eu < datetime.time(17, 30): est_eu = "🟢 Abierto"
-    else: est_eu = "🔴 Cerrado"
+    if hora_madrid.weekday() >= 5: 
+        est_us, est_eu, est_as = "🔴 Cerrado", "🔴 Cerrado", "🔴 Cerrado"
+    else:
+        # EEUU (Wall Street)
+        if datetime.time(10, 0) <= t_madrid < datetime.time(15, 30): est_us = "🟡 Pre-Market"
+        elif datetime.time(15, 30) <= t_madrid < datetime.time(22, 0): est_us = "🟢 Abierto"
+        elif datetime.time(22, 0) <= t_madrid <= datetime.time(23, 59): est_us = "🔵 Post-Market"
+        else: est_us = "🔴 Cerrado"
 
-    hora_as = ahora_utc.astimezone(pytz.timezone('Asia/Tokyo'))
-    if hora_as.weekday() >= 5: est_as = "🔴 Cerrado"
-    elif datetime.time(9, 0) <= hora_as.time() <= datetime.time(15, 0): est_as = "🟢 Abierto"
-    else: est_as = "🔴 Cerrado"
+        # Europa
+        if datetime.time(9, 0) <= t_madrid < datetime.time(17, 30): est_eu = "🟢 Abierto"
+        else: est_eu = "🔴 Cerrado"
+
+        # Asia
+        if datetime.time(2, 0) <= t_madrid < datetime.time(9, 0): est_as = "🟢 Abierto"
+        else: est_as = "🔴 Cerrado"
     
-    return est_us, est_eu, est_as
+    return {"estado": est_us, "horario": horario_us}, {"estado": est_eu, "horario": horario_eu}, {"estado": est_as, "horario": horario_as}
 
 # ==========================================
 # 4. CABECERA Y SEMÁFOROS
 # ==========================================
 us, eu, asia = obtener_estado_mercados()
 col1, col2, col3 = st.columns(3)
-col1.info(f"**EEUU:** {us}")
-col2.info(f"**Europa:** {eu}")
-col3.info(f"**Asia:** {asia}")
+col1.info(f"**🇺🇸 EE.UU:** {us['estado']} | 🕒 {us['horario']} (Hora Madrid)")
+col2.info(f"**🇪🇺 Europa:** {eu['estado']} | 🕒 {eu['horario']} (Hora Madrid)")
+col3.info(f"**⛩️ Asia:** {asia['estado']} | 🕒 {asia['horario']} (Hora Madrid)")
 st.markdown("---")
 
 tab1, tab2, tab3 = st.tabs(["🔬 Análisis Individual", "🎯 Cazar Alpha (Radar)", "🏆 Sala de Trofeos"])
@@ -393,6 +398,17 @@ with tab2:
     elif btn_asia: mercado_objetivo = "Asia"
 
     if mercado_objetivo:
+        # --- NUEVO: AVISOS DE MERCADO CERRADO ---
+        if mercado_objetivo == "EEUU" and "Cerrado" in us["estado"]:
+            st.warning("⚠️ **Aviso:** Wall Street está cerrado ahora mismo. Los datos corresponden al último cierre.")
+        elif mercado_objetivo == "Europa" and "Cerrado" in eu["estado"]:
+            st.warning("⚠️ **Aviso:** El mercado europeo está cerrado. Los datos corresponden al último cierre.")
+        elif mercado_objetivo == "Asia" and "Cerrado" in asia["estado"]:
+            st.warning("⚠️ **Aviso:** El mercado asiático está cerrado. Los datos corresponden al último cierre.")
+        elif mercado_objetivo == "Todos" and "Cerrado" in us["estado"] and "Cerrado" in eu["estado"] and "Cerrado" in asia["estado"]:
+            st.warning("⚠️ **Aviso:** Todos los mercados globales están cerrados en este momento.")
+        # ----------------------------------------
+
         tickers_a_escanear = [t for t in tickers_nombres.keys() if mercado_objetivo == "Todos" or obtener_region(t) == mercado_objetivo]
         
         st.info(f"Iniciando escaneo del algoritmo para: **{mercado_objetivo}** ({len(tickers_a_escanear)} activos)...")
