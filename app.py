@@ -343,8 +343,12 @@ with tab1:
                             
                             recom_raw = info.get('recommendationKey')
                     if isinstance(info, dict):
-                        # Todo este bloque tiene que tener 4 espacios más que el 'if'
+                        # #### ESTE BLOQUE TIENE QUE ESTAR MÁS A LA DERECHA ####
                         sector = info.get('sector', 'Sin noticias')
+                        
+                        # Rellenamos el espacio debajo del desplegable
+                        if sector != "Sin noticias":
+                            espacio_sector.markdown(f"🏢 **Sector:** {sector}")
                         
                         recom_raw = info.get('recommendationKey')
                         if recom_raw:
@@ -358,7 +362,8 @@ with tab1:
                             recom = traducciones.get(recom_raw.lower(), str(recom_raw).replace('_', ' ').upper())
                         
                         p_obj = info.get('targetMeanPrice')
-                            if p_obj and p_obj > 0: precio_obj_str = str(p_obj)
+                        if p_obj and p_obj > 0: 
+                            precio_obj_str = str(p_obj)
                             
                         # Calendario de Yahoo (Plan A para Earnings)
                         try:
