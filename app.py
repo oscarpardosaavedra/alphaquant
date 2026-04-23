@@ -296,7 +296,7 @@ col2.info(f"**Europa:** {eu['estado']} | Hora: {eu['horario']} (Madrid)")
 col3.info(f"**Asia:** {asia['estado']} | Hora: {asia['horario']} (Madrid)")
 st.markdown("---")
 
-tab1, tab2, tab3, tab4 = st.tabs(["🔬 Análisis Individual", "⚔️ Batalla de Alpha", "🎯 Cazar Alpha (Radar)", "🏆 Sala de Trofeos"])
+tab1, tab2, tab3, tab4 = st.tabs(["🔬 Análisis Individual", "⚔️ Análisis Colectivo", "🎯 Cazar Alpha (Radar)", "🏆 Sala de Trofeos"])
 
 # ------------------------------------------
 # PESTAÑA 1: VISOR DE GRÁFICOS (MOTOR HÍBRIDO YAHOO + FINNHUB)
@@ -462,7 +462,7 @@ with tab1:
 # PESTAÑA 2: BATALLA DE ALPHA (COMPARATIVA)
 # ------------------------------------------
 with tab2:
-    st.markdown("### ⚔️ Batalla de Alpha (Comparativa Múltiple)")
+    st.markdown("### ⚔️ Comparativa Múltiple")
     st.write("Selecciona varios activos para ver cuál está rindiendo mejor en un mismo periodo de tiempo. Todos empezarán en Base 0 (0% de rendimiento) para una comparación justa.")
     
     col_comp1, col_comp2 = st.columns([3, 1])
