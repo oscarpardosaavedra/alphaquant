@@ -335,56 +335,52 @@ with tab1:
                     datos.columns = datos.columns.get_level_values(0)
 
                 if not datos.empty and 'Close' in datos.columns:
-                    # 2. Obtenemos la moneda real y metadata de Yahoo
+                    # 2. Obtenemos metadata de Yahoo (Con cuidado)
                     try:
                         ticker_obj = yf.Ticker(simbolo_yahoo)
-                        info = ticker_obj.info
-                        # Sacamos el código de moneda (JPY, EUR, etc.)
-                        moneda_iso = info.get('currency', 'USD')
-                        sector = info.get('sector', 'N/A')
-                        industria = info.get('industry', 'N/A')
+                        sector = ticker_obj.info.get('sector', 'N/A')
+                        industria = ticker_obj.info.get('industry', 'N/A')
                     except:
-                        moneda_iso = "USD"
                         sector, industria = "N/A", "N/A"
 
-                    # 3. Calculamos el precio actual
+                    # 3. Calculamos el precio actual y el símbolo visual seguro
                     datos_limpios = datos.dropna(subset=['Close'])
                     cierres = datos_limpios['Close'].squeeze()
                     precio_actual = float(cierres.iloc[-1])
-                    
-                    # Símbolo visual (el que ya teníamos)
                     s_moneda_visual = obtener_simbolo_moneda(simbolo_real)
                     
-                    # ---> 4. CONVERSIÓN A DÓLARES INTELIGENTE (BLINDADA) <---
+                    # 4. ---> CONVERSIÓN A DÓLARES INFALIBLE <---
                     precio_usd = None
-                    if moneda_iso != "USD":
-                        # Yahoo siempre usa el formato [MONEDA]USD=X para tipos de cambio
-                        ticker_divisa = f"{moneda_iso}USD=X"
+                    mapa_divisas = {
+                        "€": "EURUSD=X",
+                        "¥": "JPYUSD=X",
+                        "GBp": "GBPUSD=X",
+                        "kr": "SEKUSD=X",
+                        "₹": "INRUSD=X"
+                    }
+                    
+                    ticker_divisa = mapa_divisas.get(s_moneda_visual)
+                    
+                    if ticker_divisa:
                         try:
-                            # Descargamos el valor del cambio actual
+                            # Descargamos el valor del cambio
                             div_data = yf.download(ticker_divisa, period="1d", progress=False)
                             if isinstance(div_data.columns, pd.MultiIndex):
                                 div_data.columns = div_data.columns.get_level_values(0)
                             
                             if not div_data.empty and 'Close' in div_data.columns:
                                 tasa = float(div_data['Close'].dropna().iloc[-1])
-                                
-                                # Ajuste especial para Londres: si son peniques (GBp/GBX), dividimos por 100
-                                if moneda_iso in ["GBp", "GBX"]:
-                                    precio_usd = (precio_actual * tasa) / 100
-                                else:
-                                    precio_usd = precio_actual * tasa
+                                # Ajuste especial para Londres (peniques)
+                                precio_usd = (precio_actual * tasa) / 100 if s_moneda_visual == "GBp" else (precio_actual * tasa)
                         except:
-                            pass # Si falla el cambio, precio_usd sigue siendo None
+                            pass # Si Yahoo falla con la divisa, no rompemos nada
 
-                    # 5. Pintamos la métrica con diseño profesional
-                    # Preparamos la parte de la conversión SOLO si logramos calcular precio_usd
+                    # 5. Preparamos el HTML
                     if precio_usd is not None:
                         texto_conversion = f'<span style="font-size: 18px; color: #7f8c8d; font-weight: 400; margin-left: 10px;">(≈ {precio_usd:,.2f} $)</span>'
                     else:
                         texto_conversion = ""
 
-                    # HTML final
                     html_metrica = f"""
                     <div style="background-color: #f8f9fa; padding: 15px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); margin-bottom: 20px;">
                         <p style="margin: 0; font-size: 14px; color: rgba(49, 51, 63, 0.7); font-weight: 400;">Valor Actual ({simbolo_real})</p>
