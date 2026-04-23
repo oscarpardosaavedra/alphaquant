@@ -299,17 +299,19 @@ st.markdown("---")
 tab1, tab2, tab3, tab4 = st.tabs(["🔬 Análisis Individual", "⚔️ Análisis Colectivo", "🎯 Cazar Alpha (Radar)", "🏆 Sala de Trofeos"])
 
 # ------------------------------------------
-# PESTAÑA 1: VISOR DE GRÁFICOS (DISEÑO Y POSICIONES OPTIMIZADOS)
+# PESTAÑA 1: VISOR DE GRÁFICOS (LOGO ARRIBA + DISEÑO LIMPIO)
 # ------------------------------------------
 with tab1:
     st.markdown("### 🔍 Selector de Activos")
     
+    # 1. Ajustamos las columnas para hacerle sitio al logo al lado del buscador
     col_buscador, col_logo, col_espacio = st.columns([1.5, 0.5, 2])
     with col_buscador:
         ticker_elegido = st.selectbox("Elige la empresa que quieres revisar:", opciones_desplegable)
     with col_logo:
         espacio_logo = st.empty() # Hueco para el logo
         
+    # 2. Huecos a ancho completo para Descripción y Sector
     espacio_descripcion = st.empty() 
     espacio_sector = st.empty()
     
@@ -318,12 +320,7 @@ with tab1:
         simbolo_yahoo = a_yahoo(simbolo_real)
         st.markdown("---")
         
-        # ---> 1. RESERVAMOS EL SITIO ARRIBA PARA LAS CAJAS <---
-        contenedor_cajas = st.container()
-        
-        # ---> 2. PONEMOS LOS BOTONES DE TIEMPO AQUÍ ABAJO (Justo encima del gráfico) <---
-        st.markdown("<br>", unsafe_allow_html=True) # Un poco de aire
-        periodo = st.radio("⏱️ Rango de tiempo del gráfico:", ["1 Mes", "3 Meses", "6 Meses", "1 Año", "5 Años", "10 Años", "Máximo"], index=1, horizontal=True)
+        periodo = st.radio("Rango de tiempo:", ["1 Mes", "3 Meses", "6 Meses", "1 Año", "5 Años", "10 Años", "Máximo"], index=1, horizontal=True)
         mapa_tiempo = {"1 Mes": "1mo", "3 Meses": "3mo", "6 Meses": "6mo", "1 Año": "1y", "5 Años": "5y", "10 Años": "10y", "Máximo": "max"}
         
         with st.spinner(f"Cargando datos de {simbolo_real} y rastreando Wall Street..."):
@@ -357,7 +354,7 @@ with tab1:
                                 if len(desc_corta) > 300: desc_corta = desc_corta[:297] + "..."
                                 espacio_descripcion.markdown(f"<div style='font-size: 14px; color: #666; margin-top: 5px; margin-bottom: 5px;'><i>{desc_corta}</i></div>", unsafe_allow_html=True)
                             
-                            # Sector
+                            # Sector (Con la negrita arreglada sin asteriscos)
                             if sector != "Sin noticias":
                                 espacio_sector.markdown(f"<div style='font-size: 14px; margin-bottom: 10px;'>🏢 <b>Sector:</b> {sector}</div>", unsafe_allow_html=True)
                             
@@ -394,18 +391,22 @@ with tab1:
                         pasado = (datetime.datetime.today() - datetime.timedelta(days=180)).strftime('%Y-%m-%d')
                         sym_finnhub = simbolo_yahoo if "." in simbolo_yahoo else simbolo_real
                         
+                        # --- FILTRO ANTIBASURA PARA EL LOGO ---
                         logo_url = ""
                         try:
                             r_prof = requests.get(f"https://finnhub.io/api/v1/stock/profile2?symbol={sym_finnhub}&token={API_FINNHUB}", timeout=3).json()
                             if isinstance(r_prof, dict) and r_prof.get('logo'):
                                 url_temp = r_prof['logo']
+                                # Si empieza por http, es una imagen real. Si no, lo ignoramos.
                                 if url_temp.startswith("http"): 
                                     logo_url = url_temp
                         except: pass
 
                         if logo_url:
+                            # Lo pintamos al lado del buscador
                             espacio_logo.markdown(f"<img src='{logo_url}' style='height: 40px; max-width: 100px; object-fit: contain; margin-top: 25px;'/>", unsafe_allow_html=True)
                         else:
+                            # Si no hay, dejamos el hueco limpio
                             espacio_logo.empty()
                         
                         # Insiders
@@ -456,35 +457,34 @@ with tab1:
 
                     t_conv = f'<span style="font-size:18px;color:#7f8c8d;font-weight:400;margin-left:10px;">(≈ {precio_usd:,.2f} $)</span>' if precio_usd else ""
                     
-                    # ---> 3. MANDAMOS LAS CAJAS AL HUECO RESERVADO ARRIBA <---
-                    with contenedor_cajas:
-                        st.markdown(f"""
-                        <div style="background-color:#f8f9fa;padding:15px;border-radius:10px;box-shadow:0 4px 6px rgba(0,0,0,0.05);margin-bottom:20px;">
-                            <div style="display:flex;justify-content:space-between;align-items:center;">
-                                <div>
-                                    <p style="margin:0;font-size:14px;color:rgba(49,51,63,0.7);">Valor Actual ({simbolo_real})</p>
-                                    <h2 style="margin:0;font-weight:700;color:#1f1f1f;font-size:32px;">{precio_actual:,.2f} {s_moneda_visual}{t_conv}</h2>
-                                </div>
+                    # 4. RENDERIZADO HTML (Sin logo en la caja del precio)
+                    st.markdown(f"""
+                    <div style="background-color:#f8f9fa;padding:15px;border-radius:10px;box-shadow:0 4px 6px rgba(0,0,0,0.05);margin-bottom:20px;">
+                        <div style="display:flex;justify-content:space-between;align-items:center;">
+                            <div>
+                                <p style="margin:0;font-size:14px;color:rgba(49,51,63,0.7);">Valor Actual ({simbolo_real})</p>
+                                <h2 style="margin:0;font-weight:700;color:#1f1f1f;font-size:32px;">{precio_actual:,.2f} {s_moneda_visual}{t_conv}</h2>
                             </div>
                         </div>
-                        <div style="display:flex;gap:15px;margin-bottom:20px;">
-                            <div title="Consenso de analistas de inversión y precio objetivo promedio a 12 meses." style="flex:1;background:#fff;padding:15px;border-radius:8px;box-shadow:0 2px 4px rgba(0,0,0,0.05);border-top:4px solid #1E90FF;cursor:help;">
-                                <div style="font-size:12px;color:#7f8c8d;text-transform:uppercase;font-weight:bold;margin-bottom:5px;">🏦 Wall Street ℹ️</div>
-                                <div style="font-size:14px;color:#2c3e50;"><b>Consenso:</b> {recom}</div>
-                                <div style="font-size:14px;color:#2c3e50;margin-top:5px;"><b>Precio Obj:</b> {precio_obj_final}</div>
-                            </div>
-                            <div title="Próxima fecha confirmada o estimada de resultados financieros trimestrales." style="flex:1;background:#fff;padding:15px;border-radius:8px;box-shadow:0 2px 4px rgba(0,0,0,0.05);border-top:4px solid #f39c12;cursor:help;">
-                                <div style="font-size:12px;color:#7f8c8d;text-transform:uppercase;font-weight:bold;margin-bottom:5px;">📅 Próximos Earnings ℹ️</div>
-                                <div style="font-size:18px;color:#2c3e50;font-weight:bold;margin-top:5px;">{fecha_earnings}</div>
-                            </div>
-                            <div title="Muestra si los directivos (CEO, dueños) han estado comprando o vendiendo acciones propias recientemente." style="flex:1;background:#fff;padding:15px;border-radius:8px;box-shadow:0 2px 4px rgba(0,0,0,0.05);border-top:4px solid #8e44ad;cursor:help;">
-                                <div style="font-size:12px;color:#7f8c8d;text-transform:uppercase;font-weight:bold;margin-bottom:5px;">👔 Manos Fuertes ℹ️</div>
-                                <div style="font-size:14px;color:#2c3e50;"><b>Directivos (6M):</b> {insider_trend}</div>
-                            </div>
+                    </div>
+                    <div style="display:flex;gap:15px;margin-bottom:20px;">
+                        <div title="Consenso de analistas de inversión y precio objetivo promedio a 12 meses." style="flex:1;background:#fff;padding:15px;border-radius:8px;box-shadow:0 2px 4px rgba(0,0,0,0.05);border-top:4px solid #1E90FF;cursor:help;">
+                            <div style="font-size:12px;color:#7f8c8d;text-transform:uppercase;font-weight:bold;margin-bottom:5px;">🏦 Wall Street ℹ️</div>
+                            <div style="font-size:14px;color:#2c3e50;"><b>Consenso:</b> {recom}</div>
+                            <div style="font-size:14px;color:#2c3e50;margin-top:5px;"><b>Precio Obj:</b> {precio_obj_final}</div>
                         </div>
-                        """, unsafe_allow_html=True)
+                        <div title="Próxima fecha confirmada o estimada de resultados financieros trimestrales." style="flex:1;background:#fff;padding:15px;border-radius:8px;box-shadow:0 2px 4px rgba(0,0,0,0.05);border-top:4px solid #f39c12;cursor:help;">
+                            <div style="font-size:12px;color:#7f8c8d;text-transform:uppercase;font-weight:bold;margin-bottom:5px;">📅 Próximos Earnings ℹ️</div>
+                            <div style="font-size:18px;color:#2c3e50;font-weight:bold;margin-top:5px;">{fecha_earnings}</div>
+                        </div>
+                        <div title="Muestra si los directivos (CEO, dueños) han estado comprando o vendiendo acciones propias recientemente." style="flex:1;background:#fff;padding:15px;border-radius:8px;box-shadow:0 2px 4px rgba(0,0,0,0.05);border-top:4px solid #8e44ad;cursor:help;">
+                            <div style="font-size:12px;color:#7f8c8d;text-transform:uppercase;font-weight:bold;margin-bottom:5px;">👔 Manos Fuertes ℹ️</div>
+                            <div style="font-size:14px;color:#2c3e50;"><b>Directivos (6M):</b> {insider_trend}</div>
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
 
-                    # 5. Gráfica (Aparece de forma natural debajo de los botones de tiempo)
+                    # 5. Gráfica
                     fig = go.Figure()
                     fig.add_trace(go.Scatter(x=datos_limpios.index, y=datos_limpios['Close'], mode='lines', name='Precio', line=dict(color='#228B22', width=2)))
                     fig.update_layout(title=f"Histórico: {ticker_elegido}", template='plotly_dark', margin=dict(l=0, r=0, t=40, b=0), hovermode="x unified")
