@@ -324,25 +324,30 @@ with tab1:
         
         with st.spinner(f"Cargando datos en vivo de {simbolo_real}..."):
             try:
+                # Descarga limpia
                 datos = yf.download(simbolo_yahoo, period=mapa_tiempo[periodo], progress=False)
                 
-                if not datos.empty:
-                    # 1. Extraemos metadata de forma segura
+                # SI YAHOO ENVÍA TABLA DOBLE, LA SIMPLIFICAMOS
+                if isinstance(datos.columns, pd.MultiIndex):
+                    datos.columns = datos.columns.get_level_values(0)
+
+                if not datos.empty and 'Close' in datos.columns:
+                    # Metadata segura
                     try:
                         ticker_obj = yf.Ticker(simbolo_yahoo)
-                        sector = ticker_obj.info.get('sector', 'N/A')
-                        industria = ticker_obj.info.get('industry', 'N/A')
-                        resumen_largo = ticker_obj.info.get('longBusinessSummary', '')
+                        info = ticker_obj.info
+                        sector = info.get('sector', 'N/A')
+                        industria = info.get('industry', 'N/A')
                     except:
-                        sector, industria, resumen_largo = "N/A", "N/A", ""
+                        sector, industria = "N/A", "N/A"
 
-                    # 2. Precios
+                    # Precios y Moneda
                     datos_limpios = datos.dropna(subset=['Close'])
-                    cierres = datos_limpios['Close'].squeeze() if isinstance(datos_limpios['Close'], pd.DataFrame) else datos_limpios['Close']
+                    cierres = datos_limpios['Close'].squeeze()
                     precio_actual = float(cierres.iloc[-1])
                     s_moneda = obtener_simbolo_moneda(simbolo_real)
                     
-                    # 3. Lógica de Conversión a Dólares
+                    # Lógica de Conversión a Dólares
                     texto_mostrar = f"{precio_actual:,.2f} {s_moneda}"
                     if s_moneda != "$":
                         dict_divisas = {"€": "EURUSD=X", "¥": "JPYUSD=X", "GBp": "GBPUSD=X"}
@@ -356,17 +361,16 @@ with tab1:
                             except: pass
                     
                     st.metric(label=f"Valor Actual ({simbolo_real})", value=texto_mostrar)
+                    if sector != "N/A": st.caption(f"🏢 **Sector:** {sector} | **Industria:** {industria}")
                     
-                    if sector != "N/A": 
-                        st.caption(f"🏢 **Sector:** {sector} | **Industria:** {industria}")
-                    
+                    # Gráfica
                     fig = go.Figure()
                     x_data = datos_limpios.index.get_level_values(0) if isinstance(datos_limpios.index, pd.MultiIndex) else datos_limpios.index
                     fig.add_trace(go.Scatter(x=x_data, y=np.ravel(cierres), mode='lines', name='Precio', line=dict(color='#228B22', width=2)))
                     fig.update_layout(title=f"Cotización: {ticker_elegido}", template='plotly_dark', margin=dict(l=0, r=0, t=40, b=0), xaxis_title="", yaxis_title=f"Precio ({s_moneda})", hovermode="x unified")
                     st.plotly_chart(fig, use_container_width=True)
                 else:
-                    st.warning("⚠️ Sin datos históricos disponibles para este periodo.")
+                    st.warning("⚠️ No se encontraron columnas de precio para este activo.")
             except Exception as e:
                 st.error(f"⚠️ Error al cargar la gráfica. Detalle: {e}")
 
@@ -428,13 +432,14 @@ with tab2:
         for i, ticker in enumerate(tickers_a_escanear):
             porcentaje = int(((i + 1) / len(tickers_a_escanear)) * 100)
             
-            # Formateamos el ticker a 10 espacios y el porcentaje a 3 espacios
-            # Usamos un bloque de texto preformateado para que no baile nada
-            ticker_fmt = ticker.ljust(10).replace(" ", "\u2007")
-            pct_fmt = str(porcentaje).rjust(3).replace(" ", "\u2007")
+            # Formateo ultra-estricto: Ticker (10 huecos) + Barra + Porcentaje (3 huecos)
+            # Usamos caracteres de fuente monoespaciada para que nada baile
+            t_fijo = ticker.ljust(10).replace(" ", " ")
+            p_fijo = str(porcentaje).rjust(3)
             
+            # El truco: Usar el carácter '`' para forzar fuente de código en Streamlit
             barra_progreso.progress((i + 1) / len(tickers_a_escanear), 
-                                   text=f"⏳ Evaluando: {ticker_fmt} | {pct_fmt}%")
+                                   text=f"⏳ `Evaluando: {t_fijo} | {p_fijo}%`")
             try:
                 sym_yahoo = a_yahoo(ticker)
                 
