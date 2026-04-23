@@ -52,6 +52,17 @@ st.markdown("""
         margin-right: 5px; border: 1px solid #e1e8ed; cursor: help;
     }
     .stat-badge:hover { background: #e1e8ed; }
+    
+    /* ---> NUEVO: BARRA DE PROGRESO XXL Y VERDE <--- */
+    [data-testid="stProgress"] > div > div {
+        height: 25px !important;
+        border-radius: 15px !important;
+    }
+    [data-testid="stProgress"] > div > div > div {
+        height: 25px !important;
+        border-radius: 15px !important;
+        background-color: #228B22 !important; 
+    }
 </style>
 """, unsafe_allow_html=True)
 
