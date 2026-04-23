@@ -8,11 +8,23 @@ import pytz
 import gspread
 from google.oauth2.service_account import Credentials
 import time
+import requests # <-- NUEVO: Para simular un navegador humano
 
 # ==========================================
-# 1. CONFIGURACIÓN Y CONEXIÓN DB (BASE DE DATOS)
+# 1. CONFIGURACIÓN, DB Y SESIÓN ANTI-BANEO
 # ==========================================
 st.set_page_config(page_title="Alphaquant", page_icon="📈", layout="wide")
+
+# ESCUDO DEFINITIVO: Simulamos ser Google Chrome desde un PC Windows
+@st.cache_resource
+def obtener_sesion_segura():
+    session = requests.Session()
+    session.headers.update({
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+    })
+    return session
+
+sesion_yf = obtener_sesion_segura()
 
 def conectar_db():
     try:
@@ -51,7 +63,6 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# Banner Principal
 st.markdown("""
 <div style="background: linear-gradient(135deg, #0f2027 0%, #203a43 50%, #2c5364 100%); padding: 25px; border-radius: 12px; text-align: center; margin-bottom: 30px; box-shadow: 0 4px 8px rgba(0,0,0,0.1);">
     <h1 style="color: white; margin: 0; font-size: 2.8em; font-family: 'Segoe UI', Tahoma, sans-serif; letter-spacing: 2px;">📈 ALPHAQUANT</h1>
@@ -308,29 +319,32 @@ with tab1:
         
         with st.spinner(f"Cargando datos en vivo de {simbolo_real}..."):
             try:
-                ticker_obj = yf.Ticker(simbolo_yahoo)
-                datos = ticker_obj.history(period=mapa_tiempo[periodo])
+                # Usamos la sesión segura anti-baneo
+                datos = yf.download(simbolo_yahoo, period=mapa_tiempo[periodo], progress=False, session=sesion_yf)
                 
-                # ESCUDO ANTI-MULTIINDEX YAHOO FINANCE
                 if isinstance(datos.columns, pd.MultiIndex):
                     datos.columns = datos.columns.get_level_values(0)
                 
                 if 'Close' in datos.columns and not datos.empty:
-                    info = ticker_obj.info
-                    moneda_codigo = info.get('currency', 'USD')
+                    try:
+                        ticker_obj = yf.Ticker(simbolo_yahoo, session=sesion_yf)
+                        moneda_codigo = ticker_obj.fast_info.get('currency', 'USD')
+                        sector = ticker_obj.info.get('sector', '')
+                        industria = ticker_obj.info.get('industry', '')
+                        resumen_largo = ticker_obj.info.get('longBusinessSummary', '')
+                    except:
+                        moneda_codigo = "USD"
+                        sector, industria, resumen_largo = "", "", ""
                     
                     datos_limpios = datos.dropna(subset=['Close'])
-                    array_precios = datos_limpios['Close'].values.flatten()
+                    cierres = datos_limpios['Close'].squeeze() if isinstance(datos_limpios['Close'], pd.DataFrame) else datos_limpios['Close']
+                    array_precios = cierres.values.flatten()
                     precio_actual = float(array_precios[-1])
                     
                     simbolos_moneda = {"USD": "$", "EUR": "€", "GBP": "£", "GBp": "GBp", "JPY": "¥"}
                     s_moneda = simbolos_moneda.get(moneda_codigo, moneda_codigo)
                     
                     st.metric(label=f"Valor Actual ({simbolo_real})", value=f"{precio_actual:.2f} {s_moneda}")
-                    
-                    sector = info.get('sector', '')
-                    industria = info.get('industry', '')
-                    resumen_largo = info.get('longBusinessSummary', '')
                     
                     if sector and industria: 
                         st.caption(f"🏢 **Sector:** {sector} | **Industria:** {industria}")
@@ -340,8 +354,7 @@ with tab1:
                     
                     fig = go.Figure()
                     x_data = datos_limpios.index
-                    if isinstance(x_data, pd.MultiIndex):
-                        x_data = x_data.get_level_values(0)
+                    if isinstance(x_data, pd.MultiIndex): x_data = x_data.get_level_values(0)
                     
                     fig.add_trace(go.Scatter(x=x_data, y=array_precios, mode='lines', name='Precio', line=dict(color='#228B22', width=2)))
                     fig.update_layout(title=f"Cotización: {ticker_elegido}", template='plotly_dark', margin=dict(l=0, r=0, t=40, b=0), xaxis_title="", yaxis_title=f"Precio ({s_moneda})", hovermode="x unified")
@@ -391,11 +404,12 @@ with tab2:
         
         alphaSPY = 0
         try:
-            spy_hist = yf.Ticker("SPY").history(period="1mo")
-            if isinstance(spy_hist.columns, pd.MultiIndex):
-                spy_hist.columns = spy_hist.columns.get_level_values(0)
-            if 'Close' in spy_hist.columns and len(spy_hist) >= 21:
-                alphaSPY = ((float(spy_hist['Close'].iloc[-1]) / float(spy_hist['Close'].iloc[-21])) - 1) * 100
+            spy_data = yf.download("SPY", period="1mo", progress=False, session=sesion_yf)
+            if isinstance(spy_data.columns, pd.MultiIndex): spy_data.columns = spy_data.columns.get_level_values(0)
+            if 'Close' in spy_data.columns:
+                spy_cierres = spy_data['Close'].squeeze() if isinstance(spy_data['Close'], pd.DataFrame) else spy_data['Close']
+                if len(spy_cierres) >= 21:
+                    alphaSPY = ((float(spy_cierres.iloc[-1]) / float(spy_cierres.iloc[-21])) - 1) * 100
         except Exception: pass
 
         ws = conectar_db()
@@ -410,28 +424,36 @@ with tab2:
             barra_progreso.progress((i + 1) / len(tickers_a_escanear), text=f"Evaluando: {ticker}...")
             try:
                 sym_yahoo = a_yahoo(ticker)
-                stock = yf.Ticker(sym_yahoo)
                 
-                hist_full = stock.history(period="max")
-                if isinstance(hist_full.columns, pd.MultiIndex):
-                    hist_full.columns = hist_full.columns.get_level_values(0)
-                    
-                if 'Close' not in hist_full.columns or 'Volume' not in hist_full.columns:
+                # ESCUDO ANTI-BANEO ACTIVO
+                data_stock = yf.download(sym_yahoo, period="max", progress=False, session=sesion_yf)
+                
+                if isinstance(data_stock.columns, pd.MultiIndex): data_stock.columns = data_stock.columns.get_level_values(0)
+                if data_stock.empty or 'Close' not in data_stock.columns or 'Volume' not in data_stock.columns: 
+                    time.sleep(0.3)
                     continue
                     
-                hist_full = hist_full.dropna(subset=['Close'])
-                if hist_full.empty or len(hist_full) < 2: continue
+                data_stock = data_stock.dropna(subset=['Close'])
+                if len(data_stock) < 2: 
+                    time.sleep(0.3)
+                    continue
                 
-                array_cierres = hist_full['Close'].values.flatten()
-                array_vol = hist_full['Volume'].values.flatten()
+                cierres = data_stock['Close'].squeeze() if isinstance(data_stock['Close'], pd.DataFrame) else data_stock['Close']
+                volumen = data_stock['Volume'].squeeze() if isinstance(data_stock['Volume'], pd.DataFrame) else data_stock['Volume']
+                
+                array_cierres = cierres.values.flatten()
+                array_vol = volumen.values.flatten()
                 
                 precio_actual = float(array_cierres[-1])
                 precio_ayer = float(array_cierres[-2])
                 pct_hoy = ((precio_actual / precio_ayer) - 1) * 100 if precio_ayer > 0 else 0
                 
-                hist_1y = hist_full.iloc[-252:] if len(hist_full) >= 252 else hist_full
-                max_52 = float(hist_1y['High'].max())
-                min_52 = float(hist_1y['Low'].min())
+                hist_1y = data_stock.iloc[-252:] if len(data_stock) >= 252 else data_stock
+                max_alta = hist_1y['High'].squeeze() if isinstance(hist_1y['High'], pd.DataFrame) else hist_1y['High']
+                min_baja = hist_1y['Low'].squeeze() if isinstance(hist_1y['Low'], pd.DataFrame) else hist_1y['Low']
+                
+                max_52 = float(max_alta.max())
+                min_52 = float(min_baja.min())
                 
                 dist_suelo = ((precio_actual / min_52) - 1) * 100 if min_52 > 0 else 0
                 dist_max = ((precio_actual / max_52) - 1) * 100 if max_52 > 0 else 0
@@ -452,7 +474,8 @@ with tab2:
                 ret_max = ((precio_actual / start_price) - 1) * 100 if start_price > 0 else 0
                 
                 try:
-                    info = stock.info
+                    tk_obj = yf.Ticker(sym_yahoo, session=sesion_yf)
+                    info = tk_obj.info
                     per = info.get('trailingPE', 999)
                     if per is None: per = 999 
                 except:
@@ -594,7 +617,7 @@ with tab2:
                 }
             )
         else:
-            st.error("No se han podido descargar datos en este momento. Yahoo Finance podría estar limitando temporalmente tus peticiones.")
+            st.error("No se han podido descargar datos. Espera unos minutos e inténtalo de nuevo (Yahoo Rate Limit).")
 
 
 # ------------------------------------------
@@ -638,16 +661,16 @@ with tab3:
                     for d in data_sheet:
                         try:
                             tk_y = a_yahoo(d['Ticker'])
-                            tk = yf.Ticker(tk_y)
                             
-                            hist = tk.history(period="1y")
-                            if isinstance(hist.columns, pd.MultiIndex):
-                                hist.columns = hist.columns.get_level_values(0)
-                                
-                            if 'Close' not in hist.columns or hist.empty: continue
+                            hist = yf.download(tk_y, period="1y", progress=False, session=sesion_yf)
+                            if isinstance(hist.columns, pd.MultiIndex): hist.columns = hist.columns.get_level_values(0)
+                            if hist.empty or 'Close' not in hist.columns: continue
                             
                             hist = hist.dropna(subset=['Close'])
-                            array_cierres = hist['Close'].values.flatten()
+                            if hist.empty: continue
+                            
+                            cierres = hist['Close'].squeeze() if isinstance(hist['Close'], pd.DataFrame) else hist['Close']
+                            array_cierres = cierres.values.flatten()
                             
                             p_hoy = float(array_cierres[-1])
                             p_entrada = float(str(d['Precio_Aviso']).replace(',', '.'))
@@ -666,18 +689,18 @@ with tab3:
                                 hist_post = hist
                                 
                             if not hist_post.empty:
-                                high_series = hist_post['High']
-                                max_p_real = float(high_series.max())
+                                high_data = hist_post['High'].squeeze() if isinstance(hist_post['High'], pd.DataFrame) else hist_post['High']
+                                max_p_real = float(high_data.max())
                                 rent_max = ((max_p_real / p_entrada) - 1) * 100
                                 
-                                hit_5 = hist_post[high_series >= p_entrada * 1.05]
+                                hit_5 = hist_post[high_data >= p_entrada * 1.05]
                                 if not hit_5.empty:
                                     dias_ign = (hit_5.index[0].date() - hist_post.index[0].date()).days
                                     ignicion = f"{dias_ign}d"
                             
                             try:
-                                info = tk.info
-                                moneda = info.get('currency', 'USD')
+                                tk_obj_info = yf.Ticker(tk_y, session=sesion_yf)
+                                moneda = tk_obj_info.fast_info.get('currency', 'USD')
                             except:
                                 moneda = "USD"
                             
