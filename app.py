@@ -424,7 +424,9 @@ with tab2:
 
         for i, ticker in enumerate(tickers_a_escanear):
             porcentaje = int(((i + 1) / len(tickers_a_escanear)) * 100)
-            barra_progreso.progress((i + 1) / len(tickers_a_escanear), text=f"⏳ Evaluando: {ticker} | {porcentaje}%")
+            # Forzamos al ticker a ocupar 12 caracteres de ancho para que el % no se mueva
+            ticker_fijo = ticker.ljust(12) 
+            barra_progreso.progress((i + 1) / len(tickers_a_escanear), text=f"⏳ Evaluando: {ticker_fijo} | {porcentaje}%")
             try:
                 sym_yahoo = a_yahoo(ticker)
                 
