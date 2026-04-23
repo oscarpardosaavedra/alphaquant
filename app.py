@@ -342,7 +342,17 @@ with tab1:
                                espacio_sector.markdown(f"🏢 **Sector:** {sector}")
                             
                             recom_raw = info.get('recommendationKey')
-                            if recom_raw: recom = str(recom_raw).replace('_', ' ').upper()
+                    if recom_raw:
+                        # Creamos el traductor
+                        traducciones = {
+                            "strong_buy": "COMPRA FUERTE 🟢",
+                            "buy": "COMPRAR ↗️",
+                            "hold": "MANTENER 🟡",
+                            "sell": "VENTA ↘️",
+                            "strong_sell": "VENTA MASIVA 🔴"
+                        }
+                        # Si la palabra está en el traductor, la ponemos en español. Si no, la dejamos limpia en inglés.
+                        recom = traducciones.get(recom_raw.lower(), str(recom_raw).replace('_', ' ').upper())
                             
                             p_obj = info.get('targetMeanPrice')
                             if p_obj and p_obj > 0: precio_obj_str = str(p_obj)
