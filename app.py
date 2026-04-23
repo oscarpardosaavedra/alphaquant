@@ -324,56 +324,72 @@ with tab1:
         
         with st.spinner(f"Cargando datos en vivo de {simbolo_real}..."):
             try:
-                # Descarga limpia
+                # 1. Descargamos los datos del precio
                 datos = yf.download(simbolo_yahoo, period=mapa_tiempo[periodo], progress=False)
                 
-                # SI YAHOO ENVÍA TABLA DOBLE, LA SIMPLIFICAMOS
                 if isinstance(datos.columns, pd.MultiIndex):
                     datos.columns = datos.columns.get_level_values(0)
 
                 if not datos.empty and 'Close' in datos.columns:
-                    # Metadata segura
+                    # 2. Obtenemos la moneda real y metadata de Yahoo
                     try:
                         ticker_obj = yf.Ticker(simbolo_yahoo)
                         info = ticker_obj.info
+                        # Sacamos el código de moneda (JPY, EUR, etc.)
+                        moneda_iso = info.get('currency', 'USD')
                         sector = info.get('sector', 'N/A')
                         industria = info.get('industry', 'N/A')
                     except:
+                        moneda_iso = "USD"
                         sector, industria = "N/A", "N/A"
 
-                    # Precios y Moneda
+                    # 3. Calculamos el precio actual
                     datos_limpios = datos.dropna(subset=['Close'])
                     cierres = datos_limpios['Close'].squeeze()
                     precio_actual = float(cierres.iloc[-1])
-                    s_moneda = obtener_simbolo_moneda(simbolo_real)
                     
-                    # Lógica de Conversión a Dólares
-                    texto_mostrar = f"{precio_actual:,.2f} {s_moneda}"
-                    if s_moneda != "$":
-                        dict_divisas = {"€": "EURUSD=X", "¥": "JPYUSD=X", "GBp": "GBPUSD=X"}
-                        ticker_divisa = dict_divisas.get(s_moneda)
-                        if ticker_divisa:
-                            try:
-                                div_data = yf.download(ticker_divisa, period="1d", progress=False)
-                                tasa = float(div_data['Close'].iloc[-1])
-                                precio_usd = (precio_actual * tasa) / 100 if s_moneda == "GBp" else precio_actual * tasa
+                    # Símbolo visual (el que ya teníamos)
+                    s_moneda_visual = obtener_simbolo_moneda(simbolo_real)
+                    texto_mostrar = f"{precio_actual:,.2f} {s_moneda_visual}"
+                    
+                    # 4. CONVERSIÓN A DÓLARES INTELIGENTE
+                    if moneda_iso != "USD":
+                        # Yahoo siempre usa el formato [MONEDA]USD=X para tipos de cambio
+                        ticker_divisa = f"{moneda_iso}USD=X"
+                        try:
+                            # Descargamos el valor del cambio actual
+                            div_data = yf.download(ticker_divisa, period="1d", progress=False)
+                            if isinstance(div_data.columns, pd.MultiIndex):
+                                div_data.columns = div_data.columns.get_level_values(0)
+                            
+                            if not div_data.empty and 'Close' in div_data.columns:
+                                tasa = float(div_data['Close'].dropna().iloc[-1])
+                                
+                                # Ajuste especial para Londres: si son peniques (GBp/GBX), dividimos por 100
+                                if moneda_iso in ["GBp", "GBX"]:
+                                    precio_usd = (precio_actual * tasa) / 100
+                                else:
+                                    precio_usd = precio_actual * tasa
+                                    
                                 texto_mostrar += f"  (≈ {precio_usd:,.2f} $)"
-                            except: pass
-                    
+                        except:
+                            pass # Si falla el cambio, mostramos solo la moneda original
+
+                    # 5. Pintamos la métrica y metadata
                     st.metric(label=f"Valor Actual ({simbolo_real})", value=texto_mostrar)
-                    if sector != "N/A": st.caption(f"🏢 **Sector:** {sector} | **Industria:** {industria}")
+                    if sector != "N/A": 
+                        st.caption(f"🏢 **Sector:** {sector} | **Industria:** {industria}")
                     
-                    # Gráfica
+                    # 6. Gráfica (sin tocar nada para que no rompa)
                     fig = go.Figure()
                     x_data = datos_limpios.index.get_level_values(0) if isinstance(datos_limpios.index, pd.MultiIndex) else datos_limpios.index
                     fig.add_trace(go.Scatter(x=x_data, y=np.ravel(cierres), mode='lines', name='Precio', line=dict(color='#228B22', width=2)))
-                    fig.update_layout(title=f"Cotización: {ticker_elegido}", template='plotly_dark', margin=dict(l=0, r=0, t=40, b=0), xaxis_title="", yaxis_title=f"Precio ({s_moneda})", hovermode="x unified")
+                    fig.update_layout(title=f"Cotización: {ticker_elegido}", template='plotly_dark', margin=dict(l=0, r=0, t=40, b=0), xaxis_title="", yaxis_title=f"Precio ({s_moneda_visual})", hovermode="x unified")
                     st.plotly_chart(fig, use_container_width=True)
                 else:
-                    st.warning("⚠️ No se encontraron columnas de precio para este activo.")
+                    st.warning("⚠️ No se encontraron datos para este activo.")
             except Exception as e:
-                st.error(f"⚠️ Error al cargar la gráfica. Detalle: {e}")
-
+                st.error(f"⚠️ Error técnico: {e}")
 # ------------------------------------------
 # PESTAÑA 2: RADAR DE CAZA CON AUTO-GUARDADO
 # ------------------------------------------
