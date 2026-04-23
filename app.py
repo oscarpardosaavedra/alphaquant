@@ -296,10 +296,10 @@ col2.info(f"**Europa:** {eu['estado']} | Hora: {eu['horario']} (Madrid)")
 col3.info(f"**Asia:** {asia['estado']} | Hora: {asia['horario']} (Madrid)")
 st.markdown("---")
 
-tab1, tab2, tab3, tab4 = st.tabs(["🔬 Análisis Individual", "⚔️ Análisis Colectivo", "🎯 Radar", "🏆 Auditoría"])
+tab1, tab2, tab3, tab4 = st.tabs(["🔬 Análisis Individual", "⚔️ Batalla de Alpha", "🎯 Cazar Alpha (Radar)", "🏆 Sala de Trofeos"])
 
 # ------------------------------------------
-# PESTAÑA 1: VISOR DE GRÁFICOS (COMPLETO + MOTOR DIRECTO)
+# PESTAÑA 1: VISOR DE GRÁFICOS (MOTOR HÍBRIDO YAHOO + FINNHUB)
 # ------------------------------------------
 with tab1:
     st.markdown("### 🔍 Selector de Activos")
@@ -307,41 +307,63 @@ with tab1:
     col_buscador, col_espacio = st.columns([1, 3])
     with col_buscador:
         ticker_elegido = st.selectbox("Elige la empresa que quieres revisar:", opciones_desplegable)
-        espacio_sector = st.empty() 
     
     if ticker_elegido:
         simbolo_real = ticker_elegido.split(" ")[0]
         simbolo_yahoo = a_yahoo(simbolo_real)
-        sym_finnhub = simbolo_yahoo if "." in simbolo_yahoo else simbolo_real
-        
         st.markdown("---")
         
         periodo = st.radio("Rango de tiempo:", ["1 Mes", "3 Meses", "6 Meses", "1 Año", "5 Años", "10 Años", "Máximo"], index=1, horizontal=True)
         mapa_tiempo = {"1 Mes": "1mo", "3 Meses": "3mo", "6 Meses": "6mo", "1 Año": "1y", "5 Años": "5y", "10 Años": "10y", "Máximo": "max"}
         
-        with st.spinner(f"Cargando telemetría de {simbolo_real}..."):
+        with st.spinner(f"Cargando datos de {simbolo_real} y rastreando Wall Street..."):
             try:
+                # 1. Datos Yahoo (Precio Histórico)
                 datos = yf.download(simbolo_yahoo, period=mapa_tiempo[periodo], progress=False)
                 if isinstance(datos.columns, pd.MultiIndex): datos.columns = datos.columns.get_level_values(0)
 
                 if not datos.empty and 'Close' in datos.columns:
-                    recom, precio_obj_str, fecha_earnings, sector, industria, insider_trend = "Sin noticias", "Sin noticias", "Sin noticias", "Desconocido", "Desconocida", "Sin noticias"
                     
-                    traduccion_ws = {
-                        "STRONG BUY": "COMPRA FUERTE 🟢", "BUY": "COMPRAR ↗️", 
-                        "HOLD": "MANTENER 🟡", "SELL": "VENTA ↘️", "STRONG SELL": "VENTA MASIVA 🔴"
-                    }
+                    recom, precio_obj_str, fecha_earnings, sector, insider_trend = "Sin noticias", "Sin noticias", "Sin noticias", "Sin noticias", "Sin noticias"
                     
-                    # MOTOR FINNHUB
+                    # 2. MOTOR HÍBRIDO: YAHOO (Precio Objetivo/Sector) + FINNHUB (Insiders/Earnings)
                     import requests
                     API_FINNHUB = "d7c2s5hr01quh9fcasf0d7c2s5hr01quh9fcasfg"
+                    
                     try:
-                        r_prof = requests.get(f"https://finnhub.io/api/v1/stock/profile2?symbol={sym_finnhub}&token={API_FINNHUB}", timeout=5).json()
-                        if isinstance(r_prof, dict):
-                            sector = r_prof.get('finnhubIndustry', 'Desconocido')
-                            industria = r_prof.get('finnhubIndustry', 'Desconocida')
+                        # Extraemos Wall Street y Sector de Yahoo Finance (Porque en Finnhub es de pago)
+                        ticker_obj = yf.Ticker(simbolo_yahoo)
+                        info = ticker_obj.info
                         
-                        r_ins = requests.get(f"https://finnhub.io/api/v1/stock/insider-sentiment?symbol={sym_finnhub}&from={(datetime.datetime.today() - datetime.timedelta(days=180)).strftime('%Y-%m-%d')}&to={datetime.datetime.today().strftime('%Y-%m-%d')}&token={API_FINNHUB}", timeout=5).json()
+                        if isinstance(info, dict):
+                            sector = info.get('sector', 'Sin noticias')
+                            
+                            recom_raw = info.get('recommendationKey')
+                            if recom_raw: recom = str(recom_raw).replace('_', ' ').upper()
+                            
+                            p_obj = info.get('targetMeanPrice')
+                            if p_obj and p_obj > 0: precio_obj_str = str(p_obj)
+                            
+                        # Calendario de Yahoo (Plan A para Earnings)
+                        try:
+                            cal = ticker_obj.calendar
+                            if isinstance(cal, dict) and 'Earnings Date' in cal:
+                                fechas = cal['Earnings Date']
+                                if isinstance(fechas, list) and len(fechas) > 0 and pd.notnull(fechas[0]):
+                                    fecha_earnings = fechas[0].strftime("%d/%m/%Y")
+                        except: pass
+                            
+                    except Exception as e:
+                        pass
+                        
+                    # Extracción de Finnhub (Porque es mucho más rápido y preciso para Insiders)
+                    try:
+                        hoy = datetime.datetime.today().strftime('%Y-%m-%d')
+                        pasado = (datetime.datetime.today() - datetime.timedelta(days=180)).strftime('%Y-%m-%d')
+                        
+                        sym_finnhub = simbolo_yahoo if "." in simbolo_yahoo else simbolo_real
+                        
+                        r_ins = requests.get(f"https://finnhub.io/api/v1/stock/insider-sentiment?symbol={sym_finnhub}&from={pasado}&to={hoy}&token={API_FINNHUB}").json()
                         if isinstance(r_ins, dict) and 'data' in r_ins and len(r_ins['data']) > 0:
                             mspr = r_ins['data'][-1].get('mspr', 0)
                             if mspr > 5: insider_trend = "COMPRA MASIVA 🟢"
@@ -349,27 +371,18 @@ with tab1:
                             elif mspr < -5: insider_trend = "VENTA MASIVA 🔴"
                             elif mspr < 0: insider_trend = "VENDIENDO ↘️"
                             else: insider_trend = "NEUTRAL ⚪"
-                    except: pass
-
-                    # MOTOR DIRECTO YAHOO (Target Price / Consenso)
-                    try:
-                        url_api = f"https://query2.finance.yahoo.com/v10/finance/quoteSummary/{simbolo_yahoo}?modules=financialData"
-                        headers = {'User-Agent': 'Mozilla/5.0'}
-                        resp = requests.get(url_api, headers=headers, timeout=5).json()
-                        res = resp.get('quoteSummary', {}).get('result', [{}])[0].get('financialData', {})
-                        
-                        if res:
-                            r_key = res.get('recommendationKey')
-                            if r_key:
-                                r_clean = str(r_key).replace('_', ' ').upper()
-                                recom = traduccion_ws.get(r_clean, r_clean)
                             
-                            p_raw = res.get('targetMeanPrice', {}).get('raw')
-                            if p_raw and p_raw > 0: precio_obj_str = str(p_raw)
-                    except: pass
+                        # Si Yahoo falló con Earnings, probamos Finnhub (Plan B)
+                        if fecha_earnings == "Sin noticias":
+                            futuro = (datetime.datetime.today() + datetime.timedelta(days=90)).strftime('%Y-%m-%d')
+                            r_earn = requests.get(f"https://finnhub.io/api/v1/calendar/earnings?from={hoy}&to={futuro}&symbol={sym_finnhub}&token={API_FINNHUB}").json()
+                            if isinstance(r_earn, dict) and 'earningsCalendar' in r_earn and len(r_earn['earningsCalendar']) > 0:
+                                fecha_raw = r_earn['earningsCalendar'][0].get('date', 'Sin noticias')
+                                if fecha_raw != 'Sin noticias':
+                                    fecha_earnings = datetime.datetime.strptime(fecha_raw, "%Y-%m-%d").strftime("%d/%m/%Y")
+                    except: pass 
 
-                    espacio_sector.markdown(f"<div style='font-size: 14px; color: #7f8c8d; margin-top: -10px; margin-bottom: 10px;'>🏢 <b>Sector:</b> {sector} | <b>Industria:</b> {industria}</div>", unsafe_allow_html=True)
-
+                    # 3. Datos de Precio y Conversión a Dólares
                     datos_limpios = datos.dropna(subset=['Close'])
                     precio_actual = float(datos_limpios['Close'].iloc[-1])
                     s_moneda_visual = obtener_simbolo_moneda(simbolo_real)
@@ -378,10 +391,10 @@ with tab1:
                         p_obj_f = float(precio_obj_str)
                         pot = ((p_obj_f / precio_actual) - 1) * 100
                         color_p = "#228B22" if pot > 0 else "#FF3333"
-                        precio_obj_final = f'{p_obj_f:,.2f} {s_moneda_visual} <span style="color:{color_p}; font-weight:bold;">({pot:+.1f}%)</span>'
+                        precio_obj_final = f"{p_obj_f:,.2f} {s_moneda_visual} <span style='color:{color_p};font-weight:bold;font-size:13px;'>({pot:+.1f}%)</span>"
                     else: precio_obj_final = "Sin noticias"
                         
-                    # Conversión a dólares
+                    # Conversión a dólares robusta (5 días)
                     precio_usd = None
                     mapa_divisas = { "€": "EURUSD=X", "¥": "JPYUSD=X", "GBp": "GBPUSD=X", "kr": "SEKUSD=X", "₹": "INRUSD=X" }
                     t_div = mapa_divisas.get(s_moneda_visual)
@@ -395,37 +408,47 @@ with tab1:
                                 tasa = float(p_div.dropna().iloc[-1])
                                 precio_usd = (precio_actual * tasa) / 100 if s_moneda_visual == "GBp" else (precio_actual * tasa)
                         except: pass
+
                     t_conv = f'<span style="font-size:18px;color:#7f8c8d;font-weight:400;margin-left:10px;">(≈ {precio_usd:,.2f} $)</span>' if precio_usd else ""
                     
+                    # 4. RENDERIZADO HTML PROFESIONAL
                     st.markdown(f"""
                     <div style="background-color:#f8f9fa;padding:15px;border-radius:10px;box-shadow:0 4px 6px rgba(0,0,0,0.05);margin-bottom:20px;">
-                        <p style="margin:0;font-size:14px;color:rgba(49,51,63,0.7);">Valor Actual ({simbolo_real})</p>
-                        <h2 style="margin:0;font-weight:700;color:#1f1f1f;font-size:32px;">{precio_actual:,.2f} {s_moneda_visual}{t_conv}</h2>
+                        <div style="display:flex;justify-content:space-between;align-items:baseline;">
+                            <div><p style="margin:0;font-size:14px;color:rgba(49,51,63,0.7);">Valor Actual ({simbolo_real})</p>
+                            <h2 style="margin:0;font-weight:700;color:#1f1f1f;font-size:32px;">{precio_actual:,.2f} {s_moneda_visual}{t_conv}</h2></div>
+                            <div style="text-align:right;"><span style="font-size:12px;color:#7f8c8d;">🏢 Sector:</span><br><span style="font-weight:bold;color:#2c3e50;">{sector}</span></div>
+                        </div>
                     </div>
                     <div style="display:flex;gap:15px;margin-bottom:20px;">
-                        <div style="flex:1;background:#fff;padding:15px;border-radius:8px;box-shadow:0 2px 4px rgba(0,0,0,0.05);border-top:4px solid #1E90FF;">
-                            <div style="font-size:12px;color:#7f8c8d;text-transform:uppercase;font-weight:bold;">🏦 Wall Street</div>
-                            <div style="font-size:14px;color:#2c3e50;margin-top:5px;"><b>Consenso:</b> {recom}</div>
-                            <div style="font-size:14px;color:#2c3e50;"><b>Precio Obj:</b> {precio_obj_final}</div>
+                        <div title="Consenso de analistas de inversión y precio objetivo promedio a 12 meses." style="flex:1;background:#fff;padding:15px;border-radius:8px;box-shadow:0 2px 4px rgba(0,0,0,0.05);border-top:4px solid #1E90FF;cursor:help;">
+                            <div style="font-size:12px;color:#7f8c8d;text-transform:uppercase;font-weight:bold;margin-bottom:5px;">🏦 Wall Street ℹ️</div>
+                            <div style="font-size:14px;color:#2c3e50;"><b>Consenso:</b> {recom}</div>
+                            <div style="font-size:14px;color:#2c3e50;margin-top:5px;"><b>Precio Obj:</b> {precio_obj_final}</div>
                         </div>
-                        <div style="flex:1;background:#fff;padding:15px;border-radius:8px;box-shadow:0 2px 4px rgba(0,0,0,0.05);border-top:4px solid #8e44ad;">
-                            <div style="font-size:12px;color:#7f8c8d;text-transform:uppercase;font-weight:bold;">👔 Manos Fuertes</div>
-                            <div style="font-size:14px;color:#2c3e50;margin-top:5px;"><b>Directivos:</b> {insider_trend}</div>
+                        <div title="Próxima fecha confirmada o estimada de resultados financieros trimestrales." style="flex:1;background:#fff;padding:15px;border-radius:8px;box-shadow:0 2px 4px rgba(0,0,0,0.05);border-top:4px solid #f39c12;cursor:help;">
+                            <div style="font-size:12px;color:#7f8c8d;text-transform:uppercase;font-weight:bold;margin-bottom:5px;">📅 Próximos Earnings ℹ️</div>
+                            <div style="font-size:18px;color:#2c3e50;font-weight:bold;margin-top:5px;">{fecha_earnings}</div>
+                        </div>
+                        <div title="Muestra si los directivos (CEO, dueños) han estado comprando o vendiendo acciones propias recientemente." style="flex:1;background:#fff;padding:15px;border-radius:8px;box-shadow:0 2px 4px rgba(0,0,0,0.05);border-top:4px solid #8e44ad;cursor:help;">
+                            <div style="font-size:12px;color:#7f8c8d;text-transform:uppercase;font-weight:bold;margin-bottom:5px;">👔 Manos Fuertes ℹ️</div>
+                            <div style="font-size:14px;color:#2c3e50;"><b>Directivos (6M):</b> {insider_trend}</div>
                         </div>
                     </div>
                     """, unsafe_allow_html=True)
 
+                    # 5. Gráfica
                     fig = go.Figure()
-                    fig.add_trace(go.Scatter(x=datos_limpios.index, y=datos_limpios['Close'], mode='lines', line=dict(color='#228B22', width=2)))
-                    fig.update_layout(template='plotly_dark', margin=dict(l=0, r=0, t=20, b=0), hovermode="x unified")
+                    fig.add_trace(go.Scatter(x=datos_limpios.index, y=datos_limpios['Close'], mode='lines', name='Precio', line=dict(color='#228B22', width=2)))
+                    fig.update_layout(title=f"Histórico: {ticker_elegido}", template='plotly_dark', margin=dict(l=0, r=0, t=40, b=0), hovermode="x unified")
                     st.plotly_chart(fig, use_container_width=True)
-                else: st.warning("⚠️ Sin datos.")
+                else: st.warning("⚠️ Sin datos disponibles.")
             except Exception as e: st.error(f"⚠️ Error técnico: {e}")
 # ------------------------------------------
 # PESTAÑA 2: BATALLA DE ALPHA (COMPARATIVA)
 # ------------------------------------------
 with tab2:
-    st.markdown("### ⚔️ Comparativa Múltiple")
+    st.markdown("### ⚔️ Batalla de Alpha (Comparativa Múltiple)")
     st.write("Selecciona varios activos para ver cuál está rindiendo mejor en un mismo periodo de tiempo. Todos empezarán en Base 0 (0% de rendimiento) para una comparación justa.")
     
     col_comp1, col_comp2 = st.columns([3, 1])
@@ -553,10 +576,6 @@ with tab3:
 
         for i, ticker in enumerate(tickers_a_escanear):
             porcentaje = int(((i + 1) / len(tickers_a_escanear)) * 100)
-            
-            # ---> ACTUALIZAMOS EL TEXTO SIN QUE SEA GIGANTE <---
-            texto_progreso.markdown(f"⏳ Evaluando: **{ticker}** | **{porcentaje}%**")
-            barra_progreso.progress((i + 1) / len(tickers_a_escanear))
             
             t_fijo = ticker.ljust(10).replace(" ", " ")
             p_fijo = str(porcentaje).rjust(3)
@@ -708,9 +727,7 @@ with tab3:
                 time.sleep(0.20)
                 continue
             
-        # ---> MENSAJE FINAL <---
-        texto_progreso.markdown("✅ **100% Completado**")
-        barra_progreso.progress(100)
+        barra_progreso.progress(100, text="✅ 100% Completado")
         
         st.session_state.resultados_radar = resultados_radar
         st.success("Caza terminada. Las empresas con 90 puntos o más se han guardado automáticamente en la base de datos.")
