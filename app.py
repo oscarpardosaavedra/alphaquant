@@ -296,7 +296,7 @@ col2.info(f"**Europa:** {eu['estado']} | Hora: {eu['horario']} (Madrid)")
 col3.info(f"**Asia:** {asia['estado']} | Hora: {asia['horario']} (Madrid)")
 st.markdown("---")
 
-tab1, tab2, tab3, tab4 = st.tabs(["🔬 Análisis Individual", "⚔️ Análisis Colectivo", "🎯 Cazar Alpha (Radar)", "🏆 Sala de Trofeos"])
+tab1, tab2, tab3, tab4 = st.tabs(["🔬 Análisis Individual", "⚔️ Batalla de Alpha", "🎯 Cazar Alpha (Radar)", "🏆 Sala de Trofeos"])
 
 # ------------------------------------------
 # PESTAÑA 1: VISOR DE GRÁFICOS (MOTOR HÍBRIDO YAHOO + FINNHUB)
