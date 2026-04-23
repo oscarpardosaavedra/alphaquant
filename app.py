@@ -8,9 +8,6 @@ import pytz
 import gspread
 from google.oauth2.service_account import Credentials
 import time
-# Al principio del archivo
-if 'resultados_radar' not in st.session_state:
-    st.session_state.resultados_radar = None
 
 # ==========================================
 # 1. CONFIGURACIÓN Y CONEXIÓN DB (BASE DE DATOS)
@@ -624,7 +621,6 @@ with tab2:
                 continue
             
         barra_progreso.progress(100, text="✅ 100% Completado")
-               st.session_state.resultados_radar = resultados_radar
         
         if resultados_radar:
             df = pd.DataFrame(resultados_radar)
@@ -672,32 +668,7 @@ with tab2:
             )
         else:
             st.error("No se han podido descargar datos. Yahoo Finance podría estar limitando temporalmente tus peticiones.")
-            
-# MOSTRAR RESULTADOS (Leemos de la memoria para que no se borre)
-    if st.session_state.resultados_radar:
-        df = pd.DataFrame(st.session_state.resultados_radar)
-        df = df.sort_values(by="PUNTOS", ascending=False).reset_index(drop=True)
-        
-        # --- FUNCIÓN PARA EL COLOR AZULITO (> 80) ---
-        def resaltar_azul(row):
-            estilo = [''] * len(row)
-            if row['PUNTOS'] > 80:
-                # Localizamos la columna TICKER para pintarla
-                idx = row.index.get_loc('TICKER')
-                estilo[idx] = 'color: #1E90FF; font-weight: bold;'
-            return estilo
 
-        # --- APLICAMOS ESTILOS ---
-        columnas_pct = ["% HOY", "% 1 MES", "% 6 MESES", "% 1 AÑO", "% 5 AÑOS", "% 10 AÑOS", "% 20 AÑOS", "% MÁX", "SUELO (52s)", "MAX (52s)"]
-        
-        try:
-            # Aplicamos primero el azulito y luego los colores de los %
-            styled_df = df.style.apply(resaltar_azul, axis=1).map(color_porcentajes, subset=columnas_pct)
-        except:
-            styled_df = df.style.apply(resaltar_azul, axis=1).applymap(color_porcentajes, subset=columnas_pct)
-
-        # MOSTRAR LA TABLA DEFINITIVA
-        st.dataframe(styled_df, use_container_width=True, hide_index=True)
 
 # ------------------------------------------
 # PESTAÑA 3: SALA DE TROFEOS (DB REAL Y BORRADO MANUAL)
