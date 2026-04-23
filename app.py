@@ -307,6 +307,7 @@ with tab1:
     col_buscador, col_espacio = st.columns([1, 3])
     with col_buscador:
         ticker_elegido = st.selectbox("Elige la empresa que quieres revisar:", opciones_desplegable)
+        espacio_sector = st.empty()
     
     if ticker_elegido:
         simbolo_real = ticker_elegido.split(" ")[0]
