@@ -349,34 +349,23 @@ with tab1:
                     precio_actual = float(cierres.iloc[-1])
                     
                     # Símbolo visual (el que ya teníamos)
+                    # 5. Pintamos la métrica con diseño personalizado (Grande/Pequeño)
                     s_moneda_visual = obtener_simbolo_moneda(simbolo_real)
-                    texto_mostrar = f"{precio_actual:,.2f} {s_moneda_visual}"
                     
-                    # 4. CONVERSIÓN A DÓLARES INTELIGENTE
-                    if moneda_iso != "USD":
-                        # Yahoo siempre usa el formato [MONEDA]USD=X para tipos de cambio
-                        ticker_divisa = f"{moneda_iso}USD=X"
-                        try:
-                            # Descargamos el valor del cambio actual
-                            div_data = yf.download(ticker_divisa, period="1d", progress=False)
-                            if isinstance(div_data.columns, pd.MultiIndex):
-                                div_data.columns = div_data.columns.get_level_values(0)
-                            
-                            if not div_data.empty and 'Close' in div_data.columns:
-                                tasa = float(div_data['Close'].dropna().iloc[-1])
-                                
-                                # Ajuste especial para Londres: si son peniques (GBp/GBX), dividimos por 100
-                                if moneda_iso in ["GBp", "GBX"]:
-                                    precio_usd = (precio_actual * tasa) / 100
-                                else:
-                                    precio_usd = precio_actual * tasa
-                                    
-                                texto_mostrar += f"  (≈ {precio_usd:,.2f} $)"
-                        except:
-                            pass # Si falla el cambio, mostramos solo la moneda original
+                    # Estilo para el contenedor de la métrica
+                    html_metrica = f"""
+                    <div style="background-color: #f8f9fa; padding: 15px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); margin-bottom: 20px;">
+                        <p style="margin: 0; font-size: 14px; color: rgba(49, 51, 63, 0.7); font-weight: 400;">Valor Actual ({simbolo_real})</p>
+                        <h2 style="margin: 0; font-weight: 700; color: #1f1f1f; font-size: 32px;">
+                            {precio_actual:,.2f} {s_moneda_visual}
+                            <span style="font-size: 18px; color: #7f8c8d; font-weight: 400; margin-left: 10px;">
+                                {f'(≈ {precio_usd:,.2f} $)' if moneda_iso != "USD" else ''}
+                            </span>
+                        </h2>
+                    </div>
+                    """
+                    st.markdown(html_metrica, unsafe_allow_html=True)
 
-                    # 5. Pintamos la métrica y metadata
-                    st.metric(label=f"Valor Actual ({simbolo_real})", value=texto_mostrar)
                     if sector != "N/A": 
                         st.caption(f"🏢 **Sector:** {sector} | **Industria:** {industria}")
                     
