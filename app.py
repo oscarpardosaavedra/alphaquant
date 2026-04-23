@@ -357,7 +357,8 @@ with tab1:
                             
                             # 2. Rellenamos el sector debajo
                             if sector != "Sin noticias":
-                                espacio_sector.markdown(f"<div style='font-size: 14px; margin-bottom: 10px;'>🏢 **Sector:** {sector}</div>", unsafe_allow_html=True)
+                                # CÁMBIALA POR ESTA (He cambiado los ** por <b> y </b>):
+                                 espacio_sector.markdown(f"<div style='font-size: 14px; margin-bottom: 10px;'>🏢 <b>Sector:</b> {sector}</div>", unsafe_allow_html=True)
                             
                             # 3. Consenso con traductor
                             if recom_raw:
