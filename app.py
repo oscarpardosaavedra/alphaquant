@@ -339,15 +339,16 @@ with tab1:
         
         with st.spinner(f"Cargando datos en vivo de {simbolo_real}..."):
             try:
-                # Volvemos al método infalible .history()
                 ticker_obj = yf.Ticker(simbolo_yahoo)
                 datos = ticker_obj.history(period=mapa_tiempo[periodo])
                 
                 if not datos.empty:
                     info = ticker_obj.info
                     moneda_codigo = info.get('currency', 'USD')
-                    # Extraemos el precio de forma segura
-                    precio_actual = float(datos['Close'].dropna().iloc[-1])
+                    
+                    # ESCUDO ANTI-SERIES: Aplastamos los datos a una lista pura de números
+                    array_precios = np.ravel(datos['Close'].dropna())
+                    precio_actual = float(array_precios[-1])
                     
                     simbolos_moneda = {"USD": "$", "EUR": "€", "GBP": "£", "GBp": "GBp", "JPY": "¥"}
                     s_moneda = simbolos_moneda.get(moneda_codigo, moneda_codigo)
@@ -365,7 +366,10 @@ with tab1:
                         st.markdown(f"*{'. '.join(frases[:2]) + '.' if len(frases) > 2 else resumen_largo}*")
                     
                     fig = go.Figure()
-                    fig.add_trace(go.Scatter(x=datos.index, y=datos['Close'].squeeze(), mode='lines', name='Precio', line=dict(color='#228B22', width=2)))
+                    x_data = datos.index.get_level_values(0) if isinstance(datos.index, pd.MultiIndex) else datos.index
+                    y_data = array_precios
+                    
+                    fig.add_trace(go.Scatter(x=x_data, y=y_data, mode='lines', name='Precio', line=dict(color='#228B22', width=2)))
                     fig.update_layout(title=f"Cotización: {ticker_elegido}", template='plotly_dark', margin=dict(l=0, r=0, t=40, b=0), xaxis_title="", yaxis_title=f"Precio ({s_moneda})", hovermode="x unified")
                     
                     st.plotly_chart(fig, use_container_width=True)
@@ -670,7 +674,8 @@ with tab3:
             # ------------------------------------------------
 
             if st.button("🔄 Auditar Rendimiento Actual", use_container_width=True):
-                with st.spinner("Sincronizando Wall Street y calculando métricas..."):
+                with st.spinner("Sincronizando Wall Street y calculando métricas avanzadas..."):
+                    pendiente = []
                     exitos = []
                     cuarentena = []
                     fracasos = []
@@ -681,12 +686,11 @@ with tab3:
                             tk_y = a_yahoo(d['Ticker'])
                             tk = yf.Ticker(tk_y)
                             
-                            # Volvemos al método infalible para el historial
                             hist = tk.history(period="1y")
                             if hist.empty: continue
                             
-                            p_hoy = float(hist['Close'].dropna().iloc[-1])
-                            # Aseguramos formato numérico correcto desde Google Sheets
+                            array_cierres = np.ravel(hist['Close'].dropna())
+                            p_hoy = float(array_cierres[-1])
                             p_entrada = float(str(d['Precio_Aviso']).replace(',', '.'))
                             fecha_str = str(d['Fecha'])
                             
@@ -704,6 +708,7 @@ with tab3:
                                 hist_post = hist
                                 
                             if not hist_post.empty:
+                                max_p = float(np.ravel(hist_post['High'])[-1]) # Safe max
                                 max_p = float(hist_post['High'].max())
                                 rent_max = ((max_p / p_entrada) - 1) * 100
                                 
@@ -713,38 +718,50 @@ with tab3:
                                     ignicion = f"{dias_ign}d"
                             
                             try:
-                                tk_info = yf.Ticker(tk_y)
-                                moneda = tk_info.fast_info.get('currency', 'USD')
+                                info = tk.info
+                                moneda = info.get('currency', 'USD')
                             except:
                                 moneda = "USD"
                             
                             simbolos_moneda = {"USD": "$", "EUR": "€", "GBP": "£", "GBp": "GBp", "JPY": "¥"}
                             s_mon = simbolos_moneda.get(moneda, moneda)
+                            
+                            # Bandera según la región
+                            reg = obtener_region(d['Ticker'])
+                            bandera = "🇺🇸" if reg == "EEUU" else ("🇪🇺" if reg == "Europa" else "⛩️")
+
+                            # Lógica de las 4 Columnas y Explicaciones Tácticas
+                            if abs(rent) < 0.01:
+                                motivo = "A la espera de apertura o movimiento de mercado."
+                            elif rent > 0: 
+                                motivo = "Tendencia confirmada con entrada de capital institucional."
+                            elif rent >= -3.0: 
+                                motivo = "Ruido normal de mercado. Consolidando el soporte."
+                            else: 
+                                motivo = "Ruptura de soporte. Caída severa fuera de control."
 
                             obj = {
                                 "T": d['Ticker'], "N": d['Empresa'], "E": p_entrada, 
                                 "A": p_hoy, "R": rent, "F": fecha_str, "S_MON": s_mon,
-                                "RMAX": rent_max, "IGN": ignicion
+                                "RMAX": rent_max, "IGN": ignicion, "B": bandera, "M": motivo
                             }
                             
                             alpha_total += rent
                             
-                            # Lógica de Cuarentena
-                            if rent > 0: 
-                                exitos.append(obj)
-                            elif rent >= -3.0: 
-                                cuarentena.append(obj)
-                            else: 
-                                fracasos.append(obj)
+                            # Distribución a las columnas
+                            if abs(rent) < 0.01: pendiente.append(obj)
+                            elif rent > 0: exitos.append(obj)
+                            elif rent >= -3.0: cuarentena.append(obj)
+                            else: fracasos.append(obj)
                                 
                         except Exception as e: 
-                            # st.write(f"Error procesando {d['Ticker']}: {e}") # Descomentar para depurar
                             continue
                     
-                    tot = len(exitos) + len(cuarentena) + len(fracasos)
+                    tot = len(pendiente) + len(exitos) + len(cuarentena) + len(fracasos)
                     
                     if tot > 0:
-                        win_rate = (len(exitos) / tot) * 100
+                        tot_abiertas = tot - len(pendiente)
+                        win_rate = (len(exitos) / tot_abiertas) * 100 if tot_abiertas > 0 else 0
                         alpha_medio = alpha_total / tot
                         
                         st.markdown("---")
@@ -754,26 +771,47 @@ with tab3:
                         m3.metric(label="⏱️ Base de Datos", value=f"{tot} Activos")
                         st.markdown("---")
                         
-                        c_w, c_q, c_l = st.columns(3)
+                        # 4 COLUMNAS PARA CLASIFICACIÓN EXACTA
+                        c_p, c_w, c_q, c_l = st.columns(4)
                         
                         def pintar_tarjeta(item, color_borde, color_texto):
+                            # Ocultar la insignia de Ignición si es N/A
+                            ign_html = f'<span class="stat-badge" title="Días hasta tocar un +5% (Ignición)">⏱️ {item["IGN"]}</span>' if item['IGN'] != "N/A" else ""
+                            
                             return f"""
-                            <div style="background: white; border-radius: 6px; padding: 6px 10px; margin-bottom: 8px; border-left: 4px solid {color_borde}; display: flex; justify-content: space-between; align-items: center; font-size: 13px; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
-                                <div style="display: flex; align-items: center; flex-wrap: wrap; gap: 8px;">
-                                    <span style="font-weight: 900; color: #073763; width: 55px;" title="{item['N']}">{item['T']}</span>
-                                    <span style="color: #95a5a6; font-size: 11px;">🕒 {item['F']}</span>
-                                    <span style="color: #555;">In: <b>{item['E']:.2f}{item['S_MON']}</b> ➔ <b>{item['A']:.2f}{item['S_MON']}</b></span>
-                                    <span class="stat-badge" title="Rentabilidad Máxima Histórica">🔥 {item['RMAX']:+.1f}%</span>
-                                    <span class="stat-badge" title="Días hasta +5% (Ignición)">⏱️ {item['IGN']}</span>
+                            <div style="background: white; border-radius: 6px; padding: 10px; margin-bottom: 8px; border-top: 3px solid {color_borde}; box-shadow: 0 2px 4px rgba(0,0,0,0.08);">
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
+                                    <div style="display: flex; align-items: baseline; gap: 6px;">
+                                        <span title="{item['N']}" style="font-weight: 900; color: #073763; font-size: 14px;">{item['B']} {item['T']}</span>
+                                        <span style="color: #95a5a6; font-size: 10px;">🕒 {item['F']}</span>
+                                    </div>
+                                    <div style="font-weight: 900; font-size: 14px; color: {color_texto};">
+                                        {item['R']:+.2f}%
+                                    </div>
                                 </div>
-                                <div style="font-weight: 900; font-size: 14px; color: {color_texto}; white-space: nowrap;">
-                                    {item['R']:+.2f}%
+                                <div style="font-size: 11px; color: #555; margin-bottom: 5px;">
+                                    In: <b>{item['E']:.2f}{item['S_MON']}</b> ➔ Hoy: <b>{item['A']:.2f}{item['S_MON']}</b>
+                                </div>
+                                <div style="display: flex; gap: 5px; margin-bottom: 6px;">
+                                    <span class="stat-badge" title="Rentabilidad Máxima Histórica alcanzada desde la compra">🔥 {item['RMAX']:+.1f}%</span>
+                                    {ign_html}
+                                </div>
+                                <div style="font-size: 10px; color: #7f8c8d; font-style: italic; background: #f9fbfd; padding: 4px; border-radius: 4px;">
+                                    💡 {item['M']}
                                 </div>
                             </div>
                             """
 
+                        with c_p:
+                            st.markdown('<h4 style="margin-bottom:15px; font-size: 16px; color:#34495e;" title="Acciones a 0.00%. Acaban de ser escaneadas o su mercado está cerrado.">⏸️ Pendiente</h4>', unsafe_allow_html=True)
+                            if pendiente:
+                                for p in sorted(pendiente, key=lambda x: x["T"]):
+                                    st.markdown(pintar_tarjeta(p, "#bdc3c7", "#7f8c8d"), unsafe_allow_html=True)
+                            else:
+                                st.info("Nada pendiente.")
+
                         with c_w:
-                            st.markdown("#### 🏆 Éxitos (> 0%)")
+                            st.markdown('<h4 style="margin-bottom:15px; font-size: 16px; color:#228B22;" title="Activos en ganancias (> 0%). El algoritmo ha acertado.">🏆 Éxitos</h4>', unsafe_allow_html=True)
                             if exitos:
                                 for e in sorted(exitos, key=lambda x: x["R"], reverse=True):
                                     st.markdown(pintar_tarjeta(e, "#228B22", "#228B22"), unsafe_allow_html=True)
@@ -781,19 +819,20 @@ with tab3:
                                 st.info("Aún no hay éxitos.")
                                 
                         with c_q:
-                            st.markdown("#### ⏳ Cuarentena (0% a -3%)")
+                            st.markdown('<h4 style="margin-bottom:15px; font-size: 16px; color:#f39c12;" title="Pérdida menor al 3%. Se considera ruido normal de mercado o coste del spread.">⏳ Cuarentena</h4>', unsafe_allow_html=True)
                             if cuarentena:
                                 for q in sorted(cuarentena, key=lambda x: x["R"], reverse=True):
                                     st.markdown(pintar_tarjeta(q, "#f39c12", "#f39c12"), unsafe_allow_html=True)
                             else:
-                                st.info("Sin activos en consolidación.")
+                                st.info("Sin activos consolidando.")
                                 
                         with c_l:
-                            st.markdown("#### 🪦 Cementerio (< -3%)")
+                            st.markdown('<h4 style="margin-bottom:15px; font-size: 16px; color:#FF3333;" title="Caída superior al 3%. Ruptura de soporte, posible fallo de señal.">🪦 Cementerio</h4>', unsafe_allow_html=True)
                             if fracasos:
                                 for f in sorted(fracasos, key=lambda x: x["R"]):
                                     st.markdown(pintar_tarjeta(f, "#FF3333", "#FF3333"), unsafe_allow_html=True)
                             else:
                                 st.info("No hay fallos registrados.")
+
                     else:
-                        st.warning("⚠️ No se han podido calcular los datos de rendimiento.")
+                        st.warning("⚠️ No se han podido auditar los datos de rendimiento.")
