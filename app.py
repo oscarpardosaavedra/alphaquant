@@ -315,7 +315,9 @@ with tab1:
                     info = ticker_obj.info
                     moneda_codigo = info.get('currency', 'USD')
                     
-                    array_precios = np.ravel(datos['Close'].dropna())
+                    # Limpiamos los vacíos antes de separar X e Y para que midan exactamente lo mismo
+                    datos_limpios = datos.dropna(subset=['Close'])
+                    array_precios = np.ravel(datos_limpios['Close'])
                     precio_actual = float(array_precios[-1])
                     
                     simbolos_moneda = {"USD": "$", "EUR": "€", "GBP": "£", "GBp": "GBp", "JPY": "¥"}
@@ -334,7 +336,8 @@ with tab1:
                         st.markdown(f"*{'. '.join(frases[:2]) + '.' if len(frases) > 2 else resumen_largo}*")
                     
                     fig = go.Figure()
-                    x_data = datos.index.get_level_values(0) if isinstance(datos.index, pd.MultiIndex) else datos.index
+                    x_data = datos_limpios.index.get_level_values(0) if isinstance(datos_limpios.index, pd.MultiIndex) else datos_limpios.index
+                    
                     fig.add_trace(go.Scatter(x=x_data, y=array_precios, mode='lines', name='Precio', line=dict(color='#228B22', width=2)))
                     fig.update_layout(title=f"Cotización: {ticker_elegido}", template='plotly_dark', margin=dict(l=0, r=0, t=40, b=0), xaxis_title="", yaxis_title=f"Precio ({s_moneda})", hovermode="x unified")
                     
@@ -524,7 +527,12 @@ with tab2:
                     "SUELO (52s)": fmt_pct(dist_suelo), "MAX (52s)": fmt_pct(dist_max)
                 })
                 
+                # ESCUDO ANTI-BANEO: Pausa de 0.3s obligatoria para que Yahoo no bloquee tu IP
+                time.sleep(0.3)
+                
             except Exception: 
+                # Si hay error en la empresa, también esperamos antes de seguir
+                time.sleep(0.3)
                 continue
             
         barra_progreso.progress(100, text="✅ 100% Completado")
