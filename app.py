@@ -299,7 +299,7 @@ st.markdown("---")
 tab1, tab2, tab3, tab4 = st.tabs(["🔬 Análisis Individual", "⚔️ Análisis Colectivo", "🎯 Radar", "🏆 Auditoría"])
 
 # ------------------------------------------
-# PESTAÑA 1: VISOR DE GRÁFICOS (DISEÑO CLÁSICO + API DIRECTA PURGADA)
+# PESTAÑA 1: VISOR DE GRÁFICOS (DISEÑO CLÁSICO + MOTOR HÍBRIDO REFORZADO)
 # ------------------------------------------
 with tab1:
     st.markdown("### 🔍 Selector de Activos")
@@ -328,6 +328,7 @@ with tab1:
 
                 if not datos.empty and 'Close' in datos.columns:
                     
+                    # Valores por defecto
                     recom = "Sin noticias"
                     precio_obj_str = "Sin noticias"
                     fecha_earnings = "Sin noticias"
@@ -343,19 +344,22 @@ with tab1:
                         "STRONG SELL": "VENTA MASIVA 🔴"
                     }
                     
-                    # 2. MOTOR HÍBRIDO (Parte 1: Finnhub Gratis)
+                    # 2. MOTOR HÍBRIDO (Parte 1: Finnhub para Sector, Insiders y Earnings)
                     import requests
                     API_FINNHUB = "d7c2s5hr01quh9fcasf0d7c2s5hr01quh9fcasfg"
                     
                     try:
+                        # Perfil de empresa
                         r_prof = requests.get(f"https://finnhub.io/api/v1/stock/profile2?symbol={sym_finnhub}&token={API_FINNHUB}").json()
                         if isinstance(r_prof, dict) and 'finnhubIndustry' in r_prof:
                             sector = r_prof.get('finnhubIndustry', 'Desconocido')
                             industria = r_prof.get('finnhubIndustry', 'Desconocida')
                             
-                        hoy = datetime.datetime.today().strftime('%Y-%m-%d')
-                        pasado = (datetime.datetime.today() - datetime.timedelta(days=180)).strftime('%Y-%m-%d')
-                        r_ins = requests.get(f"https://finnhub.io/api/v1/stock/insider-sentiment?symbol={sym_finnhub}&from={pasado}&to={hoy}&token={API_FINNHUB}").json()
+                        # Sentimiento de Insiders
+                        hoy_dt = datetime.datetime.today()
+                        hoy_str = hoy_dt.strftime('%Y-%m-%d')
+                        pasado_str = (hoy_dt - datetime.timedelta(days=180)).strftime('%Y-%m-%d')
+                        r_ins = requests.get(f"https://finnhub.io/api/v1/stock/insider-sentiment?symbol={sym_finnhub}&from={pasado_str}&to={hoy_str}&token={API_FINNHUB}").json()
                         if isinstance(r_ins, dict) and 'data' in r_ins and len(r_ins['data']) > 0:
                             mspr = r_ins['data'][-1].get('mspr', 0)
                             if mspr > 5: insider_trend = "COMPRA MASIVA 🟢"
@@ -364,57 +368,63 @@ with tab1:
                             elif mspr < 0: insider_trend = "VENDIENDO ↘️"
                             else: insider_trend = "NEUTRAL ⚪"
                             
-                        futuro = (datetime.datetime.today() + datetime.timedelta(days=90)).strftime('%Y-%m-%d')
-                        r_earn = requests.get(f"https://finnhub.io/api/v1/calendar/earnings?from={hoy}&to={futuro}&symbol={sym_finnhub}&token={API_FINNHUB}").json()
+                        # Calendario de Earnings
+                        futuro_str = (hoy_dt + datetime.timedelta(days=90)).strftime('%Y-%m-%d')
+                        r_earn = requests.get(f"https://finnhub.io/api/v1/calendar/earnings?from={hoy_str}&to={futuro_str}&symbol={sym_finnhub}&token={API_FINNHUB}").json()
                         if isinstance(r_earn, dict) and 'earningsCalendar' in r_earn and len(r_earn['earningsCalendar']) > 0:
                             fecha_raw = r_earn['earningsCalendar'][0].get('date', 'Sin noticias')
                             if fecha_raw != 'Sin noticias':
                                 fecha_earnings = datetime.datetime.strptime(fecha_raw, "%Y-%m-%d").strftime("%d/%m/%Y")
                     except: pass
 
-                    # 3. MOTOR HÍBRIDO (Parte 2: CONEXIÓN DIRECTA YAHOO)
+                    # 3. MOTOR HÍBRIDO (Parte 2: CONEXIÓN DIRECTA YAHOO para Consenso y Precio Objetivo)
                     try:
                         url_yh = f"https://query2.finance.yahoo.com/v10/finance/quoteSummary/{simbolo_yahoo}?modules=financialData,summaryProfile"
-                        headers_yh = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
-                        r_yh = requests.get(url_yh, headers=headers_yh, timeout=5).json()
+                        headers_yh = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'}
+                        resp_yh = requests.get(url_yh, headers=headers_yh, timeout=5)
                         
-                        if 'quoteSummary' in r_yh and r_yh['quoteSummary']['result']:
-                            res_yh = r_yh['quoteSummary']['result'][0]
-                            
-                            if 'summaryProfile' in res_yh:
-                                prof = res_yh['summaryProfile']
-                                if sector == "Desconocido": sector = prof.get('sector', 'Desconocido')
-                                if industria == "Desconocida": industria = prof.get('industry', 'Desconocida')
+                        if resp_yh.status_code == 200:
+                            r_json = resp_yh.json()
+                            if 'quoteSummary' in r_json and r_json['quoteSummary']['result']:
+                                res_yh = r_json['quoteSummary']['result'][0]
                                 
-                            if 'financialData' in res_yh:
-                                fdata = res_yh['financialData']
-                                
-                                if recom == "Sin noticias":
-                                    recom_raw = fdata.get('recommendationKey')
-                                    if recom_raw and isinstance(recom_raw, str): 
-                                        r_eng = recom_raw.replace('_', ' ').upper()
-                                        recom = traduccion_ws.get(r_eng, r_eng)
-                                        
-                                if precio_obj_str == "Sin noticias":
-                                    # Extracción a prueba de fallos sin corchetes
-                                    if 'targetMeanPrice' in fdata:
-                                        p_obj_data = fdata['targetMeanPrice']
-                                        if isinstance(p_obj_data, dict) and 'raw' in p_obj_data:
-                                            if p_obj_data['raw'] > 0: precio_obj_str = str(p_obj_data['raw'])
-                                        elif isinstance(p_obj_data, (int, float)) and p_obj_data > 0:
-                                            precio_obj_str = str(p_obj_data)
-                                            
+                                # Datos Financieros (Donde está el Target y la Recomendación)
+                                if 'financialData' in res_yh:
+                                    fdata = res_yh['financialData']
+                                    
+                                    # Extracción de Recomendación
+                                    r_key = fdata.get('recommendationKey')
+                                    if r_key:
+                                        r_clean = str(r_key).replace('_', ' ').upper()
+                                        recom = traduccion_ws.get(r_clean, r_clean)
+                                    
+                                    # Extracción de Precio Objetivo
+                                    p_target = fdata.get('targetMeanPrice', {})
+                                    if isinstance(p_target, dict) and 'raw' in p_target:
+                                        if p_target['raw'] > 0: precio_obj_str = str(p_target['raw'])
+                                    elif isinstance(p_target, (int, float)) and p_target > 0:
+                                        precio_obj_str = str(p_target)
+
+                                # Respaldo de Sector si Finnhub falló
+                                if sector == "Desconocido" and 'summaryProfile' in res_yh:
+                                    prof = res_yh['summaryProfile']
+                                    sector = prof.get('sector', 'Desconocido')
+                                    industria = prof.get('industry', 'Desconocida')
+
+                        # Si Yahoo directo no dio fecha de earnings, probamos el objeto yf
                         if fecha_earnings == "Sin noticias":
                             tk_obj = yf.Ticker(simbolo_yahoo)
                             cal = tk_obj.calendar
                             if isinstance(cal, dict) and 'Earnings Date' in cal:
-                                fechas = cal['Earnings Date']
-                                if isinstance(fechas, list) and len(fechas) > 0 and pd.notnull(fechas[0]):
-                                    fecha_earnings = fechas[0].strftime("%d/%m/%Y")
-                    except Exception: pass
+                                fechas_list = cal['Earnings Date']
+                                if isinstance(fechas_list, list) and len(fechas_list) > 0:
+                                    fecha_earnings = fechas_list[0].strftime("%d/%m/%Y")
+                    except: pass
 
+                    # ---> PINTAMOS EL SECTOR DEBAJO DEL DESPLEGABLE <---
                     espacio_sector.markdown(f"<div style='font-size: 14px; color: #7f8c8d; margin-top: -10px; margin-bottom: 10px;'>🏢 <b>Sector:</b> {sector} | <b>Industria:</b> {industria}</div>", unsafe_allow_html=True)
 
+                    # 4. Cálculo de Precio y Conversión a Dólares
                     datos_limpios = datos.dropna(subset=['Close'])
                     precio_actual = float(datos_limpios['Close'].iloc[-1])
                     s_moneda_visual = obtener_simbolo_moneda(simbolo_real)
@@ -426,6 +436,7 @@ with tab1:
                         precio_obj_final = f'{p_obj_f:,.2f} {s_moneda_visual} <span style="color:{color_p}; font-weight:bold; font-size:13px;">({pot:+.1f}%)</span>'
                     else: precio_obj_final = "Sin noticias"
                         
+                    # Conversión a dólares
                     precio_usd = None
                     mapa_divisas = { "€": "EURUSD=X", "¥": "JPYUSD=X", "GBp": "GBPUSD=X", "kr": "SEKUSD=X", "₹": "INRUSD=X" }
                     t_div = mapa_divisas.get(s_moneda_visual)
@@ -440,8 +451,9 @@ with tab1:
                                 precio_usd = (precio_actual * tasa) / 100 if s_moneda_visual == "GBp" else (precio_actual * tasa)
                         except: pass
 
-                    t_conv = f'<span style="font-size:18px;color:#7f8c8d;font-weight:400;margin-left:10px;">(≈ {precio_usd:,.2f} $)</span>' if precio_usd else ""
+                    t_conv = f'<span style="font-size: 18px; color: #7f8c8d; font-weight: 400; margin-left: 10px;">(≈ {precio_usd:,.2f} $)</span>' if precio_usd else ""
                     
+                    # 5. RENDERIZADO DE PANELES
                     st.markdown(f"""
                     <div style="background-color:#f8f9fa;padding:15px;border-radius:10px;box-shadow:0 4px 6px rgba(0,0,0,0.05);margin-bottom:20px;">
                         <p style="margin:0;font-size:14px;color:rgba(49,51,63,0.7);font-weight:400;">Valor Actual ({simbolo_real})</p>
@@ -465,6 +477,7 @@ with tab1:
                     </div>
                     """, unsafe_allow_html=True)
 
+                    # 6. Gráfica Final
                     fig = go.Figure()
                     fig.add_trace(go.Scatter(x=datos_limpios.index, y=datos_limpios['Close'], mode='lines', name='Precio', line=dict(color='#228B22', width=2)))
                     fig.update_layout(title=f"Histórico: {ticker_elegido}", template='plotly_dark', margin=dict(l=0, r=0, t=40, b=0), hovermode="x unified")
