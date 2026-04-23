@@ -299,7 +299,7 @@ st.markdown("---")
 tab1, tab2, tab3, tab4 = st.tabs(["🔬 Análisis Individual", "⚔️ Batalla de Alpha", "🎯 Cazar Alpha (Radar)", "🏆 Sala de Trofeos"])
 
 # ------------------------------------------
-# PESTAÑA 1: VISOR DE GRÁFICOS (CON API FINNHUB)
+# PESTAÑA 1: VISOR DE GRÁFICOS (CON API FINNHUB + TOOLTIPS)
 # ------------------------------------------
 with tab1:
     st.markdown("### 🔍 Selector de Activos")
@@ -318,17 +318,18 @@ with tab1:
         
         with st.spinner(f"Cargando datos de {simbolo_real} y consultando Finnhub..."):
             try:
-                # 1. Datos Yahoo
+                # 1. Datos del Activo
                 datos = yf.download(simbolo_yahoo, period=mapa_tiempo[periodo], progress=False)
                 if isinstance(datos.columns, pd.MultiIndex): datos.columns = datos.columns.get_level_values(0)
 
                 if not datos.empty and 'Close' in datos.columns:
                     
-                    # 2. Llamada a la API de FINNHUB (Triple Turbo VIP)
+                    # 2. Llamada a la API de FINNHUB
                     import requests
                     API_FINNHUB = "d7c2s5hr01quh9fcasf0d7c2s5hr01quh9fcasfg"
                     
-                    recom, precio_obj_str, fecha_earnings, sector, insider_trend = "N/A", "N/A", "N/A", "N/A", "N/A"
+                    # Inicializamos con "Sin noticias"
+                    recom, precio_obj_str, fecha_earnings, sector, insider_trend = "Sin noticias", "Sin noticias", "Sin noticias", "Sin noticias", "Sin noticias"
                     
                     try:
                         # Recomendación
@@ -350,7 +351,7 @@ with tab1:
                         if r_prof and 'finnhubIndustry' in r_prof:
                             sector = r_prof['finnhubIndustry']
                             
-                        # Insiders
+                        # Insiders (Sentimiento)
                         hoy = datetime.datetime.today().strftime('%Y-%m-%d')
                         pasado = (datetime.datetime.today() - datetime.timedelta(days=180)).strftime('%Y-%m-%d')
                         futuro = (datetime.datetime.today() + datetime.timedelta(days=90)).strftime('%Y-%m-%d')
@@ -367,54 +368,92 @@ with tab1:
                         # Earnings
                         r_earn = requests.get(f"https://finnhub.io/api/v1/calendar/earnings?from={hoy}&to={futuro}&symbol={simbolo_real}&token={API_FINNHUB}").json()
                         if r_earn and 'earningsCalendar' in r_earn and len(r_earn['earningsCalendar']) > 0:
-                            fecha_raw = r_earn['earningsCalendar'][0].get('date', 'N/A')
-                            if fecha_raw != 'N/A':
+                            fecha_raw = r_earn['earningsCalendar'][0].get('date', 'Sin noticias')
+                            if fecha_raw != 'Sin noticias':
                                 fecha_earnings = datetime.datetime.strptime(fecha_raw, "%Y-%m-%d").strftime("%d/%m/%Y")
-                    except Exception as e:
-                        pass # Si Finnhub falla con algún ticker raro, se quedan en N/A
+                    except:
+                        pass 
 
-                    # 3. Precio actual
+                    # 3. Datos de Precio y Moneda
                     datos_limpios = datos.dropna(subset=['Close'])
-                    cierres = datos_limpios['Close'].squeeze()
-                    precio_actual = float(cierres.iloc[-1])
+                    precio_actual = float(datos_limpios['Close'].iloc[-1])
                     s_moneda_visual = obtener_simbolo_moneda(simbolo_real)
                     
-                    # Calcular potencial si tenemos precio objetivo
-                    if precio_obj_str != "N/A":
+                    # Formateo del Precio Objetivo
+                    if precio_obj_str != "Sin noticias":
                         precio_obj_float = float(precio_obj_str)
                         potencial = ((precio_obj_float / precio_actual) - 1) * 100
-                        potencial_texto = f"({potencial:+.1f}%)"
+                        color_pot = "#228B22" if potencial > 0 else "#FF3333"
+                        potencial_texto = f'<span style="color: {color_pot}; font-weight: bold; font-size: 13px;">({potencial:+.1f}%)</span>'
                         precio_obj_final = f"{precio_obj_float:,.2f} {s_moneda_visual} {potencial_texto}"
                     else:
-                        precio_obj_final = "N/A"
+                        precio_obj_final = "Sin noticias"
+                        
+                    # 4. LÓGICA DE CONVERSIÓN A DÓLARES (ULTRA-ROBUSTA)
+                    precio_usd = None
+                    mapa_divisas = { "€": "EURUSD=X", "¥": "JPYUSD=X", "GBp": "GBPUSD=X", "kr": "SEKUSD=X", "₹": "INRUSD=X" }
+                    ticker_divisa = mapa_divisas.get(s_moneda_visual)
+                    
+                    if ticker_divisa:
+                        try:
+                            div_data = yf.download(ticker_divisa, period="5d", progress=False)
+                            if not div_data.empty:
+                                # Forzamos limpieza de MultiIndex si lo hay
+                                if isinstance(div_data.columns, pd.MultiIndex): div_data.columns = div_data.columns.get_level_values(0)
+                                col_cierre = div_data['Close']
+                                if isinstance(col_cierre, pd.DataFrame): col_cierre = col_cierre.iloc[:, 0]
+                                
+                                tasa = float(col_cierre.dropna().iloc[-1])
+                                precio_usd = (precio_actual * tasa) / 100 if s_moneda_visual == "GBp" else (precio_actual * tasa)
+                        except:
+                            pass
 
-                    # 4. Mostrar Título y Sector
-                    st.markdown(f"## {simbolo_real} - {precio_actual:,.2f} {s_moneda_visual}")
-                    st.caption(f"🏢 **Sector:** {sector}")
+                    texto_conversion = f'<span style="font-size: 18px; color: #7f8c8d; font-weight: 400; margin-left: 10px;">(≈ {precio_usd:,.2f} $)</span>' if precio_usd else ""
                     
-                    # 5. PANELES TRIPLE TURBO NATIVOS DE STREAMLIT (Infalibles)
-                    st.markdown("---")
-                    c1, c2, c3 = st.columns(3)
+                    # 5. RENDERIZADO HTML CON TOOLTIPS
+                    html_final = f"""
+                    <div style="background-color: #f8f9fa; padding: 15px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); margin-bottom: 20px;">
+                        <div style="display: flex; justify-content: space-between; align-items: baseline;">
+                            <div>
+                                <p style="margin: 0; font-size: 14px; color: rgba(49, 51, 63, 0.7); font-weight: 400;">Valor Actual ({simbolo_real})</p>
+                                <h2 style="margin: 0; font-weight: 700; color: #1f1f1f; font-size: 32px;">
+                                    {precio_actual:,.2f} {s_moneda_visual}{texto_conversion}
+                                </h2>
+                            </div>
+                            <div style="text-align: right;">
+                                <span style="font-size: 12px; color: #7f8c8d;">🏢 Sector:</span><br>
+                                <span style="font-weight: bold; color: #2c3e50;">{sector}</span>
+                            </div>
+                        </div>
+                    </div>
                     
-                    with c1:
-                        st.info(f"**🏦 Analistas Wall Street**\n\nConsenso: **{recom}**\n\nPrecio Obj: **{precio_obj_final}**")
-                    with c2:
-                        st.warning(f"**📅 Próximos Resultados**\n\nFecha Estimada:\n\n**{fecha_earnings}**")
-                    with c3:
-                        st.success(f"**👔 Directivos (Insiders)**\n\nÚltimos 6 meses:\n\n**{insider_trend}**")
-                    st.markdown("---")
+                    <div style="display: flex; gap: 15px; margin-bottom: 20px;">
+                        <div title="Muestra el consenso actual de los analistas de Wall Street y el precio objetivo promedio esperado a 12 meses." style="flex: 1; background: #ffffff; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); border-top: 4px solid #1E90FF; cursor: help;">
+                            <div style="font-size: 12px; color: #7f8c8d; text-transform: uppercase; font-weight: bold; margin-bottom: 5px;">🏦 Wall Street ℹ️</div>
+                            <div style="font-size: 14px; color: #2c3e50;"><b>Consenso:</b> {recom}</div>
+                            <div style="font-size: 14px; color: #2c3e50; margin-top: 5px;"><b>Precio Obj:</b> {precio_obj_final}</div>
+                        </div>
+                        <div title="Fecha oficial o estimada de la próxima presentación de resultados trimestrales." style="flex: 1; background: #ffffff; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); border-top: 4px solid #f39c12; cursor: help;">
+                            <div style="font-size: 12px; color: #7f8c8d; text-transform: uppercase; font-weight: bold; margin-bottom: 5px;">📅 Próximos Earnings ℹ️</div>
+                            <div style="font-size: 18px; color: #2c3e50; font-weight: bold; margin-top: 5px;">{fecha_earnings}</div>
+                        </div>
+                        <div title="Rastrea si los directivos de la empresa han estado comprando o vendiendo acciones propias en los últimos 6 meses." style="flex: 1; background: #ffffff; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); border-top: 4px solid #8e44ad; cursor: help;">
+                            <div style="font-size: 12px; color: #7f8c8d; text-transform: uppercase; font-weight: bold; margin-bottom: 5px;">👔 Manos Fuertes ℹ️</div>
+                            <div style="font-size: 14px; color: #2c3e50;"><b>Directivos (6M):</b> {insider_trend}</div>
+                        </div>
+                    </div>
+                    """
+                    st.markdown(html_final, unsafe_allow_html=True)
 
                     # 6. Gráfica
                     fig = go.Figure()
-                    x_data = datos_limpios.index.get_level_values(0) if isinstance(datos_limpios.index, pd.MultiIndex) else datos_limpios.index
-                    fig.add_trace(go.Scatter(x=x_data, y=np.ravel(cierres), mode='lines', name='Precio', line=dict(color='#228B22', width=2)))
+                    fig.add_trace(go.Scatter(x=datos_limpios.index, y=precio_actual if len(datos_limpios) == 1 else datos_limpios['Close'], mode='lines', name='Precio', line=dict(color='#228B22', width=2)))
                     fig.update_layout(title=f"Cotización: {ticker_elegido}", template='plotly_dark', margin=dict(l=0, r=0, t=40, b=0), xaxis_title="", yaxis_title=f"Precio ({s_moneda_visual})", hovermode="x unified")
                     st.plotly_chart(fig, use_container_width=True)
                 else:
                     st.warning("⚠️ No se encontraron datos para este activo.")
             except Exception as e:
                 st.error(f"⚠️ Error técnico: {e}")
-
 # ------------------------------------------
 # PESTAÑA 2: BATALLA DE ALPHA (COMPARATIVA)
 # ------------------------------------------
