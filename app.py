@@ -299,7 +299,7 @@ st.markdown("---")
 tab1, tab2, tab3, tab4 = st.tabs(["🔬 Análisis Individual", "⚔️ Análisis Colectivo", "🎯 Radar", "🏆 Auditoría"])
 
 # ------------------------------------------
-# PESTAÑA 1: VISOR DE GRÁFICOS (DISEÑO CLÁSICO + MOTOR HÍBRIDO)
+# PESTAÑA 1: VISOR DE GRÁFICOS (DISEÑO CLÁSICO + BYPASS YAHOO)
 # ------------------------------------------
 with tab1:
     st.markdown("### 🔍 Selector de Activos")
@@ -378,9 +378,13 @@ with tab1:
                                 fecha_earnings = datetime.datetime.strptime(fecha_raw, "%Y-%m-%d").strftime("%d/%m/%Y")
                     except: pass
 
-                    # 3. MOTOR HÍBRIDO (Parte 2: Yahoo Finance para Precio Obj y Consenso)
+                    # 3. MOTOR HÍBRIDO (Parte 2: Yahoo Finance BYPASS)
                     try:
-                        ticker_obj = yf.Ticker(simbolo_yahoo)
+                        # ---> TRUCO DEL DISFRAZ PARA ENGAÑAR A YAHOO <---
+                        session = requests.Session()
+                        session.headers['User-agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
+                        
+                        ticker_obj = yf.Ticker(simbolo_yahoo, session=session)
                         info = ticker_obj.info
                         
                         if isinstance(info, dict):
