@@ -468,7 +468,7 @@ with tab1:
 # PESTAÑA 2: BATALLA DE ALPHA (COMPARATIVA)
 # ------------------------------------------
 with tab2:
-    st.markdown("### ⚔️ Batalla de Alpha (Comparativa Múltiple)")
+    st.markdown("### ⚔️ Comparativa Múltiple")
     st.write("Selecciona varios activos para ver cuál está rindiendo mejor en un mismo periodo de tiempo. Todos empezarán en Base 0 (0% de rendimiento) para una comparación justa.")
     
     col_comp1, col_comp2 = st.columns([3, 1])
