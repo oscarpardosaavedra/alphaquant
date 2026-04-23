@@ -433,14 +433,9 @@ with tab2:
             except Exception:
                 pass
 
-        for i, ticker in enumerate(tickers_a_escanear):
-            porcentaje = int(((i + 1) / len(tickers_a_escanear)) * 100)
-            nombre_empresa = tickers_nombres[ticker]
-            region_activa = obtener_region(ticker)
-            
-            barra_progreso.progress(porcentaje, text=f"⏳ Evaluando: {ticker} ({nombre_empresa}) | {porcentaje}%")
-            
-try:
+for i, ticker in enumerate(targets):
+            barra_progreso.progress((i + 1) / len(targets), text=f"Evaluando: {ticker}...")
+            try:
                 sym_yahoo = a_yahoo(ticker)
                 stock = yf.Ticker(sym_yahoo)
                 
@@ -476,7 +471,6 @@ try:
                 start_price = float(array_cierres[0])
                 ret_max = ((precio_actual / start_price) - 1) * 100 if start_price > 0 else 0
                 
-                # --- ESCUDO ANTI-BLOQUEOS DE YAHOO ---
                 try:
                     info = stock.info
                     per = info.get('trailingPE', 999)
@@ -484,112 +478,90 @@ try:
                 except:
                     info = {}
                     per = 999
-                # -------------------------------------
                 
                 vol_hoy = float(array_vol[-1])
                 vol_medio = float(np.mean(array_vol[-20:]))
-                                
-                # ==========================================
-                # LÓGICA DEL ALGORITMO INSTITUCIONAL (BASE 40)
-                # ==========================================
-                pts = 40 # Base estricta. Una acción buena se quedará en 80.
-                v_1m = r1m if r1m else 0
-                v_6m = r6m if r6m else 0
+                
+                ptsBase = 40
+                v_1m = r1m if r1m is not None else 0
+                v_6m = r6m if r6m is not None else 0
                 reg = obtener_region(ticker)
                 
-                if v_1m > 0 and v_6m > 0: pts += 15
-                elif v_1m > 0 and v_6m < -15: pts -= 20
-                elif v_6m <= 0: pts -= 15
-                else: pts += 5
+                if v_1m > 0 and v_6m > 0: ptsBase += 15
+                elif v_1m > 0 and v_6m < -15: ptsBase -= 20
+                elif v_6m <= 0: ptsBase -= 15
+                else: ptsBase += 5
                 
                 myAlpha = v_1m - (alphaSPY if reg == "EEUU" else 0)
-                if myAlpha > 5: pts += 10
-                elif myAlpha < -5: pts -= 10
+                if myAlpha > 5: ptsBase += 10
+                elif myAlpha < -5: ptsBase -= 10
                 
                 isHyperGrowth = (myAlpha > 10 and vol_medio > 1000000)
                 
                 if reg == "EEUU":
-                    if 0 < per <= 45: pts += 15
-                    elif 45 < per <= 120 and isHyperGrowth: pts += 15
-                    elif per > 120 or per < 0: pts -= 15
+                    if 0 < per <= 45: ptsBase += 15
+                    elif 45 < per <= 120 and isHyperGrowth: ptsBase += 15
+                    elif per > 120 or per < 0: ptsBase -= 15
                 elif reg == "Europa":
-                    if 0 < per <= 15: pts += 15
-                    elif 15 < per <= 35 and isHyperGrowth: pts += 15
-                    elif per > 35 or per < 0: pts -= 15
+                    if 0 < per <= 15: ptsBase += 15
+                    elif 15 < per <= 35 and isHyperGrowth: ptsBase += 15
+                    elif per > 35 or per < 0: ptsBase -= 15
                 elif reg == "Asia":
-                    if 0 < per <= 30: pts += 15
-                    elif 30 < per <= 80 and isHyperGrowth: pts += 15
-                    elif per > 80 or per < 0: pts -= 15
+                    if 0 < per <= 30: ptsBase += 15
+                    elif 30 < per <= 80 and isHyperGrowth: ptsBase += 15
+                    elif per > 80 or per < 0: ptsBase -= 15
                 
-                # GATILLO DE VOLUMEN (Imprescindible para superar los 90 pts)
-                if abs(pct_hoy) > 4 and vol_hoy < vol_medio: pts -= 15 
+                if abs(pct_hoy) > 4 and vol_hoy < vol_medio: ptsBase -= 15 
                 
                 if reg == "EEUU" or reg == "Europa":
-                    if abs(pct_hoy) <= 1.5 and vol_hoy >= (vol_medio * 1.5): pts += 20
-                    elif dist_max > -5 and vol_hoy >= (vol_medio * 2.0) and pct_hoy > 2: pts += 25
-                    elif dist_max > -2 and vol_hoy > (vol_medio * 1.5) and pct_hoy > 0: pts += 15
-                    elif pct_hoy < -3 and vol_hoy > (vol_medio * 1.5): pts -= 20 # Distribución
+                    if abs(pct_hoy) <= 1.5 and vol_hoy >= (vol_medio * 1.5): ptsBase += 20
+                    elif dist_max > -5 and vol_hoy >= (vol_medio * 2.0) and pct_hoy > 2: ptsBase += 25
+                    elif dist_max > -2 and vol_hoy > (vol_medio * 1.5) and pct_hoy > 0: ptsBase += 15
+                    elif pct_hoy < -3 and vol_hoy > (vol_medio * 1.5): ptsBase -= 20
                 elif reg == "Asia":
-                    if abs(pct_hoy) <= 2.0 and vol_hoy >= (vol_medio * 2.0): pts += 20
-                    elif dist_max > -10 and vol_hoy >= (vol_medio * 2.5) and pct_hoy > 3: pts += 25
-                    elif dist_max > -5 and vol_hoy > (vol_medio * 1.8) and pct_hoy > 0: pts += 15
+                    if abs(pct_hoy) <= 2.0 and vol_hoy >= (vol_medio * 2.0): ptsBase += 20
+                    elif dist_max > -10 and vol_hoy >= (vol_medio * 2.5) and pct_hoy > 3: ptsBase += 25
+                    elif dist_max > -5 and vol_hoy > (vol_medio * 1.8) and pct_hoy > 0: ptsBase += 15
                 
                 isFenix = False
                 if dist_max <= -20 and per > 0 and vol_medio > 400000 and v_1m > 2 and pct_hoy > 1.5:
                     fuerzaGiro = (15 if v_1m > 8 else 5) + (15 if vol_hoy > vol_medio * 1.2 else 0) + (10 if pct_hoy > 2 else 5)
                     scoreFenix = 65 + fuerzaGiro
-                    if scoreFenix > pts: 
-                        pts = scoreFenix
+                    if scoreFenix > ptsBase: 
+                        ptsBase = scoreFenix
                         isFenix = True
                 
-                pts = max(0, min(100, int(pts)))
+                pts = max(0, min(100, int(ptsBase)))
 
-                # =======================================================
-                # AUTO-GUARDADO EN LA SALA DE TROFEOS (Base de Datos)
-                # =======================================================
-                # Si la puntuación es alta y el ticker NO estaba en la base de datos...
                 if pts >= 90 and ticker not in existentes_en_db and ws is not None:
                     fecha_hoy = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
                     ws.append_row([ticker, nombre_empresa, fecha_hoy, float(precio_actual), int(pts)])
                     existentes_en_db.append(ticker)
-                # =======================================================
 
                 recomendacion = "❌ Esperar"
                 if pts >= 65:
-                    if pts >= 85: 
-                        recomendacion = "🔥 COMPRA (FÉNIX ORO)" if isFenix else "🚀 COMPRA INSTITUCIONAL"
-                    elif pts >= 70: 
-                        recomendacion = "👀 VIGILAR (FÉNIX)" if isFenix else "💎 VIGILAR (BREAKOUT/WHALE)"
+                    if pts >= 85: recomendacion = "🔥 COMPRA (FÉNIX ORO)" if isFenix else "🚀 COMPRA INSTITUCIONAL"
+                    elif pts >= 70: recomendacion = "👀 VIGILAR (FÉNIX)" if isFenix else "💎 VIGILAR (BREAKOUT/WHALE)"
                 
                 moneda = info.get('currency', 'USD')
                 simbolos_moneda = {"USD": "$", "EUR": "€", "GBP": "£", "GBp": "GBp", "JPY": "¥"}
                 s_mon = simbolos_moneda.get(moneda, moneda)
+                sector = info.get('sector', 'N/A')
 
                 def fmt_pct(val): return f"{val:+.2f}%" if val is not None else "N/A"
 
                 resultados_radar.append({
-                    "TICKER": ticker,
-                    "NOMBRE": nombre_empresa,
-                    "PUNTOS": pts,
-                    "RECOMENDACIÓN": recomendacion,
-                    "PRECIO": f"{precio_actual:.2f} {s_mon}",
-                    "% HOY": fmt_pct(pct_hoy),
-                    "% 1 MES": fmt_pct(r1m),
-                    "% 6 MESES": fmt_pct(r6m),
-                    "% 1 AÑO": fmt_pct(r1y),
-                    "% 5 AÑOS": fmt_pct(r5y),
-                    "% 10 AÑOS": fmt_pct(r10y),
-                    "% 20 AÑOS": fmt_pct(r20y),
-                    "% MÁX": fmt_pct(ret_max),
-                    "PER": f"{per:.1f}" if per != 999 else "N/A",
-                    "SECTOR": sector,
-                    "VOLUMEN": f"{vol_hoy:,.0f}",
-                    "VOL. MEDIO": f"{vol_medio:,.0f}",
-                    "SUELO (52s)": fmt_pct(dist_suelo),
-                    "MAX (52s)": fmt_pct(dist_max)
+                    "TICKER": ticker, "NOMBRE": nombre_empresa, "PUNTOS": pts, "RECOMENDACIÓN": recomendacion,
+                    "PRECIO": f"{precio_actual:.2f} {s_mon}", "% HOY": fmt_pct(pct_hoy), "% 1 MES": fmt_pct(r1m),
+                    "% 6 MESES": fmt_pct(r6m), "% 1 AÑO": fmt_pct(r1y), "% 5 AÑOS": fmt_pct(r5y),
+                    "% 10 AÑOS": fmt_pct(r10y), "% 20 AÑOS": fmt_pct(r20y), "% MÁX": fmt_pct(ret_max),
+                    "PER": f"{per:.1f}" if per != 999 else "N/A", "SECTOR": sector,
+                    "VOLUMEN": f"{vol_hoy:,.0f}", "VOL. MEDIO": f"{vol_medio:,.0f}",
+                    "SUELO (52s)": fmt_pct(dist_suelo), "MAX (52s)": fmt_pct(dist_max)
                 })
                 
-            except Exception: continue
+            except Exception: 
+                continue
             
         barra_progreso.progress(100, text="✅ 100% Completado")
         
