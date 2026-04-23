@@ -299,7 +299,7 @@ st.markdown("---")
 tab1, tab2, tab3, tab4 = st.tabs(["🔬 Análisis Individual", "⚔️ Batalla de Alpha", "🎯 Cazar Alpha (Radar)", "🏆 Sala de Trofeos"])
 
 # ------------------------------------------
-# PESTAÑA 1: VISOR DE GRÁFICOS (CON API FINNHUB + TOOLTIPS)
+# PESTAÑA 1: VISOR DE GRÁFICOS (MOTOR HÍBRIDO YAHOO + FINNHUB)
 # ------------------------------------------
 with tab1:
     st.markdown("### 🔍 Selector de Activos")
@@ -310,50 +310,61 @@ with tab1:
     
     if ticker_elegido:
         simbolo_real = ticker_elegido.split(" ")[0]
-        simbolo_yahoo = a_yahoo(simbolo_real) # Este es el símbolo limpio (ej: ITX.MC)
+        simbolo_yahoo = a_yahoo(simbolo_real)
         st.markdown("---")
         
         periodo = st.radio("Rango de tiempo:", ["1 Mes", "3 Meses", "6 Meses", "1 Año", "5 Años", "10 Años", "Máximo"], index=1, horizontal=True)
         mapa_tiempo = {"1 Mes": "1mo", "3 Meses": "3mo", "6 Meses": "6mo", "1 Año": "1y", "5 Años": "5y", "10 Años": "10y", "Máximo": "max"}
         
-        with st.spinner(f"Cargando datos de {simbolo_real} y consultando Finnhub..."):
+        with st.spinner(f"Cargando datos de {simbolo_real} y rastreando Wall Street..."):
             try:
-                # 1. Datos de Precio (Yahoo)
+                # 1. Datos Yahoo (Precio Histórico)
                 datos = yf.download(simbolo_yahoo, period=mapa_tiempo[periodo], progress=False)
                 if isinstance(datos.columns, pd.MultiIndex): datos.columns = datos.columns.get_level_values(0)
 
                 if not datos.empty and 'Close' in datos.columns:
-                    # 2. Llamada a la API de FINNHUB (Usando simbolo_yahoo corregido)
-                    import requests
-                    API_FINNHUB = "d7c2s5hr01quh9fcasf0d7c2s5hr01quh9fcasfg"
+                    
                     recom, precio_obj_str, fecha_earnings, sector, insider_trend = "Sin noticias", "Sin noticias", "Sin noticias", "Sin noticias", "Sin noticias"
                     
+                    # 2. MOTOR HÍBRIDO: YAHOO (Precio Objetivo/Sector) + FINNHUB (Insiders/Earnings)
+                    import requests
+                    API_FINNHUB = "d7c2s5hr01quh9fcasf0d7c2s5hr01quh9fcasfg"
+                    
                     try:
-                        # Usamos simbolo_yahoo para que Finnhub lo encuentre (ej: EBRO.MC)
-                        # Recomendación
-                        r_rec = requests.get(f"https://finnhub.io/api/v1/stock/recommendation?symbol={simbolo_yahoo}&token={API_FINNHUB}").json()
-                        if r_rec and isinstance(r_rec, list) and len(r_rec) > 0:
-                            lat = r_rec[0]
-                            sb, b, h, s, ss = lat.get('strongBuy',0), lat.get('buy',0), lat.get('hold',0), lat.get('sell',0), lat.get('strongSell',0)
-                            if sb + b > h and sb + b > s + ss: recom = "COMPRA FUERTE 🟢"
-                            elif s + ss > h and s + ss > b + sb: recom = "VENTA 🔴"
-                            else: recom = "MANTENER 🟡"
+                        # Extraemos Wall Street y Sector de Yahoo Finance (Porque en Finnhub es de pago)
+                        ticker_obj = yf.Ticker(simbolo_yahoo)
+                        info = ticker_obj.info
+                        
+                        if isinstance(info, dict):
+                            sector = info.get('sector', 'Sin noticias')
                             
-                        # Precio Objetivo
-                        r_pt = requests.get(f"https://finnhub.io/api/v1/stock/price-target?symbol={simbolo_yahoo}&token={API_FINNHUB}").json()
-                        if r_pt and 'targetMean' in r_pt and r_pt['targetMean'] > 0:
-                            precio_obj_str = f"{r_pt['targetMean']:.2f}"
+                            recom_raw = info.get('recommendationKey')
+                            if recom_raw: recom = str(recom_raw).replace('_', ' ').upper()
                             
-                        # Sector
-                        r_prof = requests.get(f"https://finnhub.io/api/v1/stock/profile2?symbol={simbolo_yahoo}&token={API_FINNHUB}").json()
-                        if r_prof and 'finnhubIndustry' in r_prof:
-                            sector = r_prof['finnhubIndustry']
+                            p_obj = info.get('targetMeanPrice')
+                            if p_obj and p_obj > 0: precio_obj_str = str(p_obj)
                             
-                        # Insiders
+                        # Calendario de Yahoo (Plan A para Earnings)
+                        try:
+                            cal = ticker_obj.calendar
+                            if isinstance(cal, dict) and 'Earnings Date' in cal:
+                                fechas = cal['Earnings Date']
+                                if isinstance(fechas, list) and len(fechas) > 0 and pd.notnull(fechas[0]):
+                                    fecha_earnings = fechas[0].strftime("%d/%m/%Y")
+                        except: pass
+                            
+                    except Exception as e:
+                        pass
+                        
+                    # Extracción de Finnhub (Porque es mucho más rápido y preciso para Insiders)
+                    try:
                         hoy = datetime.datetime.today().strftime('%Y-%m-%d')
                         pasado = (datetime.datetime.today() - datetime.timedelta(days=180)).strftime('%Y-%m-%d')
-                        r_ins = requests.get(f"https://finnhub.io/api/v1/stock/insider-sentiment?symbol={simbolo_yahoo}&from={pasado}&to={hoy}&token={API_FINNHUB}").json()
-                        if r_ins and 'data' in r_ins and len(r_ins['data']) > 0:
+                        
+                        sym_finnhub = simbolo_yahoo if "." in simbolo_yahoo else simbolo_real
+                        
+                        r_ins = requests.get(f"https://finnhub.io/api/v1/stock/insider-sentiment?symbol={sym_finnhub}&from={pasado}&to={hoy}&token={API_FINNHUB}").json()
+                        if isinstance(r_ins, dict) and 'data' in r_ins and len(r_ins['data']) > 0:
                             mspr = r_ins['data'][-1].get('mspr', 0)
                             if mspr > 5: insider_trend = "COMPRA MASIVA 🟢"
                             elif mspr > 0: insider_trend = "COMPRANDO ↗️"
@@ -361,13 +372,14 @@ with tab1:
                             elif mspr < 0: insider_trend = "VENDIENDO ↘️"
                             else: insider_trend = "NEUTRAL ⚪"
                             
-                        # Earnings
-                        futuro = (datetime.datetime.today() + datetime.timedelta(days=90)).strftime('%Y-%m-%d')
-                        r_earn = requests.get(f"https://finnhub.io/api/v1/calendar/earnings?from={hoy}&to={futuro}&symbol={simbolo_yahoo}&token={API_FINNHUB}").json()
-                        if r_earn and 'earningsCalendar' in r_earn and len(r_earn['earningsCalendar']) > 0:
-                            fecha_raw = r_earn['earningsCalendar'][0].get('date', 'Sin noticias')
-                            if fecha_raw != 'Sin noticias':
-                                fecha_earnings = datetime.datetime.strptime(fecha_raw, "%Y-%m-%d").strftime("%d/%m/%Y")
+                        # Si Yahoo falló con Earnings, probamos Finnhub (Plan B)
+                        if fecha_earnings == "Sin noticias":
+                            futuro = (datetime.datetime.today() + datetime.timedelta(days=90)).strftime('%Y-%m-%d')
+                            r_earn = requests.get(f"https://finnhub.io/api/v1/calendar/earnings?from={hoy}&to={futuro}&symbol={sym_finnhub}&token={API_FINNHUB}").json()
+                            if isinstance(r_earn, dict) and 'earningsCalendar' in r_earn and len(r_earn['earningsCalendar']) > 0:
+                                fecha_raw = r_earn['earningsCalendar'][0].get('date', 'Sin noticias')
+                                if fecha_raw != 'Sin noticias':
+                                    fecha_earnings = datetime.datetime.strptime(fecha_raw, "%Y-%m-%d").strftime("%d/%m/%Y")
                     except: pass 
 
                     # 3. Datos de Precio y Conversión a Dólares
