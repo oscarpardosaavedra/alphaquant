@@ -231,6 +231,22 @@ tickers_nombres = {
 opciones_desplegable = [f"{ticker} ({nombre})" for ticker, nombre in tickers_nombres.items()]
 opciones_desplegable.sort()
 
+# --- FUNCIÓN INFALIBLE PARA OBTENER EL SÍMBOLO DE LA MONEDA SIN YAHOO ---
+def obtener_simbolo_moneda(ticker):
+    ticker_upper = ticker.upper()
+    if ticker_upper.startswith("BME:") or ticker_upper.endswith((".MC", ".DE", ".PA", ".MI", ".AS")):
+        return "€"
+    elif ticker_upper.endswith(".T"):
+        return "¥"
+    elif ticker_upper.endswith(".L"):
+        return "GBp"
+    elif ticker_upper.endswith(".ST"):
+        return "kr"
+    elif ticker_upper.endswith(".NS"):
+        return "₹"
+    else:
+        return "$" # Por defecto USD para EE.UU. y ADRs asiáticos
+
 def obtener_region(ticker):
     if "BME:" in ticker or ticker.endswith((".DE", ".PA", ".MI", ".L", ".AS", ".ST")): return "Europa"
     elif ticker.endswith((".T", ".NS")) or ticker in ["BABA", "TCEHY", "JD", "PDD", "BIDU", "NTES", "NIO", "XPEV", "LI", "BYDDF", "GELYF", "XIAOF", "MEIT", "KUAIF", "TME", "FUTU", "BEKE", "TAL", "EDU", "VIPS", "GDS", "JKS", "DQ", "SMIC", "TSM", "SONY", "TM", "HMC", "SE", "GRAB", "CPNG"]: return "Asia"
@@ -316,12 +332,10 @@ with tab1:
                 if 'Close' in datos.columns and not datos.empty:
                     try:
                         ticker_obj = yf.Ticker(simbolo_yahoo)
-                        moneda_codigo = ticker_obj.fast_info.get('currency', 'USD')
                         sector = ticker_obj.info.get('sector', '')
                         industria = ticker_obj.info.get('industry', '')
                         resumen_largo = ticker_obj.info.get('longBusinessSummary', '')
                     except:
-                        moneda_codigo = "USD"
                         sector, industria, resumen_largo = "", "", ""
                     
                     datos_limpios = datos.dropna(subset=['Close'])
@@ -329,8 +343,8 @@ with tab1:
                     array_precios = cierres.values.flatten()
                     precio_actual = float(array_precios[-1])
                     
-                    simbolos_moneda = {"USD": "$", "EUR": "€", "GBP": "£", "GBp": "GBp", "JPY": "¥"}
-                    s_moneda = simbolos_moneda.get(moneda_codigo, moneda_codigo)
+                    # Usamos nuestra función infalible para la moneda
+                    s_moneda = obtener_simbolo_moneda(simbolo_real)
                     
                     st.metric(label=f"Valor Actual ({simbolo_real})", value=f"{precio_actual:.2f} {s_moneda}")
                     
@@ -465,9 +479,10 @@ with tab2:
                     info = tk_obj.info
                     per = info.get('trailingPE', 999)
                     if per is None: per = 999 
+                    sector = info.get('sector', 'N/A')
                 except:
-                    info = {}
                     per = 999
+                    sector = "N/A"
                 
                 vol_hoy = float(array_vol[-1])
                 vol_medio = float(np.mean(array_vol[-20:])) if len(array_vol) >= 20 else float(np.mean(array_vol))
@@ -534,10 +549,8 @@ with tab2:
                     if pts >= 85: recomendacion = "🔥 COMPRA (FÉNIX ORO)" if isFenix else "🚀 COMPRA INSTITUCIONAL"
                     elif pts >= 70: recomendacion = "👀 VIGILAR (FÉNIX)" if isFenix else "💎 VIGILAR (BREAKOUT/WHALE)"
                 
-                moneda = info.get('currency', 'USD')
-                simbolos_moneda = {"USD": "$", "EUR": "€", "GBP": "£", "GBp": "GBp", "JPY": "¥"}
-                s_mon = simbolos_moneda.get(moneda, moneda)
-                sector = info.get('sector', 'N/A')
+                # Usamos la nueva función infalible de monedas
+                s_mon = obtener_simbolo_moneda(ticker)
 
                 def fmt_pct(val): return f"{val:+.2f}%" if val is not None else "N/A"
 
@@ -604,7 +617,7 @@ with tab2:
                 }
             )
         else:
-            st.error("No se han podido descargar datos en este momento. Yahoo Finance podría estar limitando temporalmente tus peticiones.")
+            st.error("No se han podido descargar datos. Yahoo Finance podría estar limitando temporalmente tus peticiones.")
 
 
 # ------------------------------------------
@@ -685,14 +698,8 @@ with tab3:
                                     dias_ign = (hit_5.index[0].date() - hist_post.index[0].date()).days
                                     ignicion = f"{dias_ign}d"
                             
-                            try:
-                                tk_obj_info = yf.Ticker(tk_y)
-                                moneda = tk_obj_info.fast_info.get('currency', 'USD')
-                            except:
-                                moneda = "USD"
-                            
-                            simbolos_moneda = {"USD": "$", "EUR": "€", "GBP": "£", "GBp": "GBp", "JPY": "¥"}
-                            s_mon = simbolos_moneda.get(moneda, moneda)
+                            # Usamos la nueva función infalible de monedas
+                            s_mon = obtener_simbolo_moneda(d['Ticker'])
                             
                             reg = obtener_region(d['Ticker'])
                             bandera = "🇺🇸" if reg == "EEUU" else ("🇪🇺" if reg == "Europa" else "⛩️")
