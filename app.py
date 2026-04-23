@@ -299,32 +299,22 @@ st.markdown("---")
 tab1, tab2, tab3, tab4 = st.tabs(["🔬 Análisis Individual", "⚔️ Análisis Colectivo", "🎯 Cazar Alpha (Radar)", "🏆 Sala de Trofeos"])
 
 # ------------------------------------------
-# PESTAÑA 1: VISOR DE GRÁFICOS (VERSIÓN CORREGIDA Y DEFINITIVA)
+# PESTAÑA 1: VISOR DE GRÁFICOS (MOTOR HÍBRIDO YAHOO + FINNHUB)
 # ------------------------------------------
 with tab1:
     st.markdown("### 🔍 Selector de Activos")
     
-    col_buscador, col_logo, col_espacio = st.columns([1.5, 0.5, 2])
+    col_buscador, col_espacio = st.columns([1, 3])
     with col_buscador:
         ticker_elegido = st.selectbox("Elige la empresa que quieres revisar:", opciones_desplegable)
-    with col_logo:
-        espacio_logo = st.empty() # Hueco para el logo
-        
-    # Inicializamos los espacios globalmente para evitar el NameError
-    espacio_descripcion = st.empty() 
-    espacio_sector = st.empty()
+        espacio_sector = st.empty()
     
     if ticker_elegido:
         simbolo_real = ticker_elegido.split(" ")[0]
         simbolo_yahoo = a_yahoo(simbolo_real)
         st.markdown("---")
         
-        # 1. RESERVAMOS EL SITIO ARRIBA PARA LAS CAJAS
-        contenedor_cajas = st.container()
-        
-        # 2. PONEMOS LOS BOTONES DE TIEMPO AQUÍ ABAJO (Justo encima del gráfico)
-        st.markdown("<br>", unsafe_allow_html=True) # Un poco de aire
-        periodo = st.radio("⏱️ Rango de tiempo del gráfico:", ["1 Mes", "3 Meses", "6 Meses", "1 Año", "5 Años", "10 Años", "Máximo"], index=1, horizontal=True)
+        periodo = st.radio("Rango de tiempo:", ["1 Mes", "3 Meses", "6 Meses", "1 Año", "5 Años", "10 Años", "Máximo"], index=1, horizontal=True)
         mapa_tiempo = {"1 Mes": "1mo", "3 Meses": "3mo", "6 Meses": "6mo", "1 Año": "1y", "5 Años": "5y", "10 Años": "10y", "Máximo": "max"}
         
         with st.spinner(f"Cargando datos de {simbolo_real} y rastreando Wall Street..."):
@@ -337,32 +327,24 @@ with tab1:
                     
                     recom, precio_obj_str, fecha_earnings, sector, insider_trend = "Sin noticias", "Sin noticias", "Sin noticias", "Sin noticias", "Sin noticias"
                     
-                    # 2. MOTOR DE EXTRACCIÓN (Yahoo + Finnhub)
+                    # 2. MOTOR HÍBRIDO: YAHOO (Precio Objetivo/Sector) + FINNHUB (Insiders/Earnings)
                     import requests
                     API_FINNHUB = "d7c2s5hr01quh9fcasf0d7c2s5hr01quh9fcasfg"
                     
                     try:
+                        # Extraemos Wall Street y Sector de Yahoo Finance (Porque en Finnhub es de pago)
                         ticker_obj = yf.Ticker(simbolo_yahoo)
                         info = ticker_obj.info
                         
                         if isinstance(info, dict):
+                            # #### ESTE BLOQUE TIENE QUE ESTAR MÁS A LA DERECHA ####
                             sector = info.get('sector', 'Sin noticias')
-                            descripcion_completa = info.get('longBusinessSummary', 'Sin descripción disponible.')
-                            recom_raw = info.get('recommendationKey')
-                            p_obj = info.get('targetMeanPrice')
                             
-                            # Descripción (Cortada a 2 frases)
-                            if descripcion_completa != 'Sin descripción disponible.' and descripcion_completa:
-                                fragmentos = descripcion_completa.split('. ')
-                                desc_corta = '. '.join(fragmentos[:2]) + '.' if len(fragmentos) > 1 else descripcion_completa
-                                if len(desc_corta) > 300: desc_corta = desc_corta[:297] + "..."
-                                espacio_descripcion.markdown(f"<div style='font-size: 14px; color: #666; margin-top: 5px; margin-bottom: 5px;'><i>{desc_corta}</i></div>", unsafe_allow_html=True)
-                            
-                            # Sector (Corregido con <b> en lugar de **)
+                            # Rellenamos el espacio debajo del desplegable
                             if sector != "Sin noticias":
-                                espacio_sector.markdown(f"<div style='font-size: 14px; margin-bottom: 10px;'>🏢 <b>Sector:</b> {sector}</div>", unsafe_allow_html=True)
+                                espacio_sector.markdown(f"🏢 **Sector:** {sector}")
                             
-                            # Consenso
+                            recom_raw = info.get('recommendationKey')
                             if recom_raw:
                                 traducciones = {
                                     "strong_buy": "COMPRA FUERTE 🟢",
@@ -373,11 +355,11 @@ with tab1:
                                 }
                                 recom = traducciones.get(recom_raw.lower(), str(recom_raw).replace('_', ' ').upper())
                             
-                            # Precio objetivo
+                            p_obj = info.get('targetMeanPrice')
                             if p_obj and p_obj > 0: 
                                 precio_obj_str = str(p_obj)
                             
-                        # Calendario Yahoo
+                        # Calendario de Yahoo (Plan A para Earnings)
                         try:
                             cal = ticker_obj.calendar
                             if isinstance(cal, dict) and 'Earnings Date' in cal:
@@ -386,30 +368,16 @@ with tab1:
                                     fecha_earnings = fechas[0].strftime("%d/%m/%Y")
                         except: pass
                             
-                    except Exception:
+                    except Exception as e:
                         pass
                         
-                    # Extracción de Finnhub (LOGO e Insiders)
+                    # Extracción de Finnhub (Porque es mucho más rápido y preciso para Insiders)
                     try:
                         hoy = datetime.datetime.today().strftime('%Y-%m-%d')
                         pasado = (datetime.datetime.today() - datetime.timedelta(days=180)).strftime('%Y-%m-%d')
+                        
                         sym_finnhub = simbolo_yahoo if "." in simbolo_yahoo else simbolo_real
                         
-                        logo_url = ""
-                        try:
-                            r_prof = requests.get(f"https://finnhub.io/api/v1/stock/profile2?symbol={sym_finnhub}&token={API_FINNHUB}", timeout=3).json()
-                            if isinstance(r_prof, dict) and r_prof.get('logo'):
-                                url_temp = r_prof['logo']
-                                if url_temp.startswith("http"): 
-                                    logo_url = url_temp
-                        except: pass
-
-                        if logo_url:
-                            espacio_logo.markdown(f"<img src='{logo_url}' style='height: 40px; max-width: 100px; object-fit: contain; margin-top: 25px;'/>", unsafe_allow_html=True)
-                        else:
-                            espacio_logo.empty()
-                        
-                        # Insiders
                         r_ins = requests.get(f"https://finnhub.io/api/v1/stock/insider-sentiment?symbol={sym_finnhub}&from={pasado}&to={hoy}&token={API_FINNHUB}").json()
                         if isinstance(r_ins, dict) and 'data' in r_ins and len(r_ins['data']) > 0:
                             mspr = r_ins['data'][-1].get('mspr', 0)
@@ -419,7 +387,7 @@ with tab1:
                             elif mspr < 0: insider_trend = "VENDIENDO ↘️"
                             else: insider_trend = "NEUTRAL ⚪"
                             
-                        # Calendario Finnhub
+                        # Si Yahoo falló con Earnings, probamos Finnhub (Plan B)
                         if fecha_earnings == "Sin noticias":
                             futuro = (datetime.datetime.today() + datetime.timedelta(days=90)).strftime('%Y-%m-%d')
                             r_earn = requests.get(f"https://finnhub.io/api/v1/calendar/earnings?from={hoy}&to={futuro}&symbol={sym_finnhub}&token={API_FINNHUB}").json()
@@ -429,7 +397,7 @@ with tab1:
                                     fecha_earnings = datetime.datetime.strptime(fecha_raw, "%Y-%m-%d").strftime("%d/%m/%Y")
                     except: pass 
 
-                    # 3. Formateo de Precios
+                    # 3. Datos de Precio y Conversión a Dólares
                     datos_limpios = datos.dropna(subset=['Close'])
                     precio_actual = float(datos_limpios['Close'].iloc[-1])
                     s_moneda_visual = obtener_simbolo_moneda(simbolo_real)
@@ -441,6 +409,7 @@ with tab1:
                         precio_obj_final = f"{p_obj_f:,.2f} {s_moneda_visual} <span style='color:{color_p};font-weight:bold;font-size:13px;'>({pot:+.1f}%)</span>"
                     else: precio_obj_final = "Sin noticias"
                         
+                    # Conversión a dólares robusta (5 días)
                     precio_usd = None
                     mapa_divisas = { "€": "EURUSD=X", "¥": "JPYUSD=X", "GBp": "GBPUSD=X", "kr": "SEKUSD=X", "₹": "INRUSD=X" }
                     t_div = mapa_divisas.get(s_moneda_visual)
@@ -457,33 +426,30 @@ with tab1:
 
                     t_conv = f'<span style="font-size:18px;color:#7f8c8d;font-weight:400;margin-left:10px;">(≈ {precio_usd:,.2f} $)</span>' if precio_usd else ""
                     
-                    # ---> 3. MANDAMOS LAS CAJAS AL HUECO RESERVADO ARRIBA <---
-                    with contenedor_cajas:
-                        st.markdown(f"""
-                        <div style="background-color:#f8f9fa;padding:15px;border-radius:10px;box-shadow:0 4px 6px rgba(0,0,0,0.05);margin-bottom:20px;">
-                            <div style="display:flex;justify-content:space-between;align-items:center;">
-                                <div>
-                                    <p style="margin:0;font-size:14px;color:rgba(49,51,63,0.7);">Valor Actual ({simbolo_real})</p>
-                                    <h2 style="margin:0;font-weight:700;color:#1f1f1f;font-size:32px;">{precio_actual:,.2f} {s_moneda_visual}{t_conv}</h2>
-                                </div>
-                            </div>
+                    # 4. RENDERIZADO HTML PROFESIONAL
+                    st.markdown(f"""
+                    <div style="background-color:#f8f9fa;padding:15px;border-radius:10px;box-shadow:0 4px 6px rgba(0,0,0,0.05);margin-bottom:20px;">
+                        <div style="display:flex;justify-content:space-between;align-items:baseline;">
+                            <div><p style="margin:0;font-size:14px;color:rgba(49,51,63,0.7);">Valor Actual ({simbolo_real})</p>
+                            <h2 style="margin:0;font-weight:700;color:#1f1f1f;font-size:32px;">{precio_actual:,.2f} {s_moneda_visual}{t_conv}</h2></div>
                         </div>
-                        <div style="display:flex;gap:15px;margin-bottom:20px;">
-                            <div title="Consenso de analistas de inversión y precio objetivo promedio a 12 meses." style="flex:1;background:#fff;padding:15px;border-radius:8px;box-shadow:0 2px 4px rgba(0,0,0,0.05);border-top:4px solid #1E90FF;cursor:help;">
-                                <div style="font-size:12px;color:#7f8c8d;text-transform:uppercase;font-weight:bold;margin-bottom:5px;">🏦 Wall Street ℹ️</div>
-                                <div style="font-size:14px;color:#2c3e50;"><b>Consenso:</b> {recom}</div>
-                                <div style="font-size:14px;color:#2c3e50;margin-top:5px;"><b>Precio Obj:</b> {precio_obj_final}</div>
-                            </div>
-                            <div title="Próxima fecha confirmada o estimada de resultados financieros trimestrales." style="flex:1;background:#fff;padding:15px;border-radius:8px;box-shadow:0 2px 4px rgba(0,0,0,0.05);border-top:4px solid #f39c12;cursor:help;">
-                                <div style="font-size:12px;color:#7f8c8d;text-transform:uppercase;font-weight:bold;margin-bottom:5px;">📅 Próximos Earnings ℹ️</div>
-                                <div style="font-size:18px;color:#2c3e50;font-weight:bold;margin-top:5px;">{fecha_earnings}</div>
-                            </div>
-                            <div title="Muestra si los directivos (CEO, dueños) han estado comprando o vendiendo acciones propias recientemente." style="flex:1;background:#fff;padding:15px;border-radius:8px;box-shadow:0 2px 4px rgba(0,0,0,0.05);border-top:4px solid #8e44ad;cursor:help;">
-                                <div style="font-size:12px;color:#7f8c8d;text-transform:uppercase;font-weight:bold;margin-bottom:5px;">👔 Manos Fuertes ℹ️</div>
-                                <div style="font-size:14px;color:#2c3e50;"><b>Directivos (6M):</b> {insider_trend}</div>
-                            </div>
+                    </div>
+                    <div style="display:flex;gap:15px;margin-bottom:20px;">
+                        <div title="Consenso de analistas de inversión y precio objetivo promedio a 12 meses." style="flex:1;background:#fff;padding:15px;border-radius:8px;box-shadow:0 2px 4px rgba(0,0,0,0.05);border-top:4px solid #1E90FF;cursor:help;">
+                            <div style="font-size:12px;color:#7f8c8d;text-transform:uppercase;font-weight:bold;margin-bottom:5px;">🏦 Wall Street ℹ️</div>
+                            <div style="font-size:14px;color:#2c3e50;"><b>Consenso:</b> {recom}</div>
+                            <div style="font-size:14px;color:#2c3e50;margin-top:5px;"><b>Precio Obj:</b> {precio_obj_final}</div>
                         </div>
-                        """, unsafe_allow_html=True)
+                        <div title="Próxima fecha confirmada o estimada de resultados financieros trimestrales." style="flex:1;background:#fff;padding:15px;border-radius:8px;box-shadow:0 2px 4px rgba(0,0,0,0.05);border-top:4px solid #f39c12;cursor:help;">
+                            <div style="font-size:12px;color:#7f8c8d;text-transform:uppercase;font-weight:bold;margin-bottom:5px;">📅 Próximos Earnings ℹ️</div>
+                            <div style="font-size:18px;color:#2c3e50;font-weight:bold;margin-top:5px;">{fecha_earnings}</div>
+                        </div>
+                        <div title="Muestra si los directivos (CEO, dueños) han estado comprando o vendiendo acciones propias recientemente." style="flex:1;background:#fff;padding:15px;border-radius:8px;box-shadow:0 2px 4px rgba(0,0,0,0.05);border-top:4px solid #8e44ad;cursor:help;">
+                            <div style="font-size:12px;color:#7f8c8d;text-transform:uppercase;font-weight:bold;margin-bottom:5px;">👔 Manos Fuertes ℹ️</div>
+                            <div style="font-size:14px;color:#2c3e50;"><b>Directivos (6M):</b> {insider_trend}</div>
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
 
                     # 5. Gráfica
                     fig = go.Figure()
