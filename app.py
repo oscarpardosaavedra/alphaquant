@@ -335,14 +335,18 @@ with tab1:
                     datos.columns = datos.columns.get_level_values(0)
 
                 if not datos.empty and 'Close' in datos.columns:
-                    # 2. Obtenemos metadata y TURBOS de Yahoo (BLINDAJE TOTAL)
-                    sector, industria = "N/A", "N/A"
+                    
+                    # 2. VALORES POR DEFECTO PARA EL TRIPLE TURBO
+                    sector = "N/A"
+                    industria = "N/A"
                     recom = "N/A"
-                    precio_obj = "N/A"
+                    precio_obj_str = "N/A"
+                    potencial_html = ""
                     fecha_earnings = "N/A"
                     insiders_fmt = "N/A"
                     inst_fmt = "N/A"
                     
+                    # Intentamos sacar la info de Yahoo con escudo anti-errores
                     try:
                         ticker_obj = yf.Ticker(simbolo_yahoo)
                         info = ticker_obj.info
@@ -351,37 +355,25 @@ with tab1:
                             sector = info.get('sector', 'N/A')
                             industria = info.get('industry', 'N/A')
                             
-                            # --- Turbo 1: Analistas ---
                             recom_raw = info.get('recommendationKey')
-                            if recom_raw and isinstance(recom_raw, str):
-                                recom = recom_raw.replace('_', ' ').upper()
+                            if recom_raw: recom = str(recom_raw).replace('_', ' ').upper()
                             
-                            precio_obj_raw = info.get('targetMeanPrice')
-                            if precio_obj_raw is not None:
-                                precio_obj = precio_obj_raw
+                            precio_obj = info.get('targetMeanPrice')
                             
-                            # --- Turbo 3: Insiders y Manos Fuertes ---
-                            insiders_pct = info.get('heldPercentInsiders')
-                            if insiders_pct is not None and isinstance(insiders_pct, (int, float)):
-                                insiders_fmt = f"{insiders_pct * 100:.1f}%"
+                            ins_pct = info.get('heldPercentInsiders')
+                            if ins_pct: insiders_fmt = f"{ins_pct * 100:.1f}%"
                                 
                             inst_pct = info.get('heldPercentInstitutions')
-                            if inst_pct is not None and isinstance(inst_pct, (int, float)):
-                                inst_fmt = f"{inst_pct * 100:.1f}%"
-                        
-                        # --- Turbo 2: Calendario Earnings ---
-                        try:
-                            calendario = ticker_obj.calendar
-                            if isinstance(calendario, dict) and 'Earnings Date' in calendario:
-                                fechas = calendario['Earnings Date']
-                                if isinstance(fechas, list) and len(fechas) > 0 and pd.notnull(fechas[0]):
-                                    fecha_earnings = fechas[0].strftime("%d/%m/%Y")
-                        except:
-                            pass # Fallo silencioso si no hay earnings
+                            if inst_pct: inst_fmt = f"{inst_pct * 100:.1f}%"
                             
-                    except Exception as e:
-                        # Si falla todo el bloque info, imprimimos en consola para debuggear pero seguimos adelante
-                        print(f"Error al obtener info de {simbolo_yahoo}: {e}")
+                        # Calendario de Earnings
+                        cal = ticker_obj.calendar
+                        if isinstance(cal, dict) and 'Earnings Date' in cal:
+                            fechas = cal['Earnings Date']
+                            if isinstance(fechas, list) and len(fechas) > 0 and pd.notnull(fechas[0]):
+                                fecha_earnings = fechas[0].strftime("%d/%m/%Y")
+                    except:
+                        pass # Si Yahoo falla, los valores por defecto "N/A" salvan la app
 
                     # 3. Calculamos el precio actual
                     datos_limpios = datos.dropna(subset=['Close'])
@@ -389,15 +381,16 @@ with tab1:
                     precio_actual = float(cierres.iloc[-1])
                     s_moneda_visual = obtener_simbolo_moneda(simbolo_real)
                     
-                    # Formateo del Potencial de Crecimiento
-                    potencial_html = ""
-                    precio_obj_str = "N/A"
-                    if precio_obj != 'N/A' and isinstance(precio_obj, (int, float)) and precio_obj > 0:
-                        potencial = ((precio_obj / precio_actual) - 1) * 100
-                        color_pot = "#228B22" if potencial > 0 else "#FF3333"
-                        potencial_html = f'<span style="color: {color_pot}; font-weight: bold; margin-left: 5px;">({potencial:+.1f}%)</span>'
-                        precio_obj_str = f"{precio_obj:,.2f} {s_moneda_visual}"
-                    
+                    # Formateo del Potencial si hay precio objetivo
+                    try:
+                        if precio_obj and isinstance(precio_obj, (int, float)) and precio_obj > 0:
+                            precio_obj_str = f"{precio_obj:,.2f} {s_moneda_visual}"
+                            potencial = ((precio_obj / precio_actual) - 1) * 100
+                            color_pot = "#228B22" if potencial > 0 else "#FF3333"
+                            potencial_html = f'<span style="color: {color_pot}; font-weight: bold; margin-left: 5px;">({potencial:+.1f}%)</span>'
+                    except:
+                        pass
+                        
                     # 4. CONVERSIÓN A DÓLARES INFALIBLE
                     precio_usd = None
                     mapa_divisas = { "€": "EURUSD=X", "¥": "JPYUSD=X", "GBp": "GBPUSD=X", "kr": "SEKUSD=X", "₹": "INRUSD=X" }
@@ -424,7 +417,7 @@ with tab1:
                     """
                     st.markdown(html_metrica, unsafe_allow_html=True)
                     
-                    # ---> PINTAR PANELES DEL TRIPLE TURBO (BLINDADOS) <---
+                    # 6. ---> PINTAR PANELES DEL TRIPLE TURBO <---
                     html_turbos = f"""
                     <div style="display: flex; gap: 15px; margin-bottom: 20px;">
                         <div style="flex: 1; background: #ffffff; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); border-top: 4px solid #1E90FF;">
@@ -438,8 +431,8 @@ with tab1:
                         </div>
                         <div style="flex: 1; background: #ffffff; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); border-top: 4px solid #8e44ad;">
                             <div style="font-size: 12px; color: #7f8c8d; text-transform: uppercase; font-weight: bold; margin-bottom: 5px;">👔 Manos Fuertes</div>
-                            <div style="font-size: 15px; color: #2c3e50;"><b>Insiders (Directiva):</b> {insiders_fmt}</div>
-                            <div style="font-size: 15px; color: #2c3e50; margin-top: 5px;"><b>Institucional (Fondos):</b> {inst_fmt}</div>
+                            <div style="font-size: 15px; color: #2c3e50;"><b>Insiders:</b> {insiders_fmt}</div>
+                            <div style="font-size: 15px; color: #2c3e50; margin-top: 5px;"><b>Fondos:</b> {inst_fmt}</div>
                         </div>
                     </div>
                     """
@@ -448,7 +441,7 @@ with tab1:
                     if sector != "N/A": 
                         st.caption(f"🏢 **Sector:** {sector} | **Industria:** {industria}")
                     
-                    # 6. Gráfica
+                    # 7. Gráfica
                     fig = go.Figure()
                     x_data = datos_limpios.index.get_level_values(0) if isinstance(datos_limpios.index, pd.MultiIndex) else datos_limpios.index
                     fig.add_trace(go.Scatter(x=x_data, y=np.ravel(cierres), mode='lines', name='Precio', line=dict(color='#228B22', width=2)))
