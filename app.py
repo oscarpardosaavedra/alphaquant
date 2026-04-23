@@ -546,10 +546,8 @@ with tab2:
                 # =======================================================
                 # Si la puntuación es alta y el ticker NO estaba en la base de datos...
                 if pts >= 90 and ticker not in existentes_en_db and ws is not None:
-                    fecha_hoy = datetime.datetime.now().strftime("%Y-%m-%d")
-                    # Añadimos la fila: [Ticker, Empresa, Fecha, Precio_Aviso, Puntos]
+                    fecha_hoy = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
                     ws.append_row([ticker, nombre_empresa, fecha_hoy, float(precio_actual), int(pts)])
-                    # Lo añadimos a la lista local para no duplicarlo si repetimos escaneo
                     existentes_en_db.append(ticker)
                 # =======================================================
 
@@ -675,8 +673,9 @@ with tab3:
             # ------------------------------------------------
 
             if st.button("🔄 Auditar Rendimiento Actual", use_container_width=True):
-                with st.spinner("Conectando con Wall Street para actualizar precios en tiempo real..."):
+                with st.spinner("Sincronizando Wall Street y calculando métricas avanzadas..."):
                     exitos = []
+                    cuarentena = []
                     fracasos = []
                     alpha_total = 0
                     
@@ -684,33 +683,63 @@ with tab3:
                         try:
                             tk_y = a_yahoo(d['Ticker'])
                             tk = yf.Ticker(tk_y)
-                            p_hoy = tk.history(period="1d")['Close'].iloc[-1]
                             
-                            # Extraemos la moneda real del activo
+                            # Descargamos 1 año para calcular el Máximo % y la Ignición
+                            hist = tk.history(period="1y")
+                            if hist.empty: continue
+                            
+                            p_hoy = hist['Close'].iloc[-1]
+                            p_entrada = float(d['Precio_Aviso'])
+                            fecha_str = str(d['Fecha'])
+                            
+                            rent = ((p_hoy / p_entrada) - 1) * 100
+                            
+                            # --- CÁLCULO DE INDICADORES AVANZADOS ---
+                            rent_max = rent
+                            ignicion = "N/A"
+                            try:
+                                # Filtramos el historial solo desde la fecha en que se cazó
+                                fecha_compra_date = pd.to_datetime(fecha_str).date()
+                                hist_post = hist[hist.index.date >= fecha_compra_date]
+                            except:
+                                hist_post = hist
+                                
+                            if not hist_post.empty:
+                                max_p = hist_post['High'].max()
+                                rent_max = ((max_p / p_entrada) - 1) * 100
+                                
+                                # Días hasta tocar un +5% (Ignición)
+                                hit_5 = hist_post[hist_post['High'] >= p_entrada * 1.05]
+                                if not hit_5.empty:
+                                    dias_ign = (hit_5.index[0].date() - hist_post.index[0].date()).days
+                                    ignicion = f"{dias_ign}d"
+                            # ----------------------------------------
+                            
                             info = tk.info
                             moneda = info.get('currency', 'USD')
                             simbolos_moneda = {"USD": "$", "EUR": "€", "GBP": "£", "GBp": "GBp", "JPY": "¥"}
                             s_mon = simbolos_moneda.get(moneda, moneda)
 
-                            rent = ((p_hoy / float(d['Precio_Aviso'])) - 1) * 100
-                            
                             obj = {
-                                "T": d['Ticker'], 
-                                "N": d['Empresa'], 
-                                "E": float(d['Precio_Aviso']), 
-                                "A": p_hoy, 
-                                "R": rent, 
-                                "F": d['Fecha'],
-                                "S_MON": s_mon  # Guardamos el símbolo correcto
+                                "T": d['Ticker'], "N": d['Empresa'], "E": p_entrada, 
+                                "A": p_hoy, "R": rent, "F": fecha_str, "S_MON": s_mon,
+                                "RMAX": rent_max, "IGN": ignicion
                             }
                             
                             alpha_total += rent
-                            if rent > 0: exitos.append(obj)
-                            else: fracasos.append(obj)
+                            
+                            # --- LA ZONA DE CUARENTENA (-3% DE GRACIA) ---
+                            if rent > 0: 
+                                exitos.append(obj)
+                            elif rent >= -3.0: 
+                                cuarentena.append(obj)
+                            else: 
+                                fracasos.append(obj)
+                                
                         except Exception: 
                             continue
                     
-                    tot = len(exitos) + len(fracasos)
+                    tot = len(exitos) + len(cuarentena) + len(fracasos)
                     
                     if tot > 0:
                         win_rate = (len(exitos) / tot) * 100
@@ -718,48 +747,54 @@ with tab3:
                         
                         st.markdown("---")
                         m1, m2, m3 = st.columns(3)
-                        m1.metric(label="🎯 Precisión (Win Rate)", value=f"{win_rate:.1f}%", help="Porcentaje de alertas históricas que actualmente están en positivo (ganancias).")
-                        m2.metric(label="⚔️ Alpha Medio", value=f"{alpha_medio:+.2f}%", delta=f"{alpha_medio:+.2f}%", help="Rentabilidad media generada por todas las alertas combinadas desde su precio de aviso.")
-                        m3.metric(label="⏱️ Base de Datos", value=f"{tot} Activos", help="Número total de acciones vigiladas en la base de datos.")
+                        m1.metric(label="🎯 Precisión (Win Rate)", value=f"{win_rate:.1f}%")
+                        m2.metric(label="⚔️ Alpha Medio", value=f"{alpha_medio:+.2f}%", delta=f"{alpha_medio:+.2f}%")
+                        m3.metric(label="⏱️ Base de Datos", value=f"{tot} Activos")
                         st.markdown("---")
                         
-                        c_w, c_l = st.columns(2)
+                        # 3 COLUMNAS PARA CLASIFICAR EL RUIDO DEL MERCADO
+                        c_w, c_q, c_l = st.columns(3)
                         
+                        # Diseño Ultra-Compacto en una sola línea con Tooltips integrados
+                        def pintar_tarjeta(item, color_borde, color_texto):
+                            return f"""
+                            <div style="background: white; border-radius: 6px; padding: 6px 10px; margin-bottom: 8px; border-left: 4px solid {color_borde}; display: flex; justify-content: space-between; align-items: center; font-size: 13px; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
+                                <div style="display: flex; align-items: center; gap: 10px;">
+                                    <span style="font-weight: 900; color: #073763; width: 45px;" title="{item['N']}">{item['T']}</span>
+                                    <span style="color: #95a5a6; font-size: 11px; width: 110px;">🕒 {item['F']}</span>
+                                    <span style="color: #555;">In: <b>{item['E']:.2f}{item['S_MON']}</b> ➔ <b>{item['A']:.2f}{item['S_MON']}</b></span>
+                                    <span style="background:#f0f4f8; padding:2px 6px; border-radius:4px; font-size:11px; margin-left:5px; cursor:help;" title="Rentabilidad Máxima Histórica alcanzada">🔥 {item['RMAX']:+.1f}%</span>
+                                    <span style="background:#f0f4f8; padding:2px 6px; border-radius:4px; font-size:11px; cursor:help;" title="Días que tardó en conseguir un +5% (Ignición)">⏱️ {item['IGN']}</span>
+                                </div>
+                                <div style="font-weight: 900; font-size: 14px; color: {color_texto};">
+                                    {item['R']:+.2f}%
+                                </div>
+                            </div>
+                            """
+
                         with c_w:
-                            st.markdown("#### 🏆 Casos de Éxito")
+                            st.markdown("#### 🏆 Éxitos (> 0%)")
                             if exitos:
                                 for e in sorted(exitos, key=lambda x: x["R"], reverse=True):
-                                    st.markdown(f"""
-                                    <div class="trophy-card">
-                                        <div class="card-left">
-                                            <p class="card-title">{e["T"]} <span class="card-subtitle">({e["N"]})</span></p>
-                                            <p class="card-details"><b>Entrada:</b> {e["E"]:.2f} {e["S_MON"]} ({e["F"]}) ➔ <b>Hoy:</b> {e["A"]:.2f} {e["S_MON"]}</p>
-                                        </div>
-                                        <div class="card-right">
-                                            <p class="card-pct-win">+{e["R"]:.2f}%</p>
-                                        </div>
-                                    </div>
-                                    """, unsafe_allow_html=True)
+                                    st.markdown(pintar_tarjeta(e, "#228B22", "#228B22"), unsafe_allow_html=True)
                             else:
-                                st.info("Aún no hay casos de éxito registrados.")
+                                st.info("Aún no hay éxitos.")
+                                
+                        with c_q:
+                            st.markdown("#### ⏳ Cuarentena (0% a -3%)")
+                            if cuarentena:
+                                for q in sorted(cuarentena, key=lambda x: x["R"], reverse=True):
+                                    st.markdown(pintar_tarjeta(q, "#f39c12", "#f39c12"), unsafe_allow_html=True)
+                            else:
+                                st.info("Sin activos en consolidación.")
                                 
                         with c_l:
-                            st.markdown("#### 🪦 Cementerio (Fallos)")
+                            st.markdown("#### 🪦 Cementerio (< -3%)")
                             if fracasos:
                                 for f in sorted(fracasos, key=lambda x: x["R"]):
-                                    st.markdown(f"""
-                                    <div class="cemetery-card">
-                                        <div class="card-left">
-                                            <p class="card-title">{f["T"]} <span class="card-subtitle">({f["N"]})</span></p>
-                                            <p class="card-details"><b>Entrada:</b> {f["E"]:.2f} {f["S_MON"]} ({f["F"]}) ➔ <b>Hoy:</b> {f["A"]:.2f} {f["S_MON"]}</p>
-                                        </div>
-                                        <div class="card-right">
-                                            <p class="card-pct-lose">{f["R"]:.2f}%</p>
-                                        </div>
-                                    </div>
-                                    """, unsafe_allow_html=True)
+                                    st.markdown(pintar_tarjeta(f, "#FF3333", "#FF3333"), unsafe_allow_html=True)
                             else:
-                                st.info("No hay fallos registrados. ¡Pleno!")
+                                st.info("No hay fallos registrados.")
 
                     else:
                         st.error("⚠️ Error al auditar la cartera. Inténtalo de nuevo más tarde.")
