@@ -271,9 +271,9 @@ def obtener_estado_mercados():
 # ==========================================
 us, eu, asia = obtener_estado_mercados()
 col1, col2, col3 = st.columns(3)
-col1.info(f"**EE.UU:** {us['estado']} | 🕒 {us['horario']} (Hora Madrid)")
-col2.info(f"**Europa:** {eu['estado']} | 🕒 {eu['horario']} (Hora Madrid)")
-col3.info(f"**Asia:** {asia['estado']} | 🕒 {asia['horario']} (Hora Madrid)")
+col1.info(f"**EE.UU:** {us['estado']} | Hora: {us['horario']} (Madrid)")
+col2.info(f"**Europa:** {eu['estado']} | Hora: {eu['horario']} (Madrid)")
+col3.info(f"**Asia:** {asia['estado']} | Hora: {asia['horario']} (Madrid)")
 st.markdown("---")
 
 tab1, tab2, tab3 = st.tabs(["🔬 Análisis Individual", "🎯 Cazar Alpha (Radar)", "🏆 Sala de Trofeos"])
@@ -311,13 +311,16 @@ with tab1:
                 ticker_obj = yf.Ticker(simbolo_yahoo)
                 datos = ticker_obj.history(period=mapa_tiempo[periodo])
                 
-                if not datos.empty:
+                # ESCUDO ANTI-MULTIINDEX YAHOO FINANCE
+                if isinstance(datos.columns, pd.MultiIndex):
+                    datos.columns = datos.columns.get_level_values(0)
+                
+                if 'Close' in datos.columns and not datos.empty:
                     info = ticker_obj.info
                     moneda_codigo = info.get('currency', 'USD')
                     
-                    # Limpiamos los vacíos antes de separar X e Y para que midan exactamente lo mismo
                     datos_limpios = datos.dropna(subset=['Close'])
-                    array_precios = np.ravel(datos_limpios['Close'])
+                    array_precios = datos_limpios['Close'].values.flatten()
                     precio_actual = float(array_precios[-1])
                     
                     simbolos_moneda = {"USD": "$", "EUR": "€", "GBP": "£", "GBp": "GBp", "JPY": "¥"}
@@ -336,7 +339,9 @@ with tab1:
                         st.markdown(f"*{'. '.join(frases[:2]) + '.' if len(frases) > 2 else resumen_largo}*")
                     
                     fig = go.Figure()
-                    x_data = datos_limpios.index.get_level_values(0) if isinstance(datos_limpios.index, pd.MultiIndex) else datos_limpios.index
+                    x_data = datos_limpios.index
+                    if isinstance(x_data, pd.MultiIndex):
+                        x_data = x_data.get_level_values(0)
                     
                     fig.add_trace(go.Scatter(x=x_data, y=array_precios, mode='lines', name='Precio', line=dict(color='#228B22', width=2)))
                     fig.update_layout(title=f"Cotización: {ticker_elegido}", template='plotly_dark', margin=dict(l=0, r=0, t=40, b=0), xaxis_title="", yaxis_title=f"Precio ({s_moneda})", hovermode="x unified")
@@ -387,8 +392,10 @@ with tab2:
         alphaSPY = 0
         try:
             spy_hist = yf.Ticker("SPY").history(period="1mo")
-            if len(spy_hist) >= 21:
-                alphaSPY = ((spy_hist['Close'].iloc[-1] / spy_hist['Close'].iloc[-21]) - 1) * 100
+            if isinstance(spy_hist.columns, pd.MultiIndex):
+                spy_hist.columns = spy_hist.columns.get_level_values(0)
+            if 'Close' in spy_hist.columns and len(spy_hist) >= 21:
+                alphaSPY = ((float(spy_hist['Close'].iloc[-1]) / float(spy_hist['Close'].iloc[-21])) - 1) * 100
         except Exception: pass
 
         ws = conectar_db()
@@ -405,11 +412,18 @@ with tab2:
                 sym_yahoo = a_yahoo(ticker)
                 stock = yf.Ticker(sym_yahoo)
                 
-                hist_full = stock.history(period="max").dropna(subset=['Close'])
+                hist_full = stock.history(period="max")
+                if isinstance(hist_full.columns, pd.MultiIndex):
+                    hist_full.columns = hist_full.columns.get_level_values(0)
+                    
+                if 'Close' not in hist_full.columns or 'Volume' not in hist_full.columns:
+                    continue
+                    
+                hist_full = hist_full.dropna(subset=['Close'])
                 if hist_full.empty or len(hist_full) < 2: continue
                 
-                array_cierres = np.ravel(hist_full['Close'])
-                array_vol = np.ravel(hist_full['Volume'])
+                array_cierres = hist_full['Close'].values.flatten()
+                array_vol = hist_full['Volume'].values.flatten()
                 
                 precio_actual = float(array_cierres[-1])
                 precio_ayer = float(array_cierres[-2])
@@ -424,7 +438,7 @@ with tab2:
                 
                 def get_ret(days):
                     if len(array_cierres) >= days and array_cierres[-days] > 0:
-                        return ((precio_actual / array_cierres[-days]) - 1) * 100
+                        return ((precio_actual / float(array_cierres[-days])) - 1) * 100
                     return None
 
                 r1m = get_ret(21)
@@ -446,7 +460,7 @@ with tab2:
                     per = 999
                 
                 vol_hoy = float(array_vol[-1])
-                vol_medio = float(np.mean(array_vol[-20:]))
+                vol_medio = float(np.mean(array_vol[-20:])) if len(array_vol) >= 20 else float(np.mean(array_vol))
                 
                 ptsBase = 40
                 v_1m = r1m if r1m is not None else 0
@@ -527,11 +541,9 @@ with tab2:
                     "SUELO (52s)": fmt_pct(dist_suelo), "MAX (52s)": fmt_pct(dist_max)
                 })
                 
-                # ESCUDO ANTI-BANEO: Pausa de 0.3s obligatoria para que Yahoo no bloquee tu IP
                 time.sleep(0.3)
                 
-            except Exception: 
-                # Si hay error en la empresa, también esperamos antes de seguir
+            except Exception as e: 
                 time.sleep(0.3)
                 continue
             
@@ -582,7 +594,7 @@ with tab2:
                 }
             )
         else:
-            st.error("No se han podido descargar datos en este momento.")
+            st.error("No se han podido descargar datos en este momento. Yahoo Finance podría estar limitando temporalmente tus peticiones.")
 
 
 # ------------------------------------------
@@ -629,9 +641,14 @@ with tab3:
                             tk = yf.Ticker(tk_y)
                             
                             hist = tk.history(period="1y")
-                            if hist.empty: continue
+                            if isinstance(hist.columns, pd.MultiIndex):
+                                hist.columns = hist.columns.get_level_values(0)
+                                
+                            if 'Close' not in hist.columns or hist.empty: continue
                             
-                            array_cierres = np.ravel(hist['Close'].dropna())
+                            hist = hist.dropna(subset=['Close'])
+                            array_cierres = hist['Close'].values.flatten()
+                            
                             p_hoy = float(array_cierres[-1])
                             p_entrada = float(str(d['Precio_Aviso']).replace(',', '.'))
                             fecha_str = str(d['Fecha'])
@@ -649,11 +666,11 @@ with tab3:
                                 hist_post = hist
                                 
                             if not hist_post.empty:
-                                max_p = float(np.ravel(hist_post['High'])[-1])
-                                max_p_real = float(hist_post['High'].max())
+                                high_series = hist_post['High']
+                                max_p_real = float(high_series.max())
                                 rent_max = ((max_p_real / p_entrada) - 1) * 100
                                 
-                                hit_5 = hist_post[hist_post['High'] >= p_entrada * 1.05]
+                                hit_5 = hist_post[high_series >= p_entrada * 1.05]
                                 if not hit_5.empty:
                                     dias_ign = (hit_5.index[0].date() - hist_post.index[0].date()).days
                                     ignicion = f"{dias_ign}d"
@@ -713,7 +730,7 @@ with tab3:
                         
                         def pintar_tarjeta(item, color_borde, color_texto):
                             ign_html = f'<span class="stat-badge" title="Días hasta tocar un +5% (Ignición)">Ign: {item["IGN"]}</span>' if item['IGN'] != "N/A" else ""
-                            return f"""<div style="background: white; border-radius: 6px; padding: 10px; margin-bottom: 8px; border-top: 3px solid {color_borde}; box-shadow: 0 2px 4px rgba(0,0,0,0.08);"><div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;"><div style="display: flex; align-items: baseline; gap: 6px;"><span title="{item['N']}" style="font-weight: 900; color: #073763; font-size: 14px;">{item['B']} {item['T']}</span><span style="color: #95a5a6; font-size: 10px;">&#128197; {item['F']}</span></div><div style="font-weight: 900; font-size: 14px; color: {color_texto};">{item['R']:+.2f}%</div></div><div style="font-size: 11px; color: #555; margin-bottom: 5px;">In: <b>{item['E']:.2f}{item['S_MON']}</b> &rarr; Hoy: <b>{item['A']:.2f}{item['S_MON']}</b></div><div style="display: flex; gap: 5px; margin-bottom: 6px;"><span class="stat-badge" title="Rentabilidad Máxima Histórica">Max: {item['RMAX']:+.1f}%</span>{ign_html}</div><div style="font-size: 10px; color: #7f8c8d; font-style: italic; background: #f9fbfd; padding: 4px; border-radius: 4px;">&#128161; {item['M']}</div></div>"""
+                            return f"""<div style="background: white; border-radius: 6px; padding: 10px; margin-bottom: 8px; border-top: 3px solid {color_borde}; box-shadow: 0 2px 4px rgba(0,0,0,0.08);"><div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;"><div style="display: flex; align-items: baseline; gap: 6px;"><span title="{item['N']}" style="font-weight: 900; color: #073763; font-size: 14px;">{item['B']} {item['T']}</span><span style="color: #95a5a6; font-size: 10px;">Fecha: {item['F']}</span></div><div style="font-weight: 900; font-size: 14px; color: {color_texto};">{item['R']:+.2f}%</div></div><div style="font-size: 11px; color: #555; margin-bottom: 5px;">In: <b>{item['E']:.2f}{item['S_MON']}</b> &rarr; Hoy: <b>{item['A']:.2f}{item['S_MON']}</b></div><div style="display: flex; gap: 5px; margin-bottom: 6px;"><span class="stat-badge" title="Rentabilidad Máxima Histórica">Max: {item['RMAX']:+.1f}%</span>{ign_html}</div><div style="font-size: 10px; color: #7f8c8d; font-style: italic; background: #f9fbfd; padding: 4px; border-radius: 4px;">Nota: {item['M']}</div></div>"""
 
                         with c_p:
                             st.markdown('<h4 style="margin-bottom:15px; font-size: 16px; color:#34495e;" title="Acciones a 0.00%. Acaban de ser escaneadas o su mercado está cerrado.">⏸️ Pendiente</h4>', unsafe_allow_html=True)
