@@ -337,27 +337,27 @@ with tab1:
                         info = ticker_obj.info
                         
                      if isinstance(info, dict):
-                        # #### ESTE BLOQUE TIENE QUE ESTAR MÁS A LA DERECHA ####
-                        sector = info.get('sector', 'Sin noticias')
-                        
-                        # Rellenamos el espacio debajo del desplegable
-                        if sector != "Sin noticias":
-                            espacio_sector.markdown(f"🏢 **Sector:** {sector}")
-                        
-                        recom_raw = info.get('recommendationKey')
-                        if recom_raw:
-                            traducciones = {
-                                "strong_buy": "COMPRA FUERTE 🟢",
-                                "buy": "COMPRAR ↗️",
-                                "hold": "MANTENER 🟡",
-                                "sell": "VENTA ↘️",
-                                "strong_sell": "VENTA MASIVA 🔴"
-                            }
-                            recom = traducciones.get(recom_raw.lower(), str(recom_raw).replace('_', ' ').upper())
-                        
-                        p_obj = info.get('targetMeanPrice')
-                        if p_obj and p_obj > 0: 
-                            precio_obj_str = str(p_obj)
+                            # #### ESTE BLOQUE TIENE QUE ESTAR MÁS A LA DERECHA ####
+                            sector = info.get('sector', 'Sin noticias')
+                            
+                            # Rellenamos el espacio debajo del desplegable
+                            if sector != "Sin noticias":
+                                espacio_sector.markdown(f"🏢 **Sector:** {sector}")
+                            
+                            recom_raw = info.get('recommendationKey')
+                            if recom_raw:
+                                traducciones = {
+                                    "strong_buy": "COMPRA FUERTE 🟢",
+                                    "buy": "COMPRAR ↗️",
+                                    "hold": "MANTENER 🟡",
+                                    "sell": "VENTA ↘️",
+                                    "strong_sell": "VENTA MASIVA 🔴"
+                                }
+                                recom = traducciones.get(recom_raw.lower(), str(recom_raw).replace('_', ' ').upper())
+                            
+                            p_obj = info.get('targetMeanPrice')
+                            if p_obj and p_obj > 0: 
+                                precio_obj_str = str(p_obj)
                             
                         # Calendario de Yahoo (Plan A para Earnings)
                         try:
