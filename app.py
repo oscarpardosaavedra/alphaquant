@@ -481,12 +481,12 @@ with tab2:
                 
                 if isinstance(data_stock.columns, pd.MultiIndex): data_stock.columns = data_stock.columns.get_level_values(0)
                 if data_stock.empty or 'Close' not in data_stock.columns or 'Volume' not in data_stock.columns: 
-                    time.sleep(0.3)
+                    time.sleep(0.15)
                     continue
                     
                 data_stock = data_stock.dropna(subset=['Close'])
                 if len(data_stock) < 2: 
-                    time.sleep(0.3)
+                    time.sleep(0.15)
                     continue
                 
                 cierres = data_stock['Close'].squeeze() if isinstance(data_stock['Close'], pd.DataFrame) else data_stock['Close']
