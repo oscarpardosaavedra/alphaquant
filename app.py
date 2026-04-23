@@ -2,7 +2,7 @@ import streamlit as st
 import yfinance as yf
 import pandas as pd
 import numpy as np
-import plotly.graph_objects as goespacio_descripcion = st.empty()
+import plotly.graph_objects as go
 import datetime
 import pytz
 import gspread
@@ -307,7 +307,6 @@ with tab1:
     col_buscador, col_espacio = st.columns([1, 3])
     with col_buscador:
         ticker_elegido = st.selectbox("Elige la empresa que quieres revisar:", opciones_desplegable)
-        espacio_descripcion = st.empty()
         espacio_sector = st.empty()
         
     if ticker_elegido:
