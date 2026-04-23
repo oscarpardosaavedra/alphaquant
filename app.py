@@ -299,7 +299,7 @@ st.markdown("---")
 tab1, tab2, tab3, tab4 = st.tabs(["🔬 Análisis Individual", "⚔️ Análisis Colectivo", "🎯 Radar", "🏆 Auditoría"])
 
 # ------------------------------------------
-# PESTAÑA 1: VISOR DE GRÁFICOS (DISEÑO FUTURISTA + TRADUCCIÓN)
+# PESTAÑA 1: VISOR DE GRÁFICOS (MOTOR HÍBRIDO YAHOO + FINNHUB)
 # ------------------------------------------
 with tab1:
     st.markdown("### 🔍 Selector de Activos")
@@ -316,43 +316,35 @@ with tab1:
         periodo = st.radio("Rango de tiempo:", ["1 Mes", "3 Meses", "6 Meses", "1 Año", "5 Años", "10 Años", "Máximo"], index=1, horizontal=True)
         mapa_tiempo = {"1 Mes": "1mo", "3 Meses": "3mo", "6 Meses": "6mo", "1 Año": "1y", "5 Años": "5y", "10 Años": "10y", "Máximo": "max"}
         
-        with st.spinner(f"Cargando telemetría de {simbolo_real}..."):
+        with st.spinner(f"Cargando datos de {simbolo_real} y rastreando Wall Street..."):
             try:
-                # 1. Datos Yahoo
+                # 1. Datos Yahoo (Precio Histórico)
                 datos = yf.download(simbolo_yahoo, period=mapa_tiempo[periodo], progress=False)
                 if isinstance(datos.columns, pd.MultiIndex): datos.columns = datos.columns.get_level_values(0)
 
                 if not datos.empty and 'Close' in datos.columns:
+                    
                     recom, precio_obj_str, fecha_earnings, sector, insider_trend = "Sin noticias", "Sin noticias", "Sin noticias", "Sin noticias", "Sin noticias"
                     
+                    # 2. MOTOR HÍBRIDO: YAHOO (Precio Objetivo/Sector) + FINNHUB (Insiders/Earnings)
                     import requests
                     API_FINNHUB = "d7c2s5hr01quh9fcasf0d7c2s5hr01quh9fcasfg"
                     
-                    # ---> DICCIONARIO DE TRADUCCIÓN A CASTELLANO <---
-                    traduccion_ws = {
-                        "STRONG BUY": "COMPRA FUERTE 🟢",
-                        "BUY": "COMPRAR ↗️",
-                        "HOLD": "MANTENER 🟡",
-                        "SELL": "VENTA ↘️",
-                        "STRONG SELL": "VENTA MASIVA 🔴"
-                    }
-                    
                     try:
+                        # Extraemos Wall Street y Sector de Yahoo Finance
                         ticker_obj = yf.Ticker(simbolo_yahoo)
                         info = ticker_obj.info
                         
                         if isinstance(info, dict):
-                            sector = info.get('sector', 'Sin Sector')
+                            sector = info.get('sector', 'Sin noticias')
                             
-                            # Obtenemos en inglés y lo pasamos por el traductor
                             recom_raw = info.get('recommendationKey')
-                            if recom_raw: 
-                                r_eng = str(recom_raw).replace('_', ' ').upper()
-                                recom = traduccion_ws.get(r_eng, r_eng)
+                            if recom_raw: recom = str(recom_raw).replace('_', ' ').upper()
                             
                             p_obj = info.get('targetMeanPrice')
                             if p_obj and p_obj > 0: precio_obj_str = str(p_obj)
                             
+                        # Calendario de Yahoo (Plan A para Earnings)
                         try:
                             cal = ticker_obj.calendar
                             if isinstance(cal, dict) and 'Earnings Date' in cal:
@@ -361,11 +353,14 @@ with tab1:
                                     fecha_earnings = fechas[0].strftime("%d/%m/%Y")
                         except: pass
                             
-                    except Exception as e: pass
+                    except Exception as e:
+                        pass
                         
+                    # Extracción de Finnhub (Insiders)
                     try:
                         hoy = datetime.datetime.today().strftime('%Y-%m-%d')
                         pasado = (datetime.datetime.today() - datetime.timedelta(days=180)).strftime('%Y-%m-%d')
+                        
                         sym_finnhub = simbolo_yahoo if "." in simbolo_yahoo else simbolo_real
                         
                         r_ins = requests.get(f"https://finnhub.io/api/v1/stock/insider-sentiment?symbol={sym_finnhub}&from={pasado}&to={hoy}&token={API_FINNHUB}").json()
@@ -377,6 +372,7 @@ with tab1:
                             elif mspr < 0: insider_trend = "VENDIENDO ↘️"
                             else: insider_trend = "NEUTRAL ⚪"
                             
+                        # Si Yahoo falló con Earnings, probamos Finnhub (Plan B)
                         if fecha_earnings == "Sin noticias":
                             futuro = (datetime.datetime.today() + datetime.timedelta(days=90)).strftime('%Y-%m-%d')
                             r_earn = requests.get(f"https://finnhub.io/api/v1/calendar/earnings?from={hoy}&to={futuro}&symbol={sym_finnhub}&token={API_FINNHUB}").json()
@@ -386,6 +382,7 @@ with tab1:
                                     fecha_earnings = datetime.datetime.strptime(fecha_raw, "%Y-%m-%d").strftime("%d/%m/%Y")
                     except: pass 
 
+                    # 3. Datos de Precio y Conversión a Dólares
                     datos_limpios = datos.dropna(subset=['Close'])
                     precio_actual = float(datos_limpios['Close'].iloc[-1])
                     s_moneda_visual = obtener_simbolo_moneda(simbolo_real)
@@ -394,9 +391,11 @@ with tab1:
                         p_obj_f = float(precio_obj_str)
                         pot = ((p_obj_f / precio_actual) - 1) * 100
                         color_p = "#228B22" if pot > 0 else "#FF3333"
+                        # ---> SOLUCIÓN A LAS ETIQUETAS HTML: DOBLES COMILLAS <---
                         precio_obj_final = f'{p_obj_f:,.2f} {s_moneda_visual} <span style="color:{color_p}; font-weight:bold; font-size:13px;">({pot:+.1f}%)</span>'
                     else: precio_obj_final = "Sin noticias"
                         
+                    # Conversión a dólares robusta (5 días)
                     precio_usd = None
                     mapa_divisas = { "€": "EURUSD=X", "¥": "JPYUSD=X", "GBp": "GBPUSD=X", "kr": "SEKUSD=X", "₹": "INRUSD=X" }
                     t_div = mapa_divisas.get(s_moneda_visual)
@@ -413,20 +412,15 @@ with tab1:
 
                     t_conv = f'<span style="font-size:18px;color:#7f8c8d;font-weight:400;margin-left:10px;">(≈ {precio_usd:,.2f} $)</span>' if precio_usd else ""
                     
-                    # 4. RENDERIZADO HTML PROFESIONAL Y REDISEÑADO
+                    # 4. RENDERIZADO HTML PROFESIONAL
                     st.markdown(f"""
-                    <div style="background-color:#f8f9fa;padding:20px;border-radius:12px;box-shadow:0 6px 12px rgba(0,0,0,0.05);margin-bottom:20px; border-left: 5px solid #00d4ff;">
-                        <div style="display:flex;justify-content:space-between;align-items:center;">
-                            <div>
-                                <div style="display:flex; align-items:center; gap:10px; margin-bottom:5px;">
-                                    <h3 style="margin:0; font-size:18px; color:#2c3e50; font-weight:800;">{simbolo_real}</h3>
-                                    <span style="background:#e1f5fe; color:#0288d1; padding:3px 8px; border-radius:15px; font-size:12px; font-weight:bold; letter-spacing:1px;">{sector.upper()}</span>
-                                </div>
-                                <h2 style="margin:0;font-weight:900;color:#0f2027;font-size:38px; letter-spacing:-1px;">{precio_actual:,.2f} <span style="font-size:24px; color:#34495e;">{s_moneda_visual}</span>{t_conv}</h2>
-                            </div>
+                    <div style="background-color:#f8f9fa;padding:15px;border-radius:10px;box-shadow:0 4px 6px rgba(0,0,0,0.05);margin-bottom:20px;">
+                        <div style="display:flex;justify-content:space-between;align-items:baseline;">
+                            <div><p style="margin:0;font-size:14px;color:rgba(49,51,63,0.7);">Valor Actual ({simbolo_real})</p>
+                            <h2 style="margin:0;font-weight:700;color:#1f1f1f;font-size:32px;">{precio_actual:,.2f} {s_moneda_visual}{t_conv}</h2></div>
+                            <div style="text-align:right;"><span style="font-size:12px;color:#7f8c8d;">🏢 Sector:</span><br><span style="font-weight:bold;color:#2c3e50;">{sector}</span></div>
                         </div>
                     </div>
-                    
                     <div style="display:flex;gap:15px;margin-bottom:20px;">
                         <div title="Consenso de analistas de inversión y precio objetivo promedio a 12 meses." style="flex:1;background:#fff;padding:15px;border-radius:8px;box-shadow:0 2px 4px rgba(0,0,0,0.05);border-top:4px solid #1E90FF;cursor:help;">
                             <div style="font-size:12px;color:#7f8c8d;text-transform:uppercase;font-weight:bold;margin-bottom:5px;">🏦 Wall Street ℹ️</div>
@@ -444,10 +438,10 @@ with tab1:
                     </div>
                     """, unsafe_allow_html=True)
 
-                    # 5. Gráfica (Color Azul Neón)
+                    # 5. Gráfica
                     fig = go.Figure()
-                    fig.add_trace(go.Scatter(x=datos_limpios.index, y=datos_limpios['Close'], mode='lines', name='Precio', line=dict(color='#00d4ff', width=2.5)))
-                    fig.update_layout(title=f"Histórico: {ticker_elegido}", template='plotly_dark', margin=dict(l=0, r=0, t=40, b=0), hovermode="x unified", paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
+                    fig.add_trace(go.Scatter(x=datos_limpios.index, y=datos_limpios['Close'], mode='lines', name='Precio', line=dict(color='#228B22', width=2)))
+                    fig.update_layout(title=f"Histórico: {ticker_elegido}", template='plotly_dark', margin=dict(l=0, r=0, t=40, b=0), hovermode="x unified")
                     st.plotly_chart(fig, use_container_width=True)
                 else: st.warning("⚠️ Sin datos disponibles.")
             except Exception as e: st.error(f"⚠️ Error técnico: {e}")
