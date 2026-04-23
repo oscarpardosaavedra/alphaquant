@@ -299,16 +299,19 @@ st.markdown("---")
 tab1, tab2, tab3, tab4 = st.tabs(["🔬 Análisis Individual", "⚔️ Análisis Colectivo", "🎯 Cazar Alpha (Radar)", "🏆 Sala de Trofeos"])
 
 # ------------------------------------------
-# PESTAÑA 1: VISOR DE GRÁFICOS (ANCHO COMPLETO + LOGO)
+# PESTAÑA 1: VISOR DE GRÁFICOS (LOGO ARRIBA + DISEÑO LIMPIO)
 # ------------------------------------------
 with tab1:
     st.markdown("### 🔍 Selector de Activos")
     
-    col_buscador, col_espacio = st.columns([1, 3])
+    # 1. Ajustamos las columnas para hacerle sitio al logo al lado del buscador
+    col_buscador, col_logo, col_espacio = st.columns([1.5, 0.5, 2])
     with col_buscador:
         ticker_elegido = st.selectbox("Elige la empresa que quieres revisar:", opciones_desplegable)
+    with col_logo:
+        espacio_logo = st.empty() # Hueco para el logo
         
-    # ---> AL SACAR ESTOS HUECOS DE LAS COLUMNAS, OCUPAN TODO EL ANCHO DE LA PANTALLA <---
+    # 2. Huecos a ancho completo para Descripción y Sector
     espacio_descripcion = st.empty() 
     espacio_sector = st.empty()
     
@@ -329,7 +332,6 @@ with tab1:
                 if not datos.empty and 'Close' in datos.columns:
                     
                     recom, precio_obj_str, fecha_earnings, sector, insider_trend = "Sin noticias", "Sin noticias", "Sin noticias", "Sin noticias", "Sin noticias"
-                    logo_url = "" # Inicializamos el logo vacío
                     
                     # 2. MOTOR DE EXTRACCIÓN (Yahoo + Finnhub)
                     import requests
@@ -340,27 +342,23 @@ with tab1:
                         info = ticker_obj.info
                         
                         if isinstance(info, dict):
-                            # Sacamos los datos básicos
                             sector = info.get('sector', 'Sin noticias')
                             descripcion_completa = info.get('longBusinessSummary', 'Sin descripción disponible.')
                             recom_raw = info.get('recommendationKey')
                             p_obj = info.get('targetMeanPrice')
                             
-                            # 1. Rellenamos la descripción (Directa, cortada a 2 frases)
+                            # Descripción (Cortada y elegante)
                             if descripcion_completa != 'Sin descripción disponible.':
                                 fragmentos = descripcion_completa.split('. ')
                                 desc_corta = '. '.join(fragmentos[:2]) + '.' if len(fragmentos) > 1 else descripcion_completa
                                 if len(desc_corta) > 300: desc_corta = desc_corta[:297] + "..."
-                                
-                                # Letra sutil, cursiva y a ancho completo
                                 espacio_descripcion.markdown(f"<div style='font-size: 14px; color: #666; margin-top: 5px; margin-bottom: 5px;'><i>{desc_corta}</i></div>", unsafe_allow_html=True)
                             
-                            # 2. Rellenamos el sector debajo
+                            # Sector (Con la negrita arreglada sin asteriscos)
                             if sector != "Sin noticias":
-                                # CÁMBIALA POR ESTA (He cambiado los ** por <b> y </b>):
-                                 espacio_sector.markdown(f"<div style='font-size: 14px; margin-bottom: 10px;'>🏢 <b>Sector:</b> {sector}</div>", unsafe_allow_html=True)
+                                espacio_sector.markdown(f"<div style='font-size: 14px; margin-bottom: 10px;'>🏢 <b>Sector:</b> {sector}</div>", unsafe_allow_html=True)
                             
-                            # 3. Consenso con traductor
+                            # Consenso
                             if recom_raw:
                                 traducciones = {
                                     "strong_buy": "COMPRA FUERTE 🟢",
@@ -371,11 +369,11 @@ with tab1:
                                 }
                                 recom = traducciones.get(recom_raw.lower(), str(recom_raw).replace('_', ' ').upper())
                             
-                            # 4. Precio objetivo
+                            # Precio objetivo
                             if p_obj and p_obj > 0: 
                                 precio_obj_str = str(p_obj)
                             
-                        # Calendario de Yahoo
+                        # Calendario Yahoo
                         try:
                             cal = ticker_obj.calendar
                             if isinstance(cal, dict) and 'Earnings Date' in cal:
@@ -387,18 +385,29 @@ with tab1:
                     except Exception:
                         pass
                         
-                    # Extracción de Finnhub
+                    # Extracción de Finnhub (LOGO e Insiders)
                     try:
                         hoy = datetime.datetime.today().strftime('%Y-%m-%d')
                         pasado = (datetime.datetime.today() - datetime.timedelta(days=180)).strftime('%Y-%m-%d')
                         sym_finnhub = simbolo_yahoo if "." in simbolo_yahoo else simbolo_real
                         
-                        # --- NUEVO: Extraemos el Logo de la empresa ---
+                        # --- FILTRO ANTIBASURA PARA EL LOGO ---
+                        logo_url = ""
                         try:
                             r_prof = requests.get(f"https://finnhub.io/api/v1/stock/profile2?symbol={sym_finnhub}&token={API_FINNHUB}", timeout=3).json()
                             if isinstance(r_prof, dict) and r_prof.get('logo'):
-                                logo_url = r_prof['logo']
+                                url_temp = r_prof['logo']
+                                # Si empieza por http, es una imagen real. Si no, lo ignoramos.
+                                if url_temp.startswith("http"): 
+                                    logo_url = url_temp
                         except: pass
+
+                        if logo_url:
+                            # Lo pintamos al lado del buscador
+                            espacio_logo.markdown(f"<img src='{logo_url}' style='height: 40px; max-width: 100px; object-fit: contain; margin-top: 25px;'/>", unsafe_allow_html=True)
+                        else:
+                            # Si no hay, dejamos el hueco limpio
+                            espacio_logo.empty()
                         
                         # Insiders
                         r_ins = requests.get(f"https://finnhub.io/api/v1/stock/insider-sentiment?symbol={sym_finnhub}&from={pasado}&to={hoy}&token={API_FINNHUB}").json()
@@ -410,6 +419,7 @@ with tab1:
                             elif mspr < 0: insider_trend = "VENDIENDO ↘️"
                             else: insider_trend = "NEUTRAL ⚪"
                             
+                        # Calendario Finnhub
                         if fecha_earnings == "Sin noticias":
                             futuro = (datetime.datetime.today() + datetime.timedelta(days=90)).strftime('%Y-%m-%d')
                             r_earn = requests.get(f"https://finnhub.io/api/v1/calendar/earnings?from={hoy}&to={futuro}&symbol={sym_finnhub}&token={API_FINNHUB}").json()
@@ -447,18 +457,13 @@ with tab1:
 
                     t_conv = f'<span style="font-size:18px;color:#7f8c8d;font-weight:400;margin-left:10px;">(≈ {precio_usd:,.2f} $)</span>' if precio_usd else ""
                     
-                    # 4. RENDERIZADO HTML (Con el Logo Integrado)
-                    img_html = f"<img src='{logo_url}' style='height: 45px; width: 45px; object-fit: contain; border-radius: 8px; margin-right: 15px; background: white; padding: 2px;'/>" if logo_url else ""
-                    
+                    # 4. RENDERIZADO HTML (Sin logo en la caja del precio)
                     st.markdown(f"""
                     <div style="background-color:#f8f9fa;padding:15px;border-radius:10px;box-shadow:0 4px 6px rgba(0,0,0,0.05);margin-bottom:20px;">
                         <div style="display:flex;justify-content:space-between;align-items:center;">
-                            <div style="display:flex;align-items:center;">
-                                {img_html}
-                                <div>
-                                    <p style="margin:0;font-size:14px;color:rgba(49,51,63,0.7);">Valor Actual ({simbolo_real})</p>
-                                    <h2 style="margin:0;font-weight:700;color:#1f1f1f;font-size:32px;">{precio_actual:,.2f} {s_moneda_visual}{t_conv}</h2>
-                                </div>
+                            <div>
+                                <p style="margin:0;font-size:14px;color:rgba(49,51,63,0.7);">Valor Actual ({simbolo_real})</p>
+                                <h2 style="margin:0;font-weight:700;color:#1f1f1f;font-size:32px;">{precio_actual:,.2f} {s_moneda_visual}{t_conv}</h2>
                             </div>
                         </div>
                     </div>
