@@ -296,11 +296,10 @@ col2.info(f"**Europa:** {eu['estado']} | Hora: {eu['horario']} (Madrid)")
 col3.info(f"**Asia:** {asia['estado']} | Hora: {asia['horario']} (Madrid)")
 st.markdown("---")
 
-# ---> TABS REORDENADOS: ANÁLISIS, BATALLA, RADAR, TROFEOS <---
 tab1, tab2, tab3, tab4 = st.tabs(["🔬 Análisis Individual", "⚔️ Batalla de Alpha", "🎯 Cazar Alpha (Radar)", "🏆 Sala de Trofeos"])
 
 # ------------------------------------------
-# PESTAÑA 1: VISOR DE GRÁFICOS (INDIVIDUAL)
+# PESTAÑA 1: VISOR DE GRÁFICOS (INDIVIDUAL CON TRIPLE TURBO)
 # ------------------------------------------
 with tab1:
     st.markdown("### 🔍 Selector de Activos")
@@ -327,7 +326,7 @@ with tab1:
             "1 Año": "1y", "5 Años": "5y", "10 Años": "10y", "Máximo": "max"
         }
         
-        with st.spinner(f"Cargando datos en vivo de {simbolo_real}..."):
+        with st.spinner(f"Cargando datos de {simbolo_real} y rastreando Wall Street..."):
             try:
                 # 1. Descargamos los datos del precio
                 datos = yf.download(simbolo_yahoo, period=mapa_tiempo[periodo], progress=False)
@@ -336,52 +335,67 @@ with tab1:
                     datos.columns = datos.columns.get_level_values(0)
 
                 if not datos.empty and 'Close' in datos.columns:
-                    # 2. Obtenemos metadata de Yahoo (Con cuidado)
+                    # 2. Obtenemos metadata y TURBOS de Yahoo
                     try:
                         ticker_obj = yf.Ticker(simbolo_yahoo)
-                        sector = ticker_obj.info.get('sector', 'N/A')
-                        industria = ticker_obj.info.get('industry', 'N/A')
+                        info = ticker_obj.info
+                        sector = info.get('sector', 'N/A')
+                        industria = info.get('industry', 'N/A')
+                        
+                        # --- INICIO TRIPLE TURBO ---
+                        # Turbo 1: Analistas
+                        recom = info.get('recommendationKey', 'N/A').replace('_', ' ').upper()
+                        precio_obj = info.get('targetMeanPrice', 'N/A')
+                        
+                        # Turbo 2: Calendario Earnings
+                        calendario = ticker_obj.calendar
+                        fecha_earnings = "Desconocida"
+                        if isinstance(calendario, dict) and 'Earnings Date' in calendario:
+                            fechas = calendario['Earnings Date']
+                            if isinstance(fechas, list) and len(fechas) > 0:
+                                fecha_earnings = fechas[0].strftime("%d/%m/%Y")
+                        
+                        # Turbo 3: Insiders y Manos Fuertes
+                        insiders_pct = info.get('heldPercentInsiders', 0)
+                        inst_pct = info.get('heldPercentInstitutions', 0)
+                        insiders_fmt = f"{insiders_pct * 100:.1f}%" if insiders_pct else "N/A"
+                        inst_fmt = f"{inst_pct * 100:.1f}%" if inst_pct else "N/A"
+                        # --- FIN TRIPLE TURBO ---
                     except:
                         sector, industria = "N/A", "N/A"
+                        recom, precio_obj, fecha_earnings, insiders_fmt, inst_fmt = "N/A", "N/A", "N/A", "N/A", "N/A"
 
-                    # 3. Calculamos el precio actual y el símbolo visual seguro
+                    # 3. Calculamos el precio actual
                     datos_limpios = datos.dropna(subset=['Close'])
                     cierres = datos_limpios['Close'].squeeze()
                     precio_actual = float(cierres.iloc[-1])
                     s_moneda_visual = obtener_simbolo_moneda(simbolo_real)
                     
-                    # 4. ---> CONVERSIÓN A DÓLARES INFALIBLE <---
-                    precio_usd = None
-                    mapa_divisas = {
-                        "€": "EURUSD=X",
-                        "¥": "JPYUSD=X",
-                        "GBp": "GBPUSD=X",
-                        "kr": "SEKUSD=X",
-                        "₹": "INRUSD=X"
-                    }
+                    # Formateo del Potencial de Crecimiento
+                    potencial_html = ""
+                    precio_obj_str = "N/A"
+                    if precio_obj != 'N/A' and isinstance(precio_obj, (int, float)) and precio_obj > 0:
+                        potencial = ((precio_obj / precio_actual) - 1) * 100
+                        color_pot = "#228B22" if potencial > 0 else "#FF3333"
+                        potencial_html = f'<span style="color: {color_pot}; font-weight: bold; margin-left: 5px;">({potencial:+.1f}%)</span>'
+                        precio_obj_str = f"{precio_obj:,.2f} {s_moneda_visual}"
                     
+                    # 4. CONVERSIÓN A DÓLARES INFALIBLE
+                    precio_usd = None
+                    mapa_divisas = { "€": "EURUSD=X", "¥": "JPYUSD=X", "GBp": "GBPUSD=X", "kr": "SEKUSD=X", "₹": "INRUSD=X" }
                     ticker_divisa = mapa_divisas.get(s_moneda_visual)
                     
                     if ticker_divisa:
                         try:
-                            # Descargamos el valor del cambio
                             div_data = yf.download(ticker_divisa, period="1d", progress=False)
-                            if isinstance(div_data.columns, pd.MultiIndex):
-                                div_data.columns = div_data.columns.get_level_values(0)
-                            
+                            if isinstance(div_data.columns, pd.MultiIndex): div_data.columns = div_data.columns.get_level_values(0)
                             if not div_data.empty and 'Close' in div_data.columns:
                                 tasa = float(div_data['Close'].dropna().iloc[-1])
-                                # Ajuste especial para Londres (peniques)
                                 precio_usd = (precio_actual * tasa) / 100 if s_moneda_visual == "GBp" else (precio_actual * tasa)
-                        except:
-                            pass # Si Yahoo falla con la divisa, no rompemos nada
+                        except: pass
 
-                    # 5. Preparamos el HTML
-                    if precio_usd is not None:
-                        texto_conversion = f'<span style="font-size: 18px; color: #7f8c8d; font-weight: 400; margin-left: 10px;">(≈ {precio_usd:,.2f} $)</span>'
-                    else:
-                        texto_conversion = ""
-
+                    # 5. PINTAR EL HTML DEL PRECIO
+                    texto_conversion = f'<span style="font-size: 18px; color: #7f8c8d; font-weight: 400; margin-left: 10px;">(≈ {precio_usd:,.2f} $)</span>' if precio_usd else ""
                     html_metrica = f"""
                     <div style="background-color: #f8f9fa; padding: 15px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); margin-bottom: 20px;">
                         <p style="margin: 0; font-size: 14px; color: rgba(49, 51, 63, 0.7); font-weight: 400;">Valor Actual ({simbolo_real})</p>
@@ -391,6 +405,27 @@ with tab1:
                     </div>
                     """
                     st.markdown(html_metrica, unsafe_allow_html=True)
+                    
+                    # ---> PINTAR PANELES DEL TRIPLE TURBO <---
+                    html_turbos = f"""
+                    <div style="display: flex; gap: 15px; margin-bottom: 20px;">
+                        <div style="flex: 1; background: #ffffff; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); border-top: 4px solid #1E90FF;">
+                            <div style="font-size: 12px; color: #7f8c8d; text-transform: uppercase; font-weight: bold; margin-bottom: 5px;">🏦 Wall Street</div>
+                            <div style="font-size: 15px; color: #2c3e50;"><b>Consenso:</b> {recom}</div>
+                            <div style="font-size: 15px; color: #2c3e50; margin-top: 5px;"><b>Precio Obj:</b> {precio_obj_str} {potencial_html}</div>
+                        </div>
+                        <div style="flex: 1; background: #ffffff; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); border-top: 4px solid #f39c12;">
+                            <div style="font-size: 12px; color: #7f8c8d; text-transform: uppercase; font-weight: bold; margin-bottom: 5px;">📅 Próximos Earnings</div>
+                            <div style="font-size: 18px; color: #2c3e50; font-weight: bold; margin-top: 5px;">{fecha_earnings}</div>
+                        </div>
+                        <div style="flex: 1; background: #ffffff; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); border-top: 4px solid #8e44ad;">
+                            <div style="font-size: 12px; color: #7f8c8d; text-transform: uppercase; font-weight: bold; margin-bottom: 5px;">👔 Manos Fuertes</div>
+                            <div style="font-size: 15px; color: #2c3e50;"><b>Insiders (Directiva):</b> {insiders_fmt}</div>
+                            <div style="font-size: 15px; color: #2c3e50; margin-top: 5px;"><b>Institucional (Fondos):</b> {inst_fmt}</div>
+                        </div>
+                    </div>
+                    """
+                    st.markdown(html_turbos, unsafe_allow_html=True)
 
                     if sector != "N/A": 
                         st.caption(f"🏢 **Sector:** {sector} | **Industria:** {industria}")
@@ -410,7 +445,7 @@ with tab1:
 # PESTAÑA 2: BATALLA DE ALPHA (COMPARATIVA)
 # ------------------------------------------
 with tab2:
-    st.markdown("### ⚔️ Análisis múltiple")
+    st.markdown("### ⚔️ Batalla de Alpha (Comparativa Múltiple)")
     st.write("Selecciona varios activos para ver cuál está rindiendo mejor en un mismo periodo de tiempo. Todos empezarán en Base 0 (0% de rendimiento) para una comparación justa.")
     
     col_comp1, col_comp2 = st.columns([3, 1])
@@ -424,7 +459,6 @@ with tab2:
         )
         
     with col_comp2:
-        # Añadida la 'key' para evitar el error DuplicateWidgetID con la pestaña 1
         periodo_comp = st.radio(
             "Rango de tiempo:", 
             ["1 Mes", "3 Meses", "6 Meses", "1 Año", "5 Años", "Máximo"], 
@@ -441,7 +475,6 @@ with tab2:
                 
                 for sel in seleccionados:
                     sym_real = sel.split(" ")[0]
-                    # Si elige un índice base, usamos su ticker directo de Yahoo
                     sym_y = "SPY" if sym_real == "SPY" else ("QQQ" if sym_real == "QQQ" else a_yahoo(sym_real))
                     
                     try:
@@ -453,12 +486,9 @@ with tab2:
                         
                         if not df_comp.empty:
                             cierres_comp = df_comp['Close'].squeeze()
-                            
-                            # Magia matemática: Convertir el precio real a porcentaje de crecimiento desde el día 1
                             precio_inicial = float(cierres_comp.iloc[0])
                             pct_cambio = ((cierres_comp / precio_inicial) - 1) * 100
                             
-                            # Darle un toque visual distinto a los índices base (SPY/QQQ)
                             es_indice = sym_real in ["SPY", "QQQ"]
                             grosor = 3 if es_indice else 2
                             estilo_linea = 'dot' if es_indice else 'solid'
@@ -505,7 +535,6 @@ with tab3:
     elif btn_asia: mercado_objetivo = "Asia"
 
     if mercado_objetivo:
-        # ---> AL LANZAR UNA NUEVA CAZA, LIMPIAMOS LA MEMORIA <---
         st.session_state.resultados_radar = None
         
         if mercado_objetivo == "EEUU" and "Cerrado" in us["estado"]:
@@ -697,26 +726,19 @@ with tab3:
             
         barra_progreso.progress(100, text="✅ 100% Completado")
         
-        # ---> GUARDAMOS EL RESULTADO EN MEMORIA AL TERMINAR LA CAZA <---
         st.session_state.resultados_radar = resultados_radar
         st.success("Caza terminada. Las empresas con 90 puntos o más se han guardado automáticamente en la base de datos.")
 
-
-    # =========================================================================
-    # ---> MOSTRAR LA TABLA DEL RADAR SIEMPRE QUE HAYA ALGO EN LA MEMORIA <---
-    # =========================================================================
     if st.session_state.resultados_radar:
         df = pd.DataFrame(st.session_state.resultados_radar)
         df = df.sort_values(by="PUNTOS", ascending=False).reset_index(drop=True)
         
-        # 1. Definición para porcentajes rojo/verde
         def color_porcentajes(val):
             if isinstance(val, str) and '%' in val:
                 if val.startswith('+'): return 'color: #228B22;' 
                 elif val.startswith('-'): return 'color: #FF3333;' 
             return ''
 
-        # 2. ---> FUNCIÓN PARA PINTAR TICKER EN AZUL SI > 80 PUNTOS <---
         def resaltar_azul(row):
             estilo = [''] * len(row)
             if row['PUNTOS'] > 80:
@@ -726,7 +748,6 @@ with tab3:
 
         columnas_pct = ["% HOY", "% 1 MES", "% 6 MESES", "% 1 AÑO", "% 5 AÑOS", "% 10 AÑOS", "% 20 AÑOS", "% MÁX", "SUELO (52s)", "MAX (52s)"]
         
-        # 3. Aplicamos el azul por fila, y el rojo/verde a las columnas correspondientes
         try:
             styled_df = df.style.apply(resaltar_azul, axis=1).map(color_porcentajes, subset=columnas_pct)
         except AttributeError:
@@ -757,7 +778,7 @@ with tab3:
         )
 
 # ------------------------------------------
-# PESTAÑA 4: SALA DE TROFEOS (DB REAL Y BORRADO MANUAL)
+# PESTAÑA 4: SALA DE TROFEOS
 # ------------------------------------------
 with tab4:
     st.markdown("### 🏆 Sala de Trofeos")
