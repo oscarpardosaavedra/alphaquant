@@ -299,7 +299,7 @@ st.markdown("---")
 tab1, tab2, tab3, tab4 = st.tabs(["🔬 Análisis Individual", "⚔️ Análisis Colectivo", "🎯 Radar", "🏆 Auditoría"])
 
 # ------------------------------------------
-# PESTAÑA 1: VISOR DE GRÁFICOS (DISEÑO CLÁSICO + BYPASS YAHOO)
+# PESTAÑA 1: VISOR DE GRÁFICOS (DISEÑO CLÁSICO + API DIRECTA)
 # ------------------------------------------
 with tab1:
     st.markdown("### 🔍 Selector de Activos")
@@ -378,41 +378,55 @@ with tab1:
                                 fecha_earnings = datetime.datetime.strptime(fecha_raw, "%Y-%m-%d").strftime("%d/%m/%Y")
                     except: pass
 
-                    # 3. MOTOR HÍBRIDO (Parte 2: Yahoo Finance BYPASS)
+                    # 3. MOTOR HÍBRIDO (Parte 2: CONEXIÓN DIRECTA A YAHOO API - CERO FALLOS)
                     try:
-                        # ---> TRUCO DEL DISFRAZ PARA ENGAÑAR A YAHOO <---
-                        session = requests.Session()
-                        session.headers['User-agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
+                        url_yh = f"https://query2.finance.yahoo.com/v10/finance/quoteSummary/{simbolo_yahoo}?modules=financialData,summaryProfile"
+                        headers_yh = {
+                            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+                            'Accept': 'application/json'
+                        }
+                        r_yh = requests.get(url_yh, headers=headers_yh, timeout=5).json()
                         
-                        ticker_obj = yf.Ticker(simbolo_yahoo, session=session)
-                        info = ticker_obj.info
-                        
-                        if isinstance(info, dict):
-                            # Respaldo si Finnhub falló con el sector
-                            if sector == "Desconocido": sector = info.get('sector', 'Desconocido')
-                            if industria == "Desconocida": industria = info.get('industry', 'Desconocida')
+                        if 'quoteSummary' in r_yh and r_yh['quoteSummary']['result']:
+                            res_yh = r_yh['quoteSummary']['result'][0]
                             
-                            # Consenso Traducido
-                            recom_raw = info.get('recommendationKey')
-                            if recom_raw: 
-                                r_eng = str(recom_raw).replace('_', ' ').upper()
-                                recom = traduccion_ws.get(r_eng, r_eng)
+                            # Respaldo Sector
+                            if 'summaryProfile' in res_yh:
+                                prof = res_yh['summaryProfile']
+                                if sector == "Desconocido": sector = prof.get('sector', 'Desconocido')
+                                if industria == "Desconocida": industria = prof.get('industry', 'Desconocida')
                                 
-                            # Precio Objetivo
-                            p_obj = info.get('targetMeanPrice')
-                            if p_obj and p_obj > 0: precio_obj_str = str(p_obj)
-                            
-                        # Respaldo si Finnhub falló con Earnings
+                            # Extraer Consenso y Precio Objetivo REAL
+                            if 'financialData' in res_yh:
+                                fdata = res_yh['financialData']
+                                
+                                if recom == "Sin noticias":
+                                    recom_raw = fdata.get('recommendationKey')
+                                    if recom_raw and isinstance(recom_raw, str): 
+                                        r_eng = recom_raw.replace('_', ' ').upper()
+                                        recom = traduccion_ws.get(r_eng, r_eng)
+                                        
+                                if precio_obj_str == "Sin noticias":
+                                    p_obj_data = fdata.get('targetMeanPrice', {})
+                                    if isinstance(p_obj_data, dict) and 'raw' in p_obj_data:
+                                        p_obj = p_obj_data['raw']
+                                        if p_obj > 0: precio_obj_str = str(p_obj)
+                                    elif isinstance(p_obj_data, (int, float)) and p_obj_data > 0:
+                                        precio_obj_str = str(p_obj_data)
+                                        
+                        # Calendario de Earnings (El de yfinance sí funciona bien)
                         if fecha_earnings == "Sin noticias":
-                            cal = ticker_obj.calendar
+                            tk_obj = yf.Ticker(simbolo_yahoo)
+                            cal = tk_obj.calendar
                             if isinstance(cal, dict) and 'Earnings Date' in cal:
                                 fechas = cal['Earnings Date']
                                 if isinstance(fechas, list) and len(fechas) > 0 and pd.notnull(fechas[0]):
                                     fecha_earnings = fechas[0].strftime("%d/%m/%Y")
-                    except: pass
+                    except Exception as e: 
+                        pass
 
                     # ---> PINTAMOS EL SECTOR DEBAJO DEL DESPLEGABLE <---
-                    espacio_sector.caption(f"🏢 **Sector:** {sector} | **Industria:** {industria}")
+                    espacio_sector.markdown(f"<div style='font-size: 14px; color: #7f8c8d; margin-top: -10px; margin-bottom: 10px;'>🏢 <b>Sector:</b> {sector} | <b>Industria:</b> {industria}</div>", unsafe_allow_html=True)
 
                     # 4. Datos de Precio y Conversión a Dólares
                     datos_limpios = datos.dropna(subset=['Close'])
