@@ -337,21 +337,23 @@ with tab1:
                         ticker_obj = yf.Ticker(simbolo_yahoo)
                         info = ticker_obj.info
                         
-                        if isinstance(info, dict):
+                    if isinstance(info, dict):
+                            # 1. Extraemos los datos de Yahoo
                             sector = info.get('sector', 'Sin noticias')
-                            if sector != "Sin noticias":
-                               espacio_sector.markdown(f"🏢 **Sector:** {sector}")
-                            
+                            descripcion = info.get('longBusinessSummary', 'Sin descripción disponible.')
                             recom_raw = info.get('recommendationKey')
-                        if isinstance(info, dict):
-                            # #### ESTE BLOQUE TIENE QUE ESTAR MÁS A LA DERECHA ####
-                            sector = info.get('sector', 'Sin noticias')
-                            
-                            # Rellenamos el espacio debajo del desplegable
+                            p_obj = info.get('targetMeanPrice')
+
+                            # 2. Plasmamos la DESCRIPCIÓN en su hueco (con un desplegable para no molestar)
+                            if descripcion != 'Sin descripción disponible.':
+                                with espacio_descripcion.expander("📖 Ver descripción de la empresa"):
+                                    st.write(descripcion)
+
+                            # 3. Plasmamos el SECTOR en su hueco
                             if sector != "Sin noticias":
                                 espacio_sector.markdown(f"🏢 **Sector:** {sector}")
-                            
-                            recom_raw = info.get('recommendationKey')
+
+                            # 4. TRADUCCIÓN del Consenso
                             if recom_raw:
                                 traducciones = {
                                     "strong_buy": "COMPRA FUERTE 🟢",
@@ -362,11 +364,11 @@ with tab1:
                                 }
                                 recom = traducciones.get(recom_raw.lower(), str(recom_raw).replace('_', ' ').upper())
                             
-                            p_obj = info.get('targetMeanPrice')
+                            # 5. PRECIO OBJETIVO
                             if p_obj and p_obj > 0: 
                                 precio_obj_str = str(p_obj)
                             
-                        # Calendario de Yahoo (Plan A para Earnings)
+                        # Calendario de Earnings (Fuera del if info para asegurar el cierre del try)
                         try:
                             cal = ticker_obj.calendar
                             if isinstance(cal, dict) and 'Earnings Date' in cal:
