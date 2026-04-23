@@ -422,8 +422,9 @@ with tab2:
             except Exception:
                 pass
 
-        for i, ticker in enumerate(tickers_a_escanear):
-            barra_progreso.progress((i + 1) / len(tickers_a_escanear), text=f"Evaluando: {ticker}...")
+        ffor i, ticker in enumerate(tickers_a_escanear):
+            porcentaje = int(((i + 1) / len(tickers_a_escanear)) * 100)
+            barra_progreso.progress((i + 1) / len(tickers_a_escanear), text=f"⏳ Evaluando: {ticker} | {porcentaje}%")
             try:
                 sym_yahoo = a_yahoo(ticker)
                 
