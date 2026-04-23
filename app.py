@@ -55,14 +55,10 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# Banner Principal Futurista
+# Banner Principal
 st.markdown("""
-<div style="background: linear-gradient(135deg, #050505 0%, #121212 50%, #0a192f 100%); padding: 35px; border-radius: 15px; text-align: center; margin-bottom: 30px; box-shadow: 0 0 25px rgba(0, 212, 255, 0.2); border: 1px solid rgba(0, 212, 255, 0.15); position: relative; overflow: hidden;">
-    <h1 style="color: #ffffff; margin: 0; font-size: 3.5em; font-family: 'Segoe UI', Tahoma, sans-serif; font-weight: 900; letter-spacing: 6px; text-transform: uppercase; text-shadow: 0 0 15px rgba(0, 212, 255, 0.6), 0 0 30px rgba(0, 212, 255, 0.4);">
-        <span style="color: #00d4ff;">A</span>LPHA<span style="color: #ffffff;">QUANT</span>
-    </h1>
-    <div style="width: 60px; height: 4px; background: #00d4ff; margin: 15px auto; border-radius: 2px; box-shadow: 0 0 10px #00d4ff;"></div>
-    <p style="color: #a0aec0; font-family: monospace; letter-spacing: 3px; font-size: 1.1em; margin: 0;">TERMINAL CUANTITATIVA AVANZADA</p>
+<div style="background: linear-gradient(135deg, #0f2027 0%, #203a43 50%, #2c5364 100%); padding: 25px; border-radius: 12px; text-align: center; margin-bottom: 30px; box-shadow: 0 4px 8px rgba(0,0,0,0.1);">
+    <h1 style="color: white; margin: 0; font-size: 2.8em; font-family: 'Segoe UI', Tahoma, sans-serif; letter-spacing: 2px;">📈 ALPHAQUANT</h1>
 </div>
 """, unsafe_allow_html=True)
 
@@ -303,7 +299,7 @@ st.markdown("---")
 tab1, tab2, tab3, tab4 = st.tabs(["🔬 Análisis Individual", "⚔️ Análisis Colectivo", "🎯 Radar", "🏆 Auditoría"])
 
 # ------------------------------------------
-# PESTAÑA 1: VISOR DE GRÁFICOS (DISEÑO CLÁSICO + SECTOR MOVIDO)
+# PESTAÑA 1: VISOR DE GRÁFICOS (MOTOR HÍBRIDO YAHOO + FINNHUB)
 # ------------------------------------------
 with tab1:
     st.markdown("### 🔍 Selector de Activos")
@@ -311,8 +307,6 @@ with tab1:
     col_buscador, col_espacio = st.columns([1, 3])
     with col_buscador:
         ticker_elegido = st.selectbox("Elige la empresa que quieres revisar:", opciones_desplegable)
-        # ---> CREAMOS UN ESPACIO PARA EL SECTOR JUSTO AQUÍ <---
-        espacio_sector = st.empty() 
     
     if ticker_elegido:
         simbolo_real = ticker_elegido.split(" ")[0]
@@ -331,37 +325,26 @@ with tab1:
                 if not datos.empty and 'Close' in datos.columns:
                     
                     recom, precio_obj_str, fecha_earnings, sector, insider_trend = "Sin noticias", "Sin noticias", "Sin noticias", "Sin noticias", "Sin noticias"
-                    industria = "Sin noticias"
                     
-                    # 2. MOTOR HÍBRIDO
+                    # 2. MOTOR HÍBRIDO: YAHOO (Precio Objetivo/Sector) + FINNHUB (Insiders/Earnings)
                     import requests
                     API_FINNHUB = "d7c2s5hr01quh9fcasf0d7c2s5hr01quh9fcasfg"
                     
-                    # Diccionario de traducción a español
-                    traduccion_ws = {
-                        "STRONG BUY": "COMPRA FUERTE 🟢",
-                        "BUY": "COMPRAR ↗️",
-                        "HOLD": "MANTENER 🟡",
-                        "SELL": "VENTA ↘️",
-                        "STRONG SELL": "VENTA MASIVA 🔴"
-                    }
-                    
                     try:
+                        # Extraemos Wall Street y Sector de Yahoo Finance
                         ticker_obj = yf.Ticker(simbolo_yahoo)
                         info = ticker_obj.info
                         
                         if isinstance(info, dict):
                             sector = info.get('sector', 'Sin noticias')
-                            industria = info.get('industry', 'Sin noticias')
                             
                             recom_raw = info.get('recommendationKey')
-                            if recom_raw: 
-                                r_eng = str(recom_raw).replace('_', ' ').upper()
-                                recom = traduccion_ws.get(r_eng, r_eng)
+                            if recom_raw: recom = str(recom_raw).replace('_', ' ').upper()
                             
                             p_obj = info.get('targetMeanPrice')
                             if p_obj and p_obj > 0: precio_obj_str = str(p_obj)
                             
+                        # Calendario de Yahoo (Plan A para Earnings)
                         try:
                             cal = ticker_obj.calendar
                             if isinstance(cal, dict) and 'Earnings Date' in cal:
@@ -377,6 +360,7 @@ with tab1:
                     try:
                         hoy = datetime.datetime.today().strftime('%Y-%m-%d')
                         pasado = (datetime.datetime.today() - datetime.timedelta(days=180)).strftime('%Y-%m-%d')
+                        
                         sym_finnhub = simbolo_yahoo if "." in simbolo_yahoo else simbolo_real
                         
                         r_ins = requests.get(f"https://finnhub.io/api/v1/stock/insider-sentiment?symbol={sym_finnhub}&from={pasado}&to={hoy}&token={API_FINNHUB}").json()
@@ -388,6 +372,7 @@ with tab1:
                             elif mspr < 0: insider_trend = "VENDIENDO ↘️"
                             else: insider_trend = "NEUTRAL ⚪"
                             
+                        # Si Yahoo falló con Earnings, probamos Finnhub (Plan B)
                         if fecha_earnings == "Sin noticias":
                             futuro = (datetime.datetime.today() + datetime.timedelta(days=90)).strftime('%Y-%m-%d')
                             r_earn = requests.get(f"https://finnhub.io/api/v1/calendar/earnings?from={hoy}&to={futuro}&symbol={sym_finnhub}&token={API_FINNHUB}").json()
@@ -396,10 +381,6 @@ with tab1:
                                 if fecha_raw != 'Sin noticias':
                                     fecha_earnings = datetime.datetime.strptime(fecha_raw, "%Y-%m-%d").strftime("%d/%m/%Y")
                     except: pass 
-
-                    # ---> PINTAMOS EL SECTOR DEBAJO DEL DESPLEGABLE <---
-                    if sector != "Sin noticias":
-                        espacio_sector.caption(f"🏢 **Sector:** {sector} | **Industria:** {industria}")
 
                     # 3. Datos de Precio y Conversión a Dólares
                     datos_limpios = datos.dropna(subset=['Close'])
@@ -410,9 +391,11 @@ with tab1:
                         p_obj_f = float(precio_obj_str)
                         pot = ((p_obj_f / precio_actual) - 1) * 100
                         color_p = "#228B22" if pot > 0 else "#FF3333"
+                        # ---> SOLUCIÓN A LAS ETIQUETAS HTML: DOBLES COMILLAS <---
                         precio_obj_final = f'{p_obj_f:,.2f} {s_moneda_visual} <span style="color:{color_p}; font-weight:bold; font-size:13px;">({pot:+.1f}%)</span>'
                     else: precio_obj_final = "Sin noticias"
                         
+                    # Conversión a dólares robusta (5 días)
                     precio_usd = None
                     mapa_divisas = { "€": "EURUSD=X", "¥": "JPYUSD=X", "GBp": "GBPUSD=X", "kr": "SEKUSD=X", "₹": "INRUSD=X" }
                     t_div = mapa_divisas.get(s_moneda_visual)
@@ -429,13 +412,15 @@ with tab1:
 
                     t_conv = f'<span style="font-size:18px;color:#7f8c8d;font-weight:400;margin-left:10px;">(≈ {precio_usd:,.2f} $)</span>' if precio_usd else ""
                     
-                    # 4. RENDERIZADO HTML CLÁSICO CON TOOLTIPS
+                    # 4. RENDERIZADO HTML PROFESIONAL
                     st.markdown(f"""
                     <div style="background-color:#f8f9fa;padding:15px;border-radius:10px;box-shadow:0 4px 6px rgba(0,0,0,0.05);margin-bottom:20px;">
-                        <p style="margin:0;font-size:14px;color:rgba(49,51,63,0.7);font-weight:400;">Valor Actual ({simbolo_real})</p>
-                        <h2 style="margin:0;font-weight:700;color:#1f1f1f;font-size:32px;">{precio_actual:,.2f} {s_moneda_visual}{t_conv}</h2>
+                        <div style="display:flex;justify-content:space-between;align-items:baseline;">
+                            <div><p style="margin:0;font-size:14px;color:rgba(49,51,63,0.7);">Valor Actual ({simbolo_real})</p>
+                            <h2 style="margin:0;font-weight:700;color:#1f1f1f;font-size:32px;">{precio_actual:,.2f} {s_moneda_visual}{t_conv}</h2></div>
+                            <div style="text-align:right;"><span style="font-size:12px;color:#7f8c8d;">🏢 Sector:</span><br><span style="font-weight:bold;color:#2c3e50;">{sector}</span></div>
+                        </div>
                     </div>
-                    
                     <div style="display:flex;gap:15px;margin-bottom:20px;">
                         <div title="Consenso de analistas de inversión y precio objetivo promedio a 12 meses." style="flex:1;background:#fff;padding:15px;border-radius:8px;box-shadow:0 2px 4px rgba(0,0,0,0.05);border-top:4px solid #1E90FF;cursor:help;">
                             <div style="font-size:12px;color:#7f8c8d;text-transform:uppercase;font-weight:bold;margin-bottom:5px;">🏦 Wall Street ℹ️</div>
@@ -453,13 +438,85 @@ with tab1:
                     </div>
                     """, unsafe_allow_html=True)
 
-                    # 5. Gráfica (Volvemos a tu verde clásico)
+                    # 5. Gráfica
                     fig = go.Figure()
                     fig.add_trace(go.Scatter(x=datos_limpios.index, y=datos_limpios['Close'], mode='lines', name='Precio', line=dict(color='#228B22', width=2)))
                     fig.update_layout(title=f"Histórico: {ticker_elegido}", template='plotly_dark', margin=dict(l=0, r=0, t=40, b=0), hovermode="x unified")
                     st.plotly_chart(fig, use_container_width=True)
                 else: st.warning("⚠️ Sin datos disponibles.")
             except Exception as e: st.error(f"⚠️ Error técnico: {e}")
+# ------------------------------------------
+# PESTAÑA 2: BATALLA DE ALPHA (COMPARATIVA)
+# ------------------------------------------
+with tab2:
+    st.markdown("### ⚔️ Comparativa Múltiple")
+    st.write("Selecciona varios activos para ver cuál está rindiendo mejor en un mismo periodo de tiempo. Todos empezarán en Base 0 (0% de rendimiento) para una comparación justa.")
+    
+    col_comp1, col_comp2 = st.columns([3, 1])
+    
+    with col_comp1:
+        opciones_comp = ["SPY (S&P 500)", "QQQ (Nasdaq 100)"] + opciones_desplegable
+        seleccionados = st.multiselect(
+            "Elige los activos a enfrentar (Puedes elegir todos los que quieras):", 
+            opciones_comp, 
+            default=["SPY (S&P 500)"]
+        )
+        
+    with col_comp2:
+        periodo_comp = st.radio(
+            "Rango de tiempo:", 
+            ["1 Mes", "3 Meses", "6 Meses", "1 Año", "5 Años", "Máximo"], 
+            index=3,
+            key="radio_batalla" 
+        )
+        
+    mapa_tiempo_comp = {"1 Mes": "1mo", "3 Meses": "3mo", "6 Meses": "6mo", "1 Año": "1y", "5 Años": "5y", "Máximo": "max"}
+
+    if seleccionados:
+        if st.button("🚀 Iniciar Batalla de Rendimiento", use_container_width=True):
+            with st.spinner("Descargando históricos y sincronizando la escala a Base 100..."):
+                fig_comp = go.Figure()
+                
+                for sel in seleccionados:
+                    sym_real = sel.split(" ")[0]
+                    sym_y = "SPY" if sym_real == "SPY" else ("QQQ" if sym_real == "QQQ" else a_yahoo(sym_real))
+                    
+                    try:
+                        df_comp = yf.download(sym_y, period=mapa_tiempo_comp[periodo_comp], progress=False)
+                        if isinstance(df_comp.columns, pd.MultiIndex): 
+                            df_comp.columns = df_comp.columns.get_level_values(0)
+                        
+                        df_comp = df_comp.dropna(subset=['Close'])
+                        
+                        if not df_comp.empty:
+                            cierres_comp = df_comp['Close'].squeeze()
+                            precio_inicial = float(cierres_comp.iloc[0])
+                            pct_cambio = ((cierres_comp / precio_inicial) - 1) * 100
+                            
+                            es_indice = sym_real in ["SPY", "QQQ"]
+                            grosor = 3 if es_indice else 2
+                            estilo_linea = 'dot' if es_indice else 'solid'
+                            
+                            fig_comp.add_trace(go.Scatter(
+                                x=pct_cambio.index, 
+                                y=pct_cambio, 
+                                mode='lines', 
+                                name=sym_real,
+                                line=dict(width=grosor, dash=estilo_linea)
+                            ))
+                    except Exception as e:
+                        st.warning(f"⚠️ No se pudo cargar el histórico de {sym_real}.")
+
+                fig_comp.update_layout(
+                    title=f"Rendimiento Comparativo Acumulado",
+                    template='plotly_dark',
+                    xaxis_title="",
+                    yaxis_title="Rendimiento Acumulado (%)",
+                    hovermode="x unified",
+                    margin=dict(l=0, r=0, t=40, b=0)
+                )
+                
+                st.plotly_chart(fig_comp, use_container_width=True)
 
 # ------------------------------------------
 # PESTAÑA 3: RADAR DE CAZA CON AUTO-GUARDADO
