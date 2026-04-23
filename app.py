@@ -577,6 +577,10 @@ with tab3:
         for i, ticker in enumerate(tickers_a_escanear):
             porcentaje = int(((i + 1) / len(tickers_a_escanear)) * 100)
             
+            # ---> ACTUALIZAMOS EL TEXTO SIN QUE SEA GIGANTE <---
+            texto_progreso.markdown(f"⏳ Evaluando: **{ticker}** | **{porcentaje}%**")
+            barra_progreso.progress((i + 1) / len(tickers_a_escanear))
+            
             t_fijo = ticker.ljust(10).replace(" ", " ")
             p_fijo = str(porcentaje).rjust(3)
             
@@ -727,7 +731,9 @@ with tab3:
                 time.sleep(0.20)
                 continue
             
-        barra_progreso.progress(100, text="✅ 100% Completado")
+        # ---> MENSAJE FINAL <---
+        texto_progreso.markdown("✅ **100% Completado**")
+        barra_progreso.progress(100)
         
         st.session_state.resultados_radar = resultados_radar
         st.success("Caza terminada. Las empresas con 90 puntos o más se han guardado automáticamente en la base de datos.")
