@@ -662,6 +662,12 @@ with tab3:
                             tk = yf.Ticker(tk_y)
                             p_hoy = tk.history(period="1d")['Close'].iloc[-1]
                             
+                            # Extraemos la moneda real del activo
+                            info = tk.info
+                            moneda = info.get('currency', 'USD')
+                            simbolos_moneda = {"USD": "$", "EUR": "€", "GBP": "£", "GBp": "GBp", "JPY": "¥"}
+                            s_mon = simbolos_moneda.get(moneda, moneda)
+
                             rent = ((p_hoy / float(d['Precio_Aviso'])) - 1) * 100
                             
                             obj = {
@@ -670,7 +676,8 @@ with tab3:
                                 "E": float(d['Precio_Aviso']), 
                                 "A": p_hoy, 
                                 "R": rent, 
-                                "F": d['Fecha']
+                                "F": d['Fecha'],
+                                "S_MON": s_mon  # Guardamos el símbolo correcto
                             }
                             
                             alpha_total += rent
@@ -702,7 +709,7 @@ with tab3:
                                     <div class="trophy-card">
                                         <div class="card-left">
                                             <p class="card-title">{e["T"]} <span class="card-subtitle">({e["N"]})</span></p>
-                                            <p class="card-details"><b>Entrada:</b> ${e["E"]:.2f} ({e["F"]}) ➔ <b>Hoy:</b> ${e["A"]:.2f}</p>
+                                            <p class="card-details"><b>Entrada:</b> {e["E"]:.2f} {e["S_MON"]} ({e["F"]}) ➔ <b>Hoy:</b> {e["A"]:.2f} {e["S_MON"]}</p>
                                         </div>
                                         <div class="card-right">
                                             <p class="card-pct-win">+{e["R"]:.2f}%</p>
@@ -720,7 +727,7 @@ with tab3:
                                     <div class="cemetery-card">
                                         <div class="card-left">
                                             <p class="card-title">{f["T"]} <span class="card-subtitle">({f["N"]})</span></p>
-                                            <p class="card-details"><b>Entrada:</b> ${f["E"]:.2f} ({f["F"]}) ➔ <b>Hoy:</b> ${f["A"]:.2f}</p>
+                                            <p class="card-details"><b>Entrada:</b> {f["E"]:.2f} {f["S_MON"]} ({f["F"]}) ➔ <b>Hoy:</b> {f["A"]:.2f} {f["S_MON"]}</p>
                                         </div>
                                         <div class="card-right">
                                             <p class="card-pct-lose">{f["R"]:.2f}%</p>
