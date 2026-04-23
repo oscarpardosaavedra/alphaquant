@@ -444,12 +444,15 @@ with tab2:
                 sym_yahoo = a_yahoo(ticker)
                 stock = yf.Ticker(sym_yahoo)
                 
-                # FILTRO ANTIFALLOS ("nan")
                 hist_full = stock.history(period="max").dropna(subset=['Close'])
                 if hist_full.empty or len(hist_full) < 2: continue
                 
-                precio_actual = float(hist_full['Close'].iloc[-1])
-                precio_ayer = float(hist_full['Close'].iloc[-2])
+                # --- ESCUDO ANTI-CRASH YAHOO (Aplastamos a números puros) ---
+                array_cierres = np.ravel(hist_full['Close'])
+                array_vol = np.ravel(hist_full['Volume'])
+                
+                precio_actual = float(array_cierres[-1])
+                precio_ayer = float(array_cierres[-2])
                 pct_hoy = ((precio_actual / precio_ayer) - 1) * 100 if precio_ayer > 0 else 0
                 
                 hist_1y = hist_full.iloc[-252:] if len(hist_full) >= 252 else hist_full
@@ -459,10 +462,9 @@ with tab2:
                 dist_suelo = ((precio_actual / min_52) - 1) * 100 if min_52 > 0 else 0
                 dist_max = ((precio_actual / max_52) - 1) * 100 if max_52 > 0 else 0
                 
-                # Función segura para sacar % históricos
                 def get_ret(days):
-                    if len(hist_full) >= days and not pd.isna(hist_full['Close'].iloc[-days]) and hist_full['Close'].iloc[-days] > 0:
-                        return ((precio_actual / hist_full['Close'].iloc[-days]) - 1) * 100
+                    if len(array_cierres) >= days and array_cierres[-days] > 0:
+                        return ((precio_actual / array_cierres[-days]) - 1) * 100
                     return None
 
                 r1m = get_ret(21)
@@ -472,21 +474,16 @@ with tab2:
                 r10y = get_ret(2520)
                 r20y = get_ret(5040)
                 
-                start_price = hist_full['Close'].iloc[0]
+                start_price = float(array_cierres[0])
                 ret_max = ((precio_actual / start_price) - 1) * 100 if start_price > 0 else 0
                 
                 info = stock.info
-                
-                # ESCUDO ANTI-CRASH: Si Yahoo no tiene el dato, forzamos un número para no romper el código
                 per = info.get('trailingPE', 999)
                 if per is None: per = 999 
                 
-                v_hoy = hist_full['Volume'].iloc[-1]
-                vol_hoy = float(v_hoy) if pd.notna(v_hoy) else 0
-                
-                v_med = hist_full['Volume'].tail(20).mean()
-                vol_medio = float(v_med) if pd.notna(v_med) else 0
-                
+                vol_hoy = float(array_vol[-1])
+                vol_medio = float(np.mean(array_vol[-20:]))
+                                
                 # ==========================================
                 # LÓGICA DEL ALGORITMO INSTITUCIONAL (BASE 40)
                 # ==========================================
@@ -775,10 +772,9 @@ with tab3:
                         c_p, c_w, c_q, c_l = st.columns(4)
                         
                         def pintar_tarjeta(item, color_borde, color_texto):
-                            # Ocultar la insignia de Ignición si es N/A
                             ign_html = f'<span class="stat-badge" title="Días hasta tocar un +5% (Ignición)">⏱️ {item["IGN"]}</span>' if item['IGN'] != "N/A" else ""
-                            
-                            return f"""
+                            # HTML en una línea compacta para evitar errores del lector Markdown de Streamlit
+                            return f"""<div style="background: white; border-radius: 6px; padding: 10px; margin-bottom: 8px; border-top: 3px solid {color_borde}; box-shadow: 0 2px 4px rgba(0,0,0,0.08);"><div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;"><div style="display: flex; align-items: baseline; gap: 6px;"><span title="{item['N']}" style="font-weight: 900; color: #073763; font-size: 14px;">{item['B']} {item['T']}</span><span style="color: #95a5a6; font-size: 10px;">🕒 {item['F']}</span></div><div style="font-weight: 900; font-size: 14px; color: {color_texto};">{item['R']:+.2f}%</div></div><div style="font-size: 11px; color: #555; margin-bottom: 5px;">In: <b>{item['E']:.2f}{item['S_MON']}</b> ➔ Hoy: <b>{item['A']:.2f}{item['S_MON']}</b></div><div style="display: flex; gap: 5px; margin-bottom: 6px;"><span class="stat-badge" title="Rentabilidad Máxima Histórica alcanzada desde la compra">🔥 {item['RMAX']:+.1f}%</span>{ign_html}</div><div style="font-size: 10px; color: #7f8c8d; font-style: italic; background: #f9fbfd; padding: 4px; border-radius: 4px;">💡 {item['M']}</div></div>"""
                             <div style="background: white; border-radius: 6px; padding: 10px; margin-bottom: 8px; border-top: 3px solid {color_borde}; box-shadow: 0 2px 4px rgba(0,0,0,0.08);">
                                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
                                     <div style="display: flex; align-items: baseline; gap: 6px;">
