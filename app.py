@@ -412,7 +412,6 @@ with tab2:
         existentes_en_db = []
         if ws:
             try:
-                # Obtenemos todos los tickers que ya están en la columna A (Ticker)
                 existentes_en_db = ws.col_values(1)
             except Exception:
                 pass
@@ -449,73 +448,82 @@ with tab2:
                         return ((precio_actual / hist_full['Close'].iloc[-days]) - 1) * 100
                     return None
 
-                ret_1m = get_ret(21)
-                ret_6m = get_ret(126)
-                ret_1y = get_ret(252)
-                ret_5y = get_ret(1260)
-                ret_10y = get_ret(2520)
-                ret_20y = get_ret(5040)
+                r1m = get_ret(21)
+                r6m = get_ret(126)
+                r1y = get_ret(252)
+                r5y = get_ret(1260)
+                r10y = get_ret(2520)
+                r20y = get_ret(5040)
                 
                 start_price = hist_full['Close'].iloc[0]
                 ret_max = ((precio_actual / start_price) - 1) * 100 if start_price > 0 else 0
                 
                 info = stock.info
-                sector = info.get('sector', 'N/A')
+                
+                # ESCUDO ANTI-CRASH: Si Yahoo no tiene el dato, forzamos un número para no romper el código
                 per = info.get('trailingPE', 999)
-                vol_hoy = float(hist_full['Volume'].iloc[-1])
-                vol_medio = float(hist_full['Volume'].tail(20).mean())
+                if per is None: per = 999 
                 
-                v_1m = ret_1m if ret_1m is not None else 0
-                v_6m = ret_6m if ret_6m is not None else 0
+                v_hoy = hist_full['Volume'].iloc[-1]
+                vol_hoy = float(v_hoy) if pd.notna(v_hoy) else 0
                 
-                # Evaluación del Algoritmo
-                ptsBase = 50
+                v_med = hist_full['Volume'].tail(20).mean()
+                vol_medio = float(v_med) if pd.notna(v_med) else 0
                 
-                if v_1m > 0 and v_6m > 0: ptsBase += 15
-                elif v_1m > 0 and v_6m < -15: ptsBase -= 20
-                elif v_6m <= 0: ptsBase -= 15
-                else: ptsBase += 5
+                # ==========================================
+                # LÓGICA DEL ALGORITMO INSTITUCIONAL (BASE 40)
+                # ==========================================
+                pts = 40 # Base estricta. Una acción buena se quedará en 80.
+                v_1m = r1m if r1m else 0
+                v_6m = r6m if r6m else 0
+                reg = obtener_region(ticker)
                 
-                myAlpha = v_1m - (alphaSPY if region_activa == "EEUU" else 0)
-                if myAlpha > 5: ptsBase += 10
-                elif myAlpha < -5: ptsBase -= 10
+                if v_1m > 0 and v_6m > 0: pts += 15
+                elif v_1m > 0 and v_6m < -15: pts -= 20
+                elif v_6m <= 0: pts -= 15
+                else: pts += 5
+                
+                myAlpha = v_1m - (alphaSPY if reg == "EEUU" else 0)
+                if myAlpha > 5: pts += 10
+                elif myAlpha < -5: pts -= 10
                 
                 isHyperGrowth = (myAlpha > 10 and vol_medio > 1000000)
                 
-                if region_activa == "EEUU":
-                    if 0 < per <= 45: ptsBase += 15
-                    elif 45 < per <= 120 and isHyperGrowth: ptsBase += 15
-                    elif per > 120 or per < 0: ptsBase -= 15
-                elif region_activa == "Europa":
-                    if 0 < per <= 15: ptsBase += 15
-                    elif 15 < per <= 35 and isHyperGrowth: ptsBase += 15
-                    elif per > 35 or per < 0: ptsBase -= 15
-                elif region_activa == "Asia":
-                    if 0 < per <= 30: ptsBase += 15
-                    elif 30 < per <= 80 and isHyperGrowth: ptsBase += 15
-                    elif per > 80 or per < 0: ptsBase -= 15
+                if reg == "EEUU":
+                    if 0 < per <= 45: pts += 15
+                    elif 45 < per <= 120 and isHyperGrowth: pts += 15
+                    elif per > 120 or per < 0: pts -= 15
+                elif reg == "Europa":
+                    if 0 < per <= 15: pts += 15
+                    elif 15 < per <= 35 and isHyperGrowth: pts += 15
+                    elif per > 35 or per < 0: pts -= 15
+                elif reg == "Asia":
+                    if 0 < per <= 30: pts += 15
+                    elif 30 < per <= 80 and isHyperGrowth: pts += 15
+                    elif per > 80 or per < 0: pts -= 15
                 
-                if abs(pct_hoy) > 4 and vol_hoy < vol_medio: 
-                    ptsBase -= 15 
+                # GATILLO DE VOLUMEN (Imprescindible para superar los 90 pts)
+                if abs(pct_hoy) > 4 and vol_hoy < vol_medio: pts -= 15 
                 
-                if region_activa == "EEUU" or region_activa == "Europa":
-                    if abs(pct_hoy) <= 1.5 and vol_hoy >= (vol_medio * 1.5): ptsBase += 20
-                    elif dist_max > -5 and vol_hoy >= (vol_medio * 2.0) and pct_hoy > 2: ptsBase += 25
-                    elif dist_max > -2 and vol_hoy > (vol_medio * 1.5) and pct_hoy > 0: ptsBase += 15
-                elif region_activa == "Asia":
-                    if abs(pct_hoy) <= 2.0 and vol_hoy >= (vol_medio * 2.0): ptsBase += 20
-                    elif dist_max > -10 and vol_hoy >= (vol_medio * 2.5) and pct_hoy > 3: ptsBase += 25
-                    elif dist_max > -5 and vol_hoy > (vol_medio * 1.8) and pct_hoy > 0: ptsBase += 15
+                if reg == "EEUU" or reg == "Europa":
+                    if abs(pct_hoy) <= 1.5 and vol_hoy >= (vol_medio * 1.5): pts += 20
+                    elif dist_max > -5 and vol_hoy >= (vol_medio * 2.0) and pct_hoy > 2: pts += 25
+                    elif dist_max > -2 and vol_hoy > (vol_medio * 1.5) and pct_hoy > 0: pts += 15
+                    elif pct_hoy < -3 and vol_hoy > (vol_medio * 1.5): pts -= 20 # Distribución
+                elif reg == "Asia":
+                    if abs(pct_hoy) <= 2.0 and vol_hoy >= (vol_medio * 2.0): pts += 20
+                    elif dist_max > -10 and vol_hoy >= (vol_medio * 2.5) and pct_hoy > 3: pts += 25
+                    elif dist_max > -5 and vol_hoy > (vol_medio * 1.8) and pct_hoy > 0: pts += 15
                 
                 isFenix = False
                 if dist_max <= -20 and per > 0 and vol_medio > 400000 and v_1m > 2 and pct_hoy > 1.5:
                     fuerzaGiro = (15 if v_1m > 8 else 5) + (15 if vol_hoy > vol_medio * 1.2 else 0) + (10 if pct_hoy > 2 else 5)
                     scoreFenix = 65 + fuerzaGiro
-                    if scoreFenix > ptsBase: 
-                        ptsBase = scoreFenix
+                    if scoreFenix > pts: 
+                        pts = scoreFenix
                         isFenix = True
                 
-                pts = max(0, min(100, int(ptsBase)))
+                pts = max(0, min(100, int(pts)))
 
                 # =======================================================
                 # AUTO-GUARDADO EN LA SALA DE TROFEOS (Base de Datos)
@@ -549,12 +557,12 @@ with tab2:
                     "RECOMENDACIÓN": recomendacion,
                     "PRECIO": f"{precio_actual:.2f} {s_mon}",
                     "% HOY": fmt_pct(pct_hoy),
-                    "% 1 MES": fmt_pct(ret_1m),
-                    "% 6 MESES": fmt_pct(ret_6m),
-                    "% 1 AÑO": fmt_pct(ret_1y),
-                    "% 5 AÑOS": fmt_pct(ret_5y),
-                    "% 10 AÑOS": fmt_pct(ret_10y),
-                    "% 20 AÑOS": fmt_pct(ret_20y),
+                    "% 1 MES": fmt_pct(r1m),
+                    "% 6 MESES": fmt_pct(r6m),
+                    "% 1 AÑO": fmt_pct(r1y),
+                    "% 5 AÑOS": fmt_pct(r5y),
+                    "% 10 AÑOS": fmt_pct(r10y),
+                    "% 20 AÑOS": fmt_pct(r20y),
                     "% MÁX": fmt_pct(ret_max),
                     "PER": f"{per:.1f}" if per != 999 else "N/A",
                     "SECTOR": sector,
@@ -589,7 +597,7 @@ with tab2:
                 styled_df = df.style.applymap(color_porcentajes, subset=columnas_pct)\
                                     .applymap(negrita_ticker, subset=['TICKER'])
 
-            st.success("Caza terminada. Las empresas con 90 puntos o más se han guardado automáticamente en la Sala de Trofeos.")
+            st.success("Caza terminada. Las empresas con 90 puntos o más se han guardado automáticamente en la base de datos.")
             
             st.dataframe(
                 styled_df, 
