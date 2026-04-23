@@ -306,9 +306,10 @@ with tab1:
     
     col_buscador, col_espacio = st.columns([1, 3])
     with col_buscador:
-        ticker_elegido = st.selectbox("Elige la empresa que quieres revisar:", opciones_desplegable)
-        espacio_descripcion = st.empty()
-        espacio_sector = st.empty()
+         ticker_elegido = st.selectbox("Elige la empresa que quieres revisar:", opciones_desplegable)
+         # ---> CREAMOS LOS DOS ESPACIOS EN ORDEN: Descripción primero, Sector después <---
+         espacio_descripcion = st.empty() 
+         espacio_sector = st.empty()
         
     if ticker_elegido:
         simbolo_real = ticker_elegido.split(" ")[0]
