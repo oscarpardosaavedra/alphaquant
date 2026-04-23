@@ -299,7 +299,7 @@ st.markdown("---")
 tab1, tab2, tab3, tab4 = st.tabs(["🔬 Análisis Individual", "⚔️ Análisis Colectivo", "🎯 Cazar Alpha (Radar)", "🏆 Sala de Trofeos"])
 
 # ------------------------------------------
-# PESTAÑA 1: VISOR DE GRÁFICOS (MOTOR HÍBRIDO YAHOO + FINNHUB)
+# PESTAÑA 1: VISOR DE GRÁFICOS (MOTOR COMPLETO - DESCRIPCIÓN DIRECTA)
 # ------------------------------------------
 with tab1:
     st.markdown("### 🔍 Selector de Activos")
@@ -307,8 +307,8 @@ with tab1:
     col_buscador, col_espacio = st.columns([1, 3])
     with col_buscador:
         ticker_elegido = st.selectbox("Elige la empresa que quieres revisar:", opciones_desplegable)
-        # ---> AQUÍ ESTÁN LOS DOS HUECOS EN ORDEN <---
-        espacio_descripcion = st.empty()
+        # ---> AQUÍ ESTÁN LOS HUECOS EN ORDEN <---
+        espacio_descripcion = st.empty() 
         espacio_sector = st.empty()
     
     if ticker_elegido:
@@ -329,31 +329,36 @@ with tab1:
                     
                     recom, precio_obj_str, fecha_earnings, sector, insider_trend = "Sin noticias", "Sin noticias", "Sin noticias", "Sin noticias", "Sin noticias"
                     
-                    # 2. MOTOR HÍBRIDO: YAHOO (Precio Objetivo/Sector) + FINNHUB (Insiders/Earnings)
+                    # 2. MOTOR DE EXTRACCIÓN (Yahoo + Finnhub)
                     import requests
                     API_FINNHUB = "d7c2s5hr01quh9fcasf0d7c2s5hr01quh9fcasfg"
                     
                     try:
-                        # Extraemos info de Yahoo
                         ticker_obj = yf.Ticker(simbolo_yahoo)
                         info = ticker_obj.info
                         
                         if isinstance(info, dict):
                             # Sacamos los datos básicos
                             sector = info.get('sector', 'Sin noticias')
-                            descripcion = info.get('longBusinessSummary', 'Sin descripción disponible.')
+                            descripcion_completa = info.get('longBusinessSummary', 'Sin descripción disponible.')
+                            recom_raw = info.get('recommendationKey')
+                            p_obj = info.get('targetMeanPrice')
                             
-                            # 1. Rellenamos la descripción en un desplegable
-                            if descripcion != 'Sin descripción disponible.':
-                                with espacio_descripcion.expander("📖 Ver descripción de la empresa"):
-                                    st.write(descripcion)
+                            # 1. Rellenamos la descripción (Sin desplegable, cortada a 2 frases aprox)
+                            if descripcion_completa != 'Sin descripción disponible.':
+                                # Acortamos la descripción para que sea "un par de líneas"
+                                fragmentos = descripcion_completa.split('. ')
+                                desc_corta = '. '.join(fragmentos[:2]) + '.' if len(fragmentos) > 1 else descripcion_completa
+                                # Evitamos textos larguísimos cortando a 250 caracteres si sigue siendo muy larga
+                                if len(desc_corta) > 250: desc_corta = desc_corta[:247] + "..."
+                                
+                                espacio_descripcion.markdown(f"<div style='font-size: 13px; color: #555; margin-bottom: 5px;'><i>{desc_corta}</i></div>", unsafe_allow_html=True)
                             
                             # 2. Rellenamos el sector debajo
                             if sector != "Sin noticias":
-                                espacio_sector.markdown(f"🏢 **Sector:** {sector}")
+                                espacio_sector.markdown(f"<div style='font-size: 14px; margin-bottom: 10px;'>🏢 **Sector:** {sector}</div>", unsafe_allow_html=True)
                             
                             # 3. Consenso con traductor
-                            recom_raw = info.get('recommendationKey')
                             if recom_raw:
                                 traducciones = {
                                     "strong_buy": "COMPRA FUERTE 🟢",
@@ -365,11 +370,10 @@ with tab1:
                                 recom = traducciones.get(recom_raw.lower(), str(recom_raw).replace('_', ' ').upper())
                             
                             # 4. Precio objetivo
-                            p_obj = info.get('targetMeanPrice')
                             if p_obj and p_obj > 0: 
                                 precio_obj_str = str(p_obj)
                             
-                        # Calendario de Yahoo (Plan A para Earnings)
+                        # Calendario de Yahoo
                         try:
                             cal = ticker_obj.calendar
                             if isinstance(cal, dict) and 'Earnings Date' in cal:
@@ -378,16 +382,14 @@ with tab1:
                                     fecha_earnings = fechas[0].strftime("%d/%m/%Y")
                         except: pass
                             
-                    except Exception as e:
+                    except Exception:
                         pass
                         
-                    # Extracción de Finnhub (Porque es mucho más rápido y preciso para Insiders)
+                    # Extracción de Finnhub
                     try:
                         hoy = datetime.datetime.today().strftime('%Y-%m-%d')
                         pasado = (datetime.datetime.today() - datetime.timedelta(days=180)).strftime('%Y-%m-%d')
-                        
                         sym_finnhub = simbolo_yahoo if "." in simbolo_yahoo else simbolo_real
-                        
                         r_ins = requests.get(f"https://finnhub.io/api/v1/stock/insider-sentiment?symbol={sym_finnhub}&from={pasado}&to={hoy}&token={API_FINNHUB}").json()
                         if isinstance(r_ins, dict) and 'data' in r_ins and len(r_ins['data']) > 0:
                             mspr = r_ins['data'][-1].get('mspr', 0)
@@ -397,7 +399,6 @@ with tab1:
                             elif mspr < 0: insider_trend = "VENDIENDO ↘️"
                             else: insider_trend = "NEUTRAL ⚪"
                             
-                        # Si Yahoo falló con Earnings, probamos Finnhub (Plan B)
                         if fecha_earnings == "Sin noticias":
                             futuro = (datetime.datetime.today() + datetime.timedelta(days=90)).strftime('%Y-%m-%d')
                             r_earn = requests.get(f"https://finnhub.io/api/v1/calendar/earnings?from={hoy}&to={futuro}&symbol={sym_finnhub}&token={API_FINNHUB}").json()
@@ -407,7 +408,7 @@ with tab1:
                                     fecha_earnings = datetime.datetime.strptime(fecha_raw, "%Y-%m-%d").strftime("%d/%m/%Y")
                     except: pass 
 
-                    # 3. Datos de Precio y Conversión a Dólares
+                    # 3. Formateo
                     datos_limpios = datos.dropna(subset=['Close'])
                     precio_actual = float(datos_limpios['Close'].iloc[-1])
                     s_moneda_visual = obtener_simbolo_moneda(simbolo_real)
@@ -419,7 +420,6 @@ with tab1:
                         precio_obj_final = f"{p_obj_f:,.2f} {s_moneda_visual} <span style='color:{color_p};font-weight:bold;font-size:13px;'>({pot:+.1f}%)</span>"
                     else: precio_obj_final = "Sin noticias"
                         
-                    # Conversión a dólares robusta (5 días)
                     precio_usd = None
                     mapa_divisas = { "€": "EURUSD=X", "¥": "JPYUSD=X", "GBp": "GBPUSD=X", "kr": "SEKUSD=X", "₹": "INRUSD=X" }
                     t_div = mapa_divisas.get(s_moneda_visual)
@@ -436,7 +436,7 @@ with tab1:
 
                     t_conv = f'<span style="font-size:18px;color:#7f8c8d;font-weight:400;margin-left:10px;">(≈ {precio_usd:,.2f} $)</span>' if precio_usd else ""
                     
-                    # 4. RENDERIZADO HTML PROFESIONAL
+                    # 4. RENDERIZADO HTML
                     st.markdown(f"""
                     <div style="background-color:#f8f9fa;padding:15px;border-radius:10px;box-shadow:0 4px 6px rgba(0,0,0,0.05);margin-bottom:20px;">
                         <div style="display:flex;justify-content:space-between;align-items:baseline;">
