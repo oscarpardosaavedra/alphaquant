@@ -305,10 +305,9 @@ with tab1:
     st.markdown("### 🔍 Selector de Activos")
     
     col_buscador, col_espacio = st.columns([1, 3])
-with col_buscador:
+    with col_buscador:
         ticker_elegido = st.selectbox("Elige la empresa que quieres revisar:", opciones_desplegable)
-        # --- ESTAS DOS LÍNEAS SON OBLIGATORIAS AQUÍ ABAJO ---
-        espacio_descripcion = st.empty() 
+        espacio_descripcion = st.empty()
         espacio_sector = st.empty()
         
     if ticker_elegido:
@@ -333,27 +332,27 @@ with col_buscador:
                     import requests
                     API_FINNHUB = "d7c2s5hr01quh9fcasf0d7c2s5hr01quh9fcasfg"
                     
-            try:
-                        # Extraemos los datos de Yahoo Finance
+                    try:
+                        # Extraemos Wall Street y Sector de Yahoo Finance (Porque en Finnhub es de pago)
                         ticker_obj = yf.Ticker(simbolo_yahoo)
                         info = ticker_obj.info
                         
-                        if isinstance(info, dict):
-                            # 1. Sacamos los datos del diccionario
+                    if isinstance(info, dict):
+                            # 1. Extraemos los datos de Yahoo
                             sector = info.get('sector', 'Sin noticias')
                             descripcion = info.get('longBusinessSummary', 'Sin descripción disponible.')
                             recom_raw = info.get('recommendationKey')
                             p_obj = info.get('targetMeanPrice')
-                            
-                            # 2. Mostramos la DESCRIPCIÓN (en su hueco)
+
+                            # 2. Plasmamos la DESCRIPCIÓN en su hueco (con un desplegable para no molestar)
                             if descripcion != 'Sin descripción disponible.':
                                 with espacio_descripcion.expander("📖 Ver descripción de la empresa"):
                                     st.write(descripcion)
 
-                            # 3. Mostramos el SECTOR (en su hueco)
+                            # 3. Plasmamos el SECTOR en su hueco
                             if sector != "Sin noticias":
                                 espacio_sector.markdown(f"🏢 **Sector:** {sector}")
-                            
+
                             # 4. TRADUCCIÓN del Consenso
                             if recom_raw:
                                 traducciones = {
@@ -369,7 +368,7 @@ with col_buscador:
                             if p_obj and p_obj > 0: 
                                 precio_obj_str = str(p_obj)
                             
-                        # Calendario de Earnings
+                        # Calendario de Earnings (Fuera del if info para asegurar el cierre del try)
                         try:
                             cal = ticker_obj.calendar
                             if isinstance(cal, dict) and 'Earnings Date' in cal:
@@ -378,7 +377,7 @@ with col_buscador:
                                     fecha_earnings = fechas[0].strftime("%d/%m/%Y")
                         except: pass
                             
-                    except Exception:
+                    except Exception as e:
                         pass
                         
                     # Extracción de Finnhub (Porque es mucho más rápido y preciso para Insiders)
