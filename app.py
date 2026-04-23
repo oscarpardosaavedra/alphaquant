@@ -440,14 +440,13 @@ with tab2:
             
             barra_progreso.progress(porcentaje, text=f"⏳ Evaluando: {ticker} ({nombre_empresa}) | {porcentaje}%")
             
-            try:
+try:
                 sym_yahoo = a_yahoo(ticker)
                 stock = yf.Ticker(sym_yahoo)
                 
                 hist_full = stock.history(period="max").dropna(subset=['Close'])
                 if hist_full.empty or len(hist_full) < 2: continue
                 
-                # --- ESCUDO ANTI-CRASH YAHOO (Aplastamos a números puros) ---
                 array_cierres = np.ravel(hist_full['Close'])
                 array_vol = np.ravel(hist_full['Volume'])
                 
@@ -477,9 +476,15 @@ with tab2:
                 start_price = float(array_cierres[0])
                 ret_max = ((precio_actual / start_price) - 1) * 100 if start_price > 0 else 0
                 
-                info = stock.info
-                per = info.get('trailingPE', 999)
-                if per is None: per = 999 
+                # --- ESCUDO ANTI-BLOQUEOS DE YAHOO ---
+                try:
+                    info = stock.info
+                    per = info.get('trailingPE', 999)
+                    if per is None: per = 999 
+                except:
+                    info = {}
+                    per = 999
+                # -------------------------------------
                 
                 vol_hoy = float(array_vol[-1])
                 vol_medio = float(np.mean(array_vol[-20:]))
@@ -771,10 +776,9 @@ with tab3:
                         # 4 COLUMNAS PARA CLASIFICACIÓN EXACTA
                         c_p, c_w, c_q, c_l = st.columns(4)
                         
-                        def pintar_tarjeta(item, color_borde, color_texto):
-                            ign_html = f'<span class="stat-badge" title="Días hasta tocar un +5% (Ignición)">⏱️ {item["IGN"]}</span>' if item['IGN'] != "N/A" else ""
-                            # HTML en una línea compacta para evitar errores del lector Markdown de Streamlit
-                            return f"""<div style="background: white; border-radius: 6px; padding: 10px; margin-bottom: 8px; border-top: 3px solid {color_borde}; box-shadow: 0 2px 4px rgba(0,0,0,0.08);"><div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;"><div style="display: flex; align-items: baseline; gap: 6px;"><span title="{item['N']}" style="font-weight: 900; color: #073763; font-size: 14px;">{item['B']} {item['T']}</span><span style="color: #95a5a6; font-size: 10px;">🕒 {item['F']}</span></div><div style="font-weight: 900; font-size: 14px; color: {color_texto};">{item['R']:+.2f}%</div></div><div style="font-size: 11px; color: #555; margin-bottom: 5px;">In: <b>{item['E']:.2f}{item['S_MON']}</b> ➔ Hoy: <b>{item['A']:.2f}{item['S_MON']}</b></div><div style="display: flex; gap: 5px; margin-bottom: 6px;"><span class="stat-badge" title="Rentabilidad Máxima Histórica alcanzada desde la compra">🔥 {item['RMAX']:+.1f}%</span>{ign_html}</div><div style="font-size: 10px; color: #7f8c8d; font-style: italic; background: #f9fbfd; padding: 4px; border-radius: 4px;">💡 {item['M']}</div></div>"""
+                       def pintar_tarjeta(item, color_borde, color_texto):
+                            ign_html = f'<span class="stat-badge" title="Días hasta tocar un +5% (Ignición)">Ignición: {item["IGN"]}</span>' if item['IGN'] != "N/A" else ""
+                            return f"""<div style="background: white; border-radius: 6px; padding: 10px; margin-bottom: 8px; border-top: 3px solid {color_borde}; box-shadow: 0 2px 4px rgba(0,0,0,0.08);"><div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;"><div style="display: flex; align-items: baseline; gap: 6px;"><span title="{item['N']}" style="font-weight: 900; color: #073763; font-size: 14px;">{item['B']} {item['T']}</span><span style="color: #95a5a6; font-size: 10px;">&#128197; {item['F']}</span></div><div style="font-weight: 900; font-size: 14px; color: {color_texto};">{item['R']:+.2f}%</div></div><div style="font-size: 11px; color: #555; margin-bottom: 5px;">In: <b>{item['E']:.2f}{item['S_MON']}</b> &rarr; Hoy: <b>{item['A']:.2f}{item['S_MON']}</b></div><div style="display: flex; gap: 5px; margin-bottom: 6px;"><span class="stat-badge" title="Rentabilidad Máxima Histórica">Max: {item['RMAX']:+.1f}%</span>{ign_html}</div><div style="font-size: 10px; color: #7f8c8d; font-style: italic; background: #f9fbfd; padding: 4px; border-radius: 4px;">&#128161; {item['M']}</div></div>"""
                             <div style="background: white; border-radius: 6px; padding: 10px; margin-bottom: 8px; border-top: 3px solid {color_borde}; box-shadow: 0 2px 4px rgba(0,0,0,0.08);">
                                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
                                     <div style="display: flex; align-items: baseline; gap: 6px;">
