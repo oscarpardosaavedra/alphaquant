@@ -296,10 +296,11 @@ col2.info(f"**Europa:** {eu['estado']} | Hora: {eu['horario']} (Madrid)")
 col3.info(f"**Asia:** {asia['estado']} | Hora: {asia['horario']} (Madrid)")
 st.markdown("---")
 
-tab1, tab2, tab3 = st.tabs(["🔬 Análisis Individual", "🎯 Cazar Alpha (Radar)", "🏆 Sala de Trofeos"])
+# ---> TABS REORDENADOS: ANÁLISIS, BATALLA, RADAR, TROFEOS <---
+tab1, tab2, tab3, tab4 = st.tabs(["🔬 Análisis Individual", "⚔️ Batalla de Alpha", "🎯 Cazar Alpha (Radar)", "🏆 Sala de Trofeos"])
 
 # ------------------------------------------
-# PESTAÑA 1: VISOR DE GRÁFICOS
+# PESTAÑA 1: VISOR DE GRÁFICOS (INDIVIDUAL)
 # ------------------------------------------
 with tab1:
     st.markdown("### 🔍 Selector de Activos")
@@ -406,9 +407,87 @@ with tab1:
                 st.error(f"⚠️ Error técnico: {e}")
 
 # ------------------------------------------
-# PESTAÑA 2: RADAR DE CAZA CON AUTO-GUARDADO
+# PESTAÑA 2: BATALLA DE ALPHA (COMPARATIVA)
 # ------------------------------------------
 with tab2:
+    st.markdown("### ⚔️ Batalla de Alpha (Comparativa Múltiple)")
+    st.write("Selecciona varios activos para ver cuál está rindiendo mejor en un mismo periodo de tiempo. Todos empezarán en Base 0 (0% de rendimiento) para una comparación justa.")
+    
+    col_comp1, col_comp2 = st.columns([3, 1])
+    
+    with col_comp1:
+        opciones_comp = ["SPY (S&P 500)", "QQQ (Nasdaq 100)"] + opciones_desplegable
+        seleccionados = st.multiselect(
+            "Elige los activos a enfrentar (Puedes elegir todos los que quieras):", 
+            opciones_comp, 
+            default=["SPY (S&P 500)"]
+        )
+        
+    with col_comp2:
+        # Añadida la 'key' para evitar el error DuplicateWidgetID con la pestaña 1
+        periodo_comp = st.radio(
+            "Rango de tiempo:", 
+            ["1 Mes", "3 Meses", "6 Meses", "1 Año", "5 Años", "Máximo"], 
+            index=3,
+            key="radio_batalla" 
+        )
+        
+    mapa_tiempo_comp = {"1 Mes": "1mo", "3 Meses": "3mo", "6 Meses": "6mo", "1 Año": "1y", "5 Años": "5y", "Máximo": "max"}
+
+    if seleccionados:
+        if st.button("🚀 Iniciar Batalla de Rendimiento", use_container_width=True):
+            with st.spinner("Descargando históricos y sincronizando la escala a Base 100..."):
+                fig_comp = go.Figure()
+                
+                for sel in seleccionados:
+                    sym_real = sel.split(" ")[0]
+                    # Si elige un índice base, usamos su ticker directo de Yahoo
+                    sym_y = "SPY" if sym_real == "SPY" else ("QQQ" if sym_real == "QQQ" else a_yahoo(sym_real))
+                    
+                    try:
+                        df_comp = yf.download(sym_y, period=mapa_tiempo_comp[periodo_comp], progress=False)
+                        if isinstance(df_comp.columns, pd.MultiIndex): 
+                            df_comp.columns = df_comp.columns.get_level_values(0)
+                        
+                        df_comp = df_comp.dropna(subset=['Close'])
+                        
+                        if not df_comp.empty:
+                            cierres_comp = df_comp['Close'].squeeze()
+                            
+                            # Magia matemática: Convertir el precio real a porcentaje de crecimiento desde el día 1
+                            precio_inicial = float(cierres_comp.iloc[0])
+                            pct_cambio = ((cierres_comp / precio_inicial) - 1) * 100
+                            
+                            # Darle un toque visual distinto a los índices base (SPY/QQQ)
+                            es_indice = sym_real in ["SPY", "QQQ"]
+                            grosor = 3 if es_indice else 2
+                            estilo_linea = 'dot' if es_indice else 'solid'
+                            
+                            fig_comp.add_trace(go.Scatter(
+                                x=pct_cambio.index, 
+                                y=pct_cambio, 
+                                mode='lines', 
+                                name=sym_real,
+                                line=dict(width=grosor, dash=estilo_linea)
+                            ))
+                    except Exception as e:
+                        st.warning(f"⚠️ No se pudo cargar el histórico de {sym_real}.")
+
+                fig_comp.update_layout(
+                    title=f"Rendimiento Comparativo Acumulado",
+                    template='plotly_dark',
+                    xaxis_title="",
+                    yaxis_title="Rendimiento Acumulado (%)",
+                    hovermode="x unified",
+                    margin=dict(l=0, r=0, t=40, b=0)
+                )
+                
+                st.plotly_chart(fig_comp, use_container_width=True)
+
+# ------------------------------------------
+# PESTAÑA 3: RADAR DE CAZA CON AUTO-GUARDADO
+# ------------------------------------------
+with tab3:
     st.markdown("### 🎯 Selecciona tu Objetivo")
     
     c1, c2, c3, c4 = st.columns(4)
@@ -678,9 +757,9 @@ with tab2:
         )
 
 # ------------------------------------------
-# PESTAÑA 3: SALA DE TROFEOS (DB REAL Y BORRADO MANUAL)
+# PESTAÑA 4: SALA DE TROFEOS (DB REAL Y BORRADO MANUAL)
 # ------------------------------------------
-with tab3:
+with tab4:
     st.markdown("### 🏆 Sala de Trofeos")
     st.write("Verifica en tiempo real el porcentaje de acierto. Las acciones que alcanzan o superan los 90 puntos en el Radar se guardan aquí de forma permanente.")
     
@@ -755,20 +834,14 @@ with tab3:
                                     dias_ign = (hit_5.index[0].date() - hist_post.index[0].date()).days
                                     ignicion = f"{dias_ign}d"
                             
-                            # Usamos la nueva función infalible de monedas
                             s_mon = obtener_simbolo_moneda(d['Ticker'])
-                            
                             reg = obtener_region(d['Ticker'])
                             bandera = "🇺🇸" if reg == "EEUU" else ("🇪🇺" if reg == "Europa" else "⛩️")
 
-                            if abs(rent) < 0.01:
-                                motivo = "A la espera de apertura o movimiento de mercado."
-                            elif rent > 0: 
-                                motivo = "Tendencia confirmada con entrada de capital institucional."
-                            elif rent >= -3.0: 
-                                motivo = "Ruido normal de mercado. Consolidando el soporte."
-                            else: 
-                                motivo = "Ruptura de soporte. Caída severa fuera de control."
+                            if abs(rent) < 0.01: motivo = "A la espera de apertura o movimiento de mercado."
+                            elif rent > 0: motivo = "Tendencia confirmada con entrada de capital institucional."
+                            elif rent >= -3.0: motivo = "Ruido normal de mercado. Consolidando el soporte."
+                            else: motivo = "Ruptura de soporte. Caída severa fuera de control."
 
                             obj = {
                                 "T": d['Ticker'], "N": d['Empresa'], "E": p_entrada, 
