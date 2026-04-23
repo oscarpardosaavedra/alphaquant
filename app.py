@@ -391,7 +391,8 @@ with tab1:
                         p_obj_f = float(precio_obj_str)
                         pot = ((p_obj_f / precio_actual) - 1) * 100
                         color_p = "#228B22" if pot > 0 else "#FF3333"
-                        precio_obj_final = f"{p_obj_f:,.2f} {s_moneda_visual} <span style='color:{color_p};font-weight:bold;font-size:13px;'>({pot:+.1f}%)</span>"
+                        # ---> SOLUCIÓN A LAS ETIQUETAS HTML: DOBLES COMILLAS <---
+                        precio_obj_final = f'{p_obj_f:,.2f} {s_moneda_visual} <span style="color:{color_p}; font-weight:bold; font-size:13px;">({pot:+.1f}%)</span>'
                     else: precio_obj_final = "Sin noticias"
                         
                     # Conversión a dólares robusta (5 días)
@@ -423,8 +424,8 @@ with tab1:
                     <div style="display:flex;gap:15px;margin-bottom:20px;">
                         <div title="Consenso de analistas de inversión y precio objetivo promedio a 12 meses." style="flex:1;background:#fff;padding:15px;border-radius:8px;box-shadow:0 2px 4px rgba(0,0,0,0.05);border-top:4px solid #1E90FF;cursor:help;">
                             <div style="font-size:12px;color:#7f8c8d;text-transform:uppercase;font-weight:bold;margin-bottom:5px;">🏦 Wall Street ℹ️</div>
-                            <div style="font-size:14px;color:#2c3e50;"><b>Consenso:</b> {recom}</div>
-                            <div style="font-size:14px;color:#2c3e50;margin-top:5px;"><b>Precio Obj:</b> {precio_obj_final}</div>
+                            <div style="font-size:14px;color:#2c3e50;"><span style="font-weight:bold;">Consenso:</span> {recom}</div>
+                            <div style="font-size:14px;color:#2c3e50;margin-top:5px;"><span style="font-weight:bold;">Precio Obj:</span> {precio_obj_final}</div>
                         </div>
                         <div title="Próxima fecha confirmada o estimada de resultados financieros trimestrales." style="flex:1;background:#fff;padding:15px;border-radius:8px;box-shadow:0 2px 4px rgba(0,0,0,0.05);border-top:4px solid #f39c12;cursor:help;">
                             <div style="font-size:12px;color:#7f8c8d;text-transform:uppercase;font-weight:bold;margin-bottom:5px;">📅 Próximos Earnings ℹ️</div>
@@ -432,7 +433,7 @@ with tab1:
                         </div>
                         <div title="Muestra si los directivos (CEO, dueños) han estado comprando o vendiendo acciones propias recientemente." style="flex:1;background:#fff;padding:15px;border-radius:8px;box-shadow:0 2px 4px rgba(0,0,0,0.05);border-top:4px solid #8e44ad;cursor:help;">
                             <div style="font-size:12px;color:#7f8c8d;text-transform:uppercase;font-weight:bold;margin-bottom:5px;">👔 Manos Fuertes ℹ️</div>
-                            <div style="font-size:14px;color:#2c3e50;"><b>Directivos (6M):</b> {insider_trend}</div>
+                            <div style="font-size:14px;color:#2c3e50;"><span style="font-weight:bold;">Directivos (6M):</span> {insider_trend}</div>
                         </div>
                     </div>
                     """, unsafe_allow_html=True)
