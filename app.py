@@ -337,19 +337,16 @@ with tab1:
             "1 Año": "1y", "5 Años": "5y", "10 Años": "10y", "Máximo": "max"
         }
         
-        with st.spinner(f"Cargando datos de {simbolo_real}..."):
+        with st.spinner(f"Cargando datos en vivo de {simbolo_real}..."):
             try:
-                # Descarga robusta usando yf.download
-                datos = yf.download(simbolo_yahoo, period=mapa_tiempo[periodo], progress=False)
+                # Volvemos al método infalible .history()
+                ticker_obj = yf.Ticker(simbolo_yahoo)
+                datos = ticker_obj.history(period=mapa_tiempo[periodo])
                 
                 if not datos.empty:
-                    # Intento ligero de obtener info para no saturar la API
-                    try:
-                        ticker_obj = yf.Ticker(simbolo_yahoo)
-                        moneda_codigo = ticker_obj.fast_info.get('currency', 'USD')
-                    except:
-                        moneda_codigo = "USD"
-
+                    info = ticker_obj.info
+                    moneda_codigo = info.get('currency', 'USD')
+                    # Extraemos el precio de forma segura
                     precio_actual = float(datos['Close'].dropna().iloc[-1])
                     
                     simbolos_moneda = {"USD": "$", "EUR": "€", "GBP": "£", "GBp": "GBp", "JPY": "¥"}
@@ -357,19 +354,25 @@ with tab1:
                     
                     st.metric(label=f"Valor Actual ({simbolo_real})", value=f"{precio_actual:.2f} {s_moneda}")
                     
-                    fig = go.Figure()
-                    # Aplanamos el índice si es MultiIndex
-                    x_data = datos.index.get_level_values(0) if isinstance(datos.index, pd.MultiIndex) else datos.index
-                    y_data = datos['Close'].squeeze()
+                    sector = info.get('sector', '')
+                    industria = info.get('industry', '')
+                    resumen_largo = info.get('longBusinessSummary', '')
                     
-                    fig.add_trace(go.Scatter(x=x_data, y=y_data, mode='lines', name='Precio', line=dict(color='#228B22', width=2)))
+                    if sector and industria: 
+                        st.caption(f"🏢 **Sector:** {sector} | **Industria:** {industria}")
+                    if resumen_largo:
+                        frases = resumen_largo.split('. ')
+                        st.markdown(f"*{'. '.join(frases[:2]) + '.' if len(frases) > 2 else resumen_largo}*")
+                    
+                    fig = go.Figure()
+                    fig.add_trace(go.Scatter(x=datos.index, y=datos['Close'].squeeze(), mode='lines', name='Precio', line=dict(color='#228B22', width=2)))
                     fig.update_layout(title=f"Cotización: {ticker_elegido}", template='plotly_dark', margin=dict(l=0, r=0, t=40, b=0), xaxis_title="", yaxis_title=f"Precio ({s_moneda})", hovermode="x unified")
                     
                     st.plotly_chart(fig, use_container_width=True)
                 else:
-                    st.warning("⚠️ No hay datos históricos en Yahoo Finance para este activo.")
+                    st.warning("⚠️ Sin datos históricos disponibles para este periodo.")
             except Exception as e:
-                st.error(f"⚠️ Error al cargar la gráfica. Verifica la conexión con Yahoo Finance. ({e})")
+                st.error(f"⚠️ Error al cargar la gráfica. Detalle: {e}")
 
 # ------------------------------------------
 # PESTAÑA 2: RADAR DE CAZA CON AUTO-GUARDADO
@@ -676,10 +679,13 @@ with tab3:
                     for d in data_sheet:
                         try:
                             tk_y = a_yahoo(d['Ticker'])
-                            hist = yf.download(tk_y, period="1y", progress=False)
+                            tk = yf.Ticker(tk_y)
+                            
+                            # Volvemos al método infalible para el historial
+                            hist = tk.history(period="1y")
                             if hist.empty: continue
                             
-                            p_hoy = float(hist['Close'].iloc[-1])
+                            p_hoy = float(hist['Close'].dropna().iloc[-1])
                             # Aseguramos formato numérico correcto desde Google Sheets
                             p_entrada = float(str(d['Precio_Aviso']).replace(',', '.'))
                             fecha_str = str(d['Fecha'])
