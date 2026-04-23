@@ -330,23 +330,31 @@ with tab1:
                     datos.columns = datos.columns.get_level_values(0)
                 
                 if 'Close' in datos.columns and not datos.empty:
-                    try:
-                        ticker_obj = yf.Ticker(simbolo_yahoo)
-                        sector = ticker_obj.info.get('sector', '')
-                        industria = ticker_obj.info.get('industry', '')
-                        resumen_largo = ticker_obj.info.get('longBusinessSummary', '')
-                    except:
-                        sector, industria, resumen_largo = "", "", ""
+                    # ... (mantener metadata de sector/industria igual) ...
                     
                     datos_limpios = datos.dropna(subset=['Close'])
-                    cierres = datos_limpios['Close'].squeeze() if isinstance(datos_limpios['Close'], pd.DataFrame) else datos_limpios['Close']
-                    array_precios = cierres.values.flatten()
+                    array_precios = datos_limpios['Close'].values.flatten()
                     precio_actual = float(array_precios[-1])
-                    
-                    # Usamos nuestra función infalible para la moneda
                     s_moneda = obtener_simbolo_moneda(simbolo_real)
                     
-                    st.metric(label=f"Valor Actual ({simbolo_real})", value=f"{precio_actual:.2f} {s_moneda}")
+                    # LÓGICA DE CONVERSIÓN A DÓLARES
+                    texto_mostrar = f"{precio_actual:.2f} {s_moneda}"
+                    
+                    if s_moneda != "$":
+                        # Buscamos el par de divisas (EURUSD=X, JPYUSD=X, GBPUSD=X)
+                        dict_divisas = {"€": "EURUSD=X", "¥": "JPYUSD=X", "GBp": "GBPUSD=X"}
+                        ticker_divisa = dict_divisas.get(s_moneda)
+                        if ticker_divisa:
+                            try:
+                                divisa_data = yf.download(ticker_divisa, period="1d", progress=False)
+                                tasa = float(divisa_data['Close'].iloc[-1])
+                                # Si es GBp (peniques), dividimos por 100
+                                precio_usd = (precio_actual * tasa) / 100 if s_moneda == "GBp" else precio_actual * tasa
+                                texto_mostrar += f"  (≈ {precio_usd:.2f} $)"
+                            except:
+                                pass
+                    
+                    st.metric(label=f"Valor Actual ({simbolo_real})", value=texto_mostrar)
                     
                     if sector and industria: 
                         st.caption(f"🏢 **Sector:** {sector} | **Industria:** {industria}")
@@ -424,9 +432,9 @@ with tab2:
 
         for i, ticker in enumerate(tickers_a_escanear):
             porcentaje = int(((i + 1) / len(tickers_a_escanear)) * 100)
-            # Forzamos al ticker a ocupar 12 caracteres de ancho para que el % no se mueva
-            ticker_fijo = ticker.ljust(12) 
-            barra_progreso.progress((i + 1) / len(tickers_a_escanear), text=f"⏳ Evaluando: {ticker_fijo} | {porcentaje}%")
+            # Creamos una cadena de texto de ancho fijo (20 caracteres)
+            texto_barra = f"⏳ {ticker.ljust(8)} | {str(porcentaje).rjust(3)}%"
+            barra_progreso.progress((i + 1) / len(tickers_a_escanear), text=texto_barra)
             try:
                 sym_yahoo = a_yahoo(ticker)
                 
