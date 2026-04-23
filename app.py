@@ -37,44 +37,17 @@ st.markdown("""
         padding: 15px; 
         box-shadow: 0 4px 6px rgba(0,0,0,0.05); 
     }
-    
-    /* Forzar mayúsculas y negrita en cabeceras de tabla */
     .stDataFrame th, [data-testid="stDataFrame"] th { 
         font-weight: 900 !important; 
         color: #073763 !important; 
         text-transform: uppercase; 
     }
-    
-    /* Diseño de tarjetas para Sala de Trofeos */
-    .trophy-card { 
-        background-color: white; 
-        border-radius: 8px; 
-        padding: 15px 20px; 
-        margin-bottom: 12px; 
-        box-shadow: 0 2px 4px rgba(0,0,0,0.05); 
-        border-left: 5px solid #228B22; 
-        display: flex; 
-        justify-content: space-between; 
-        align-items: center; 
+    .stat-badge {
+        background: #f0f4f8; padding: 4px 8px; border-radius: 4px; 
+        font-size: 11px; font-weight: bold; color: #34495e; 
+        margin-right: 5px; border: 1px solid #e1e8ed; cursor: help;
     }
-    .cemetery-card { 
-        background-color: white; 
-        border-radius: 8px; 
-        padding: 15px 20px; 
-        margin-bottom: 12px; 
-        box-shadow: 0 2px 4px rgba(0,0,0,0.05); 
-        border-left: 5px solid #FF3333; 
-        display: flex; 
-        justify-content: space-between; 
-        align-items: center; 
-    }
-    .card-left { text-align: left; }
-    .card-right { text-align: right; }
-    .card-title { margin: 0; font-size: 16px; color: #073763; font-weight: 900; }
-    .card-subtitle { font-size: 13px; color: #7f8c8d; font-weight: normal; }
-    .card-pct-win { margin: 0; font-size: 20px; color: #228B22; font-weight: 900; }
-    .card-pct-lose { margin: 0; font-size: 20px; color: #FF3333; font-weight: 900; }
-    .card-details { margin: 6px 0 0 0; font-size: 13px; color: #555; }
+    .stat-badge:hover { background: #e1e8ed; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -86,7 +59,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 3. BASE DE DATOS DE TICKERS
+# 3. BASE DE DATOS DE TICKERS (DICCIONARIO COMPLETO)
 # ==========================================
 tickers_nombres = {
     "AGH": "Powerus", "XTND": "Xtend", "UMAC": "Unusual Mac", "RCAT": "Red Cat",
@@ -273,7 +246,6 @@ def obtener_estado_mercados():
     hora_madrid = ahora_utc.astimezone(pytz.timezone('Europe/Madrid'))
     t_madrid = hora_madrid.time()
     
-    # Horarios oficiales unificados a Hora Peninsular (Madrid)
     horario_us = "15:30 - 22:00"
     horario_eu = "09:00 - 17:30"
     horario_as = "02:00 - 09:00"
@@ -281,17 +253,14 @@ def obtener_estado_mercados():
     if hora_madrid.weekday() >= 5: 
         est_us, est_eu, est_as = "🔴 Cerrado", "🔴 Cerrado", "🔴 Cerrado"
     else:
-        # EEUU (Wall Street)
         if datetime.time(10, 0) <= t_madrid < datetime.time(15, 30): est_us = "🟡 Pre-Market"
         elif datetime.time(15, 30) <= t_madrid < datetime.time(22, 0): est_us = "🟢 Abierto"
         elif datetime.time(22, 0) <= t_madrid <= datetime.time(23, 59): est_us = "🔵 Post-Market"
         else: est_us = "🔴 Cerrado"
 
-        # Europa
         if datetime.time(9, 0) <= t_madrid < datetime.time(17, 30): est_eu = "🟢 Abierto"
         else: est_eu = "🔴 Cerrado"
 
-        # Asia
         if datetime.time(2, 0) <= t_madrid < datetime.time(9, 0): est_as = "🟢 Abierto"
         else: est_as = "🔴 Cerrado"
     
@@ -346,7 +315,6 @@ with tab1:
                     info = ticker_obj.info
                     moneda_codigo = info.get('currency', 'USD')
                     
-                    # ESCUDO ANTI-SERIES: Aplastamos los datos a una lista pura de números
                     array_precios = np.ravel(datos['Close'].dropna())
                     precio_actual = float(array_precios[-1])
                     
@@ -367,9 +335,7 @@ with tab1:
                     
                     fig = go.Figure()
                     x_data = datos.index.get_level_values(0) if isinstance(datos.index, pd.MultiIndex) else datos.index
-                    y_data = array_precios
-                    
-                    fig.add_trace(go.Scatter(x=x_data, y=y_data, mode='lines', name='Precio', line=dict(color='#228B22', width=2)))
+                    fig.add_trace(go.Scatter(x=x_data, y=array_precios, mode='lines', name='Precio', line=dict(color='#228B22', width=2)))
                     fig.update_layout(title=f"Cotización: {ticker_elegido}", template='plotly_dark', margin=dict(l=0, r=0, t=40, b=0), xaxis_title="", yaxis_title=f"Precio ({s_moneda})", hovermode="x unified")
                     
                     st.plotly_chart(fig, use_container_width=True)
@@ -399,7 +365,6 @@ with tab2:
     elif btn_asia: mercado_objetivo = "Asia"
 
     if mercado_objetivo:
-        # --- NUEVO: AVISOS DE MERCADO CERRADO ---
         if mercado_objetivo == "EEUU" and "Cerrado" in us["estado"]:
             st.warning("⚠️ **Aviso:** Wall Street está cerrado ahora mismo. Los datos corresponden al último cierre.")
         elif mercado_objetivo == "Europa" and "Cerrado" in eu["estado"]:
@@ -408,7 +373,6 @@ with tab2:
             st.warning("⚠️ **Aviso:** El mercado asiático está cerrado. Los datos corresponden al último cierre.")
         elif mercado_objetivo == "Todos" and "Cerrado" in us["estado"] and "Cerrado" in eu["estado"] and "Cerrado" in asia["estado"]:
             st.warning("⚠️ **Aviso:** Todos los mercados globales están cerrados en este momento.")
-        # ----------------------------------------
 
         tickers_a_escanear = [t for t in tickers_nombres.keys() if mercado_objetivo == "Todos" or obtener_region(t) == mercado_objetivo]
         
@@ -424,7 +388,6 @@ with tab2:
                 alphaSPY = ((spy_hist['Close'].iloc[-1] / spy_hist['Close'].iloc[-21]) - 1) * 100
         except Exception: pass
 
-        # Nos conectamos a la base de datos al principio para saber a quién NO duplicar
         ws = conectar_db()
         existentes_en_db = []
         if ws:
@@ -433,8 +396,8 @@ with tab2:
             except Exception:
                 pass
 
-for i, ticker in enumerate(targets):
-            barra_progreso.progress((i + 1) / len(targets), text=f"Evaluando: {ticker}...")
+        for i, ticker in enumerate(tickers_a_escanear):
+            barra_progreso.progress((i + 1) / len(tickers_a_escanear), text=f"Evaluando: {ticker}...")
             try:
                 sym_yahoo = a_yahoo(ticker)
                 stock = yf.Ticker(sym_yahoo)
@@ -535,6 +498,7 @@ for i, ticker in enumerate(targets):
 
                 if pts >= 90 and ticker not in existentes_en_db and ws is not None:
                     fecha_hoy = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+                    nombre_empresa = tickers_nombres[ticker]
                     ws.append_row([ticker, nombre_empresa, fecha_hoy, float(precio_actual), int(pts)])
                     existentes_en_db.append(ticker)
 
@@ -551,7 +515,7 @@ for i, ticker in enumerate(targets):
                 def fmt_pct(val): return f"{val:+.2f}%" if val is not None else "N/A"
 
                 resultados_radar.append({
-                    "TICKER": ticker, "NOMBRE": nombre_empresa, "PUNTOS": pts, "RECOMENDACIÓN": recomendacion,
+                    "TICKER": ticker, "NOMBRE": tickers_nombres[ticker], "PUNTOS": pts, "RECOMENDACIÓN": recomendacion,
                     "PRECIO": f"{precio_actual:.2f} {s_mon}", "% HOY": fmt_pct(pct_hoy), "% 1 MES": fmt_pct(r1m),
                     "% 6 MESES": fmt_pct(r6m), "% 1 AÑO": fmt_pct(r1y), "% 5 AÑOS": fmt_pct(r5y),
                     "% 10 AÑOS": fmt_pct(r10y), "% 20 AÑOS": fmt_pct(r20y), "% MÁX": fmt_pct(ret_max),
@@ -580,11 +544,9 @@ for i, ticker in enumerate(targets):
             columnas_pct = ["% HOY", "% 1 MES", "% 6 MESES", "% 1 AÑO", "% 5 AÑOS", "% 10 AÑOS", "% 20 AÑOS", "% MÁX", "SUELO (52s)", "MAX (52s)"]
             
             try:
-                styled_df = df.style.map(color_porcentajes, subset=columnas_pct)\
-                                    .map(negrita_ticker, subset=['TICKER'])
+                styled_df = df.style.map(color_porcentajes, subset=columnas_pct).map(negrita_ticker, subset=['TICKER'])
             except AttributeError:
-                styled_df = df.style.applymap(color_porcentajes, subset=columnas_pct)\
-                                    .applymap(negrita_ticker, subset=['TICKER'])
+                styled_df = df.style.applymap(color_porcentajes, subset=columnas_pct).applymap(negrita_ticker, subset=['TICKER'])
 
             st.success("Caza terminada. Las empresas con 90 puntos o más se han guardado automáticamente en la base de datos.")
             
@@ -630,7 +592,6 @@ with tab3:
         if not data_sheet:
             st.info("Tu base de datos está vacía. Ve a la pestaña de Radar y haz un escaneo para cazar nuevas acciones.")
         else:
-            # --- PANEL PARA ELIMINAR TICKERS MANUALMENTE ---
             with st.expander("🗑️ Gestionar Base de Datos (Eliminar Tickers)"):
                 st.write("Si alguna acción ya no te interesa, puedes borrarla desde aquí:")
                 with st.form("form_del"):
@@ -645,7 +606,6 @@ with tab3:
                             st.rerun() 
                         else:
                             st.error("No se ha encontrado el ticker en la base de datos.")
-            # ------------------------------------------------
 
             if st.button("🔄 Auditar Rendimiento Actual", use_container_width=True):
                 with st.spinner("Sincronizando Wall Street y calculando métricas avanzadas..."):
@@ -670,7 +630,6 @@ with tab3:
                             
                             rent = ((p_hoy / p_entrada) - 1) * 100
                             
-                            # Indicadores Avanzados
                             rent_max = rent
                             ignicion = "N/A"
                             try:
@@ -682,9 +641,9 @@ with tab3:
                                 hist_post = hist
                                 
                             if not hist_post.empty:
-                                max_p = float(np.ravel(hist_post['High'])[-1]) # Safe max
-                                max_p = float(hist_post['High'].max())
-                                rent_max = ((max_p / p_entrada) - 1) * 100
+                                max_p = float(np.ravel(hist_post['High'])[-1])
+                                max_p_real = float(hist_post['High'].max())
+                                rent_max = ((max_p_real / p_entrada) - 1) * 100
                                 
                                 hit_5 = hist_post[hist_post['High'] >= p_entrada * 1.05]
                                 if not hit_5.empty:
@@ -700,11 +659,9 @@ with tab3:
                             simbolos_moneda = {"USD": "$", "EUR": "€", "GBP": "£", "GBp": "GBp", "JPY": "¥"}
                             s_mon = simbolos_moneda.get(moneda, moneda)
                             
-                            # Bandera según la región
                             reg = obtener_region(d['Ticker'])
                             bandera = "🇺🇸" if reg == "EEUU" else ("🇪🇺" if reg == "Europa" else "⛩️")
 
-                            # Lógica de las 4 Columnas y Explicaciones Tácticas
                             if abs(rent) < 0.01:
                                 motivo = "A la espera de apertura o movimiento de mercado."
                             elif rent > 0: 
@@ -722,7 +679,6 @@ with tab3:
                             
                             alpha_total += rent
                             
-                            # Distribución a las columnas
                             if abs(rent) < 0.01: pendiente.append(obj)
                             elif rent > 0: exitos.append(obj)
                             elif rent >= -3.0: cuarentena.append(obj)
@@ -745,34 +701,11 @@ with tab3:
                         m3.metric(label="⏱️ Base de Datos", value=f"{tot} Activos")
                         st.markdown("---")
                         
-                        # 4 COLUMNAS PARA CLASIFICACIÓN EXACTA
                         c_p, c_w, c_q, c_l = st.columns(4)
                         
-                       def pintar_tarjeta(item, color_borde, color_texto):
-                            ign_html = f'<span class="stat-badge" title="Días hasta tocar un +5% (Ignición)">Ignición: {item["IGN"]}</span>' if item['IGN'] != "N/A" else ""
+                        def pintar_tarjeta(item, color_borde, color_texto):
+                            ign_html = f'<span class="stat-badge" title="Días hasta tocar un +5% (Ignición)">Ign: {item["IGN"]}</span>' if item['IGN'] != "N/A" else ""
                             return f"""<div style="background: white; border-radius: 6px; padding: 10px; margin-bottom: 8px; border-top: 3px solid {color_borde}; box-shadow: 0 2px 4px rgba(0,0,0,0.08);"><div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;"><div style="display: flex; align-items: baseline; gap: 6px;"><span title="{item['N']}" style="font-weight: 900; color: #073763; font-size: 14px;">{item['B']} {item['T']}</span><span style="color: #95a5a6; font-size: 10px;">&#128197; {item['F']}</span></div><div style="font-weight: 900; font-size: 14px; color: {color_texto};">{item['R']:+.2f}%</div></div><div style="font-size: 11px; color: #555; margin-bottom: 5px;">In: <b>{item['E']:.2f}{item['S_MON']}</b> &rarr; Hoy: <b>{item['A']:.2f}{item['S_MON']}</b></div><div style="display: flex; gap: 5px; margin-bottom: 6px;"><span class="stat-badge" title="Rentabilidad Máxima Histórica">Max: {item['RMAX']:+.1f}%</span>{ign_html}</div><div style="font-size: 10px; color: #7f8c8d; font-style: italic; background: #f9fbfd; padding: 4px; border-radius: 4px;">&#128161; {item['M']}</div></div>"""
-                            <div style="background: white; border-radius: 6px; padding: 10px; margin-bottom: 8px; border-top: 3px solid {color_borde}; box-shadow: 0 2px 4px rgba(0,0,0,0.08);">
-                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
-                                    <div style="display: flex; align-items: baseline; gap: 6px;">
-                                        <span title="{item['N']}" style="font-weight: 900; color: #073763; font-size: 14px;">{item['B']} {item['T']}</span>
-                                        <span style="color: #95a5a6; font-size: 10px;">🕒 {item['F']}</span>
-                                    </div>
-                                    <div style="font-weight: 900; font-size: 14px; color: {color_texto};">
-                                        {item['R']:+.2f}%
-                                    </div>
-                                </div>
-                                <div style="font-size: 11px; color: #555; margin-bottom: 5px;">
-                                    In: <b>{item['E']:.2f}{item['S_MON']}</b> ➔ Hoy: <b>{item['A']:.2f}{item['S_MON']}</b>
-                                </div>
-                                <div style="display: flex; gap: 5px; margin-bottom: 6px;">
-                                    <span class="stat-badge" title="Rentabilidad Máxima Histórica alcanzada desde la compra">🔥 {item['RMAX']:+.1f}%</span>
-                                    {ign_html}
-                                </div>
-                                <div style="font-size: 10px; color: #7f8c8d; font-style: italic; background: #f9fbfd; padding: 4px; border-radius: 4px;">
-                                    💡 {item['M']}
-                                </div>
-                            </div>
-                            """
 
                         with c_p:
                             st.markdown('<h4 style="margin-bottom:15px; font-size: 16px; color:#34495e;" title="Acciones a 0.00%. Acaban de ser escaneadas o su mercado está cerrado.">⏸️ Pendiente</h4>', unsafe_allow_html=True)
