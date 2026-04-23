@@ -335,35 +335,53 @@ with tab1:
                     datos.columns = datos.columns.get_level_values(0)
 
                 if not datos.empty and 'Close' in datos.columns:
-                    # 2. Obtenemos metadata y TURBOS de Yahoo
+                    # 2. Obtenemos metadata y TURBOS de Yahoo (BLINDAJE TOTAL)
+                    sector, industria = "N/A", "N/A"
+                    recom = "N/A"
+                    precio_obj = "N/A"
+                    fecha_earnings = "N/A"
+                    insiders_fmt = "N/A"
+                    inst_fmt = "N/A"
+                    
                     try:
                         ticker_obj = yf.Ticker(simbolo_yahoo)
                         info = ticker_obj.info
-                        sector = info.get('sector', 'N/A')
-                        industria = info.get('industry', 'N/A')
                         
-                        # --- INICIO TRIPLE TURBO ---
-                        # Turbo 1: Analistas
-                        recom = info.get('recommendationKey', 'N/A').replace('_', ' ').upper()
-                        precio_obj = info.get('targetMeanPrice', 'N/A')
+                        if isinstance(info, dict):
+                            sector = info.get('sector', 'N/A')
+                            industria = info.get('industry', 'N/A')
+                            
+                            # --- Turbo 1: Analistas ---
+                            recom_raw = info.get('recommendationKey')
+                            if recom_raw and isinstance(recom_raw, str):
+                                recom = recom_raw.replace('_', ' ').upper()
+                            
+                            precio_obj_raw = info.get('targetMeanPrice')
+                            if precio_obj_raw is not None:
+                                precio_obj = precio_obj_raw
+                            
+                            # --- Turbo 3: Insiders y Manos Fuertes ---
+                            insiders_pct = info.get('heldPercentInsiders')
+                            if insiders_pct is not None and isinstance(insiders_pct, (int, float)):
+                                insiders_fmt = f"{insiders_pct * 100:.1f}%"
+                                
+                            inst_pct = info.get('heldPercentInstitutions')
+                            if inst_pct is not None and isinstance(inst_pct, (int, float)):
+                                inst_fmt = f"{inst_pct * 100:.1f}%"
                         
-                        # Turbo 2: Calendario Earnings
-                        calendario = ticker_obj.calendar
-                        fecha_earnings = "Desconocida"
-                        if isinstance(calendario, dict) and 'Earnings Date' in calendario:
-                            fechas = calendario['Earnings Date']
-                            if isinstance(fechas, list) and len(fechas) > 0:
-                                fecha_earnings = fechas[0].strftime("%d/%m/%Y")
-                        
-                        # Turbo 3: Insiders y Manos Fuertes
-                        insiders_pct = info.get('heldPercentInsiders', 0)
-                        inst_pct = info.get('heldPercentInstitutions', 0)
-                        insiders_fmt = f"{insiders_pct * 100:.1f}%" if insiders_pct else "N/A"
-                        inst_fmt = f"{inst_pct * 100:.1f}%" if inst_pct else "N/A"
-                        # --- FIN TRIPLE TURBO ---
-                    except:
-                        sector, industria = "N/A", "N/A"
-                        recom, precio_obj, fecha_earnings, insiders_fmt, inst_fmt = "N/A", "N/A", "N/A", "N/A", "N/A"
+                        # --- Turbo 2: Calendario Earnings ---
+                        try:
+                            calendario = ticker_obj.calendar
+                            if isinstance(calendario, dict) and 'Earnings Date' in calendario:
+                                fechas = calendario['Earnings Date']
+                                if isinstance(fechas, list) and len(fechas) > 0 and pd.notnull(fechas[0]):
+                                    fecha_earnings = fechas[0].strftime("%d/%m/%Y")
+                        except:
+                            pass # Fallo silencioso si no hay earnings
+                            
+                    except Exception as e:
+                        # Si falla todo el bloque info, imprimimos en consola para debuggear pero seguimos adelante
+                        print(f"Error al obtener info de {simbolo_yahoo}: {e}")
 
                     # 3. Calculamos el precio actual
                     datos_limpios = datos.dropna(subset=['Close'])
@@ -406,7 +424,7 @@ with tab1:
                     """
                     st.markdown(html_metrica, unsafe_allow_html=True)
                     
-                    # ---> PINTAR PANELES DEL TRIPLE TURBO <---
+                    # ---> PINTAR PANELES DEL TRIPLE TURBO (BLINDADOS) <---
                     html_turbos = f"""
                     <div style="display: flex; gap: 15px; margin-bottom: 20px;">
                         <div style="flex: 1; background: #ffffff; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); border-top: 4px solid #1E90FF;">
