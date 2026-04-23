@@ -375,18 +375,21 @@ with tab1:
                         except:
                             pass # Si falla el cambio, mostramos solo la moneda original
 
-                    # 5. Pintamos la métrica y metadata
-                    # 5. Pintamos la métrica con diseño profesional (Grande/Pequeño)
+                   # 5. Pintamos la métrica con diseño profesional (Limpieza total)
                     s_moneda_visual = obtener_simbolo_moneda(simbolo_real)
                     
+                    # Preparamos la parte de la conversión SOLO si no es dólar
+                    if moneda_iso != "USD":
+                        texto_conversion = f'<span style="font-size: 18px; color: #7f8c8d; font-weight: 400; margin-left: 10px;">(≈ {precio_usd:,.2f} $)</span>'
+                    else:
+                        texto_conversion = ""
+
+                    # HTML final sin etiquetas huérfanas
                     html_metrica = f"""
                     <div style="background-color: #f8f9fa; padding: 15px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); margin-bottom: 20px;">
                         <p style="margin: 0; font-size: 14px; color: rgba(49, 51, 63, 0.7); font-weight: 400;">Valor Actual ({simbolo_real})</p>
                         <h2 style="margin: 0; font-weight: 700; color: #1f1f1f; font-size: 32px;">
-                            {precio_actual:,.2f} {s_moneda_visual}
-                            <span style="font-size: 18px; color: #7f8c8d; font-weight: 400; margin-left: 10px;">
-                                {f'(≈ {precio_usd:,.2f} $)' if moneda_iso != "USD" else ''}
-                            </span>
+                            {precio_actual:,.2f} {s_moneda_visual}{texto_conversion}
                         </h2>
                     </div>
                     """
