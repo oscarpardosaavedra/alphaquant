@@ -326,49 +326,44 @@ with tab1:
             try:
                 datos = yf.download(simbolo_yahoo, period=mapa_tiempo[periodo], progress=False)
                 
-                if isinstance(datos.columns, pd.MultiIndex):
-                    datos.columns = datos.columns.get_level_values(0)
-                
-                if 'Close' in datos.columns and not datos.empty:
-                    # ... (mantener metadata de sector/industria igual) ...
-                    
+                if not datos.empty:
+                    # 1. Extraemos metadata de forma segura
+                    try:
+                        ticker_obj = yf.Ticker(simbolo_yahoo)
+                        sector = ticker_obj.info.get('sector', 'N/A')
+                        industria = ticker_obj.info.get('industry', 'N/A')
+                        resumen_largo = ticker_obj.info.get('longBusinessSummary', '')
+                    except:
+                        sector, industria, resumen_largo = "N/A", "N/A", ""
+
+                    # 2. Precios
                     datos_limpios = datos.dropna(subset=['Close'])
-                    array_precios = datos_limpios['Close'].values.flatten()
-                    precio_actual = float(array_precios[-1])
+                    cierres = datos_limpios['Close'].squeeze() if isinstance(datos_limpios['Close'], pd.DataFrame) else datos_limpios['Close']
+                    precio_actual = float(cierres.iloc[-1])
                     s_moneda = obtener_simbolo_moneda(simbolo_real)
                     
-                    # LÓGICA DE CONVERSIÓN A DÓLARES
-                    texto_mostrar = f"{precio_actual:.2f} {s_moneda}"
-                    
+                    # 3. Lógica de Conversión a Dólares
+                    texto_mostrar = f"{precio_actual:,.2f} {s_moneda}"
                     if s_moneda != "$":
-                        # Buscamos el par de divisas (EURUSD=X, JPYUSD=X, GBPUSD=X)
                         dict_divisas = {"€": "EURUSD=X", "¥": "JPYUSD=X", "GBp": "GBPUSD=X"}
                         ticker_divisa = dict_divisas.get(s_moneda)
                         if ticker_divisa:
                             try:
-                                divisa_data = yf.download(ticker_divisa, period="1d", progress=False)
-                                tasa = float(divisa_data['Close'].iloc[-1])
-                                # Si es GBp (peniques), dividimos por 100
+                                div_data = yf.download(ticker_divisa, period="1d", progress=False)
+                                tasa = float(div_data['Close'].iloc[-1])
                                 precio_usd = (precio_actual * tasa) / 100 if s_moneda == "GBp" else precio_actual * tasa
-                                texto_mostrar += f"  (≈ {precio_usd:.2f} $)"
-                            except:
-                                pass
+                                texto_mostrar += f"  (≈ {precio_usd:,.2f} $)"
+                            except: pass
                     
                     st.metric(label=f"Valor Actual ({simbolo_real})", value=texto_mostrar)
                     
-                    if sector and industria: 
+                    if sector != "N/A": 
                         st.caption(f"🏢 **Sector:** {sector} | **Industria:** {industria}")
-                    if resumen_largo:
-                        frases = resumen_largo.split('. ')
-                        st.markdown(f"*{'. '.join(frases[:2]) + '.' if len(frases) > 2 else resumen_largo}*")
                     
                     fig = go.Figure()
-                    x_data = datos_limpios.index
-                    if isinstance(x_data, pd.MultiIndex): x_data = x_data.get_level_values(0)
-                    
-                    fig.add_trace(go.Scatter(x=x_data, y=array_precios, mode='lines', name='Precio', line=dict(color='#228B22', width=2)))
+                    x_data = datos_limpios.index.get_level_values(0) if isinstance(datos_limpios.index, pd.MultiIndex) else datos_limpios.index
+                    fig.add_trace(go.Scatter(x=x_data, y=np.ravel(cierres), mode='lines', name='Precio', line=dict(color='#228B22', width=2)))
                     fig.update_layout(title=f"Cotización: {ticker_elegido}", template='plotly_dark', margin=dict(l=0, r=0, t=40, b=0), xaxis_title="", yaxis_title=f"Precio ({s_moneda})", hovermode="x unified")
-                    
                     st.plotly_chart(fig, use_container_width=True)
                 else:
                     st.warning("⚠️ Sin datos históricos disponibles para este periodo.")
@@ -432,9 +427,14 @@ with tab2:
 
         for i, ticker in enumerate(tickers_a_escanear):
             porcentaje = int(((i + 1) / len(tickers_a_escanear)) * 100)
-            # Creamos una cadena de texto de ancho fijo (20 caracteres)
-            texto_barra = f"⏳ {ticker.ljust(8)} | {str(porcentaje).rjust(3)}%"
-            barra_progreso.progress((i + 1) / len(tickers_a_escanear), text=texto_barra)
+            
+            # Formateamos el ticker a 10 espacios y el porcentaje a 3 espacios
+            # Usamos un bloque de texto preformateado para que no baile nada
+            ticker_fmt = ticker.ljust(10).replace(" ", "\u2007")
+            pct_fmt = str(porcentaje).rjust(3).replace(" ", "\u2007")
+            
+            barra_progreso.progress((i + 1) / len(tickers_a_escanear), 
+                                   text=f"⏳ Evaluando: {ticker_fmt} | {pct_fmt}%")
             try:
                 sym_yahoo = a_yahoo(ticker)
                 
