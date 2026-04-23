@@ -2,7 +2,7 @@ import streamlit as st
 import yfinance as yf
 import pandas as pd
 import numpy as np
-import plotly.graph_objects as goespacio_descripcion = st.empty()
+import plotly.graph_objects as go
 import datetime
 import pytz
 import gspread
@@ -307,7 +307,6 @@ with tab1:
     col_buscador, col_espacio = st.columns([1, 3])
     with col_buscador:
         ticker_elegido = st.selectbox("Elige la empresa que quieres revisar:", opciones_desplegable)
-        espacio_descripcion = st.empty()
         espacio_sector = st.empty()
         
     if ticker_elegido:
@@ -469,7 +468,7 @@ with tab1:
 # PESTAÑA 2: BATALLA DE ALPHA (COMPARATIVA)
 # ------------------------------------------
 with tab2:
-    st.markdown("### ⚔️ Comparativa Múltiple")
+    st.markdown("### ⚔️ Batalla de Alpha (Comparativa Múltiple)")
     st.write("Selecciona varios activos para ver cuál está rindiendo mejor en un mismo periodo de tiempo. Todos empezarán en Base 0 (0% de rendimiento) para una comparación justa.")
     
     col_comp1, col_comp2 = st.columns([3, 1])
