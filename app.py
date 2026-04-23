@@ -336,7 +336,7 @@ with tab1:
                         ticker_obj = yf.Ticker(simbolo_yahoo)
                         info = ticker_obj.info
                         
-                     if isinstance(info, dict):
+                        if isinstance(info, dict):
                             # #### ESTE BLOQUE TIENE QUE ESTAR MÁS A LA DERECHA ####
                             sector = info.get('sector', 'Sin noticias')
                             
