@@ -337,45 +337,39 @@ with tab1:
             "1 Año": "1y", "5 Años": "5y", "10 Años": "10y", "Máximo": "max"
         }
         
-        with st.spinner(f"Cargando datos en vivo de {simbolo_real}..."):
+        with st.spinner(f"Cargando datos de {simbolo_real}..."):
             try:
-                ticker_obj = yf.Ticker(simbolo_yahoo)
-                datos = ticker_obj.history(period=mapa_tiempo[periodo])
+                # Descarga robusta usando yf.download
+                datos = yf.download(simbolo_yahoo, period=mapa_tiempo[periodo], progress=False)
                 
                 if not datos.empty:
-                    info = ticker_obj.info
-                    moneda_codigo = info.get('currency', 'USD')
-                    precio_actual = datos['Close'].dropna().iloc[-1]
+                    # Intento ligero de obtener info para no saturar la API
+                    try:
+                        ticker_obj = yf.Ticker(simbolo_yahoo)
+                        moneda_codigo = ticker_obj.fast_info.get('currency', 'USD')
+                    except:
+                        moneda_codigo = "USD"
+
+                    precio_actual = float(datos['Close'].dropna().iloc[-1])
                     
                     simbolos_moneda = {"USD": "$", "EUR": "€", "GBP": "£", "GBp": "GBp", "JPY": "¥"}
                     s_moneda = simbolos_moneda.get(moneda_codigo, moneda_codigo)
-                    texto_mostrar = f"{precio_actual:.2f} {s_moneda}"
                     
-                    st.metric(label=f"Valor Actual ({simbolo_real})", value=texto_mostrar)
-                    
-                    sector = info.get('sector', '')
-                    industria = info.get('industry', '')
-                    resumen_largo = info.get('longBusinessSummary', '')
-                    
-                    if sector and industria:
-                        st.caption(f"🏢 **Sector:** {sector} | **Industria:** {industria}")
-                    
-                    if resumen_largo:
-                        frases = resumen_largo.split('. ')
-                        resumen_corto = '. '.join(frases[:2]) + '.' if len(frases) > 2 else resumen_largo
-                        st.markdown(f"*{resumen_corto}*")
-                    
-                    st.write("")
+                    st.metric(label=f"Valor Actual ({simbolo_real})", value=f"{precio_actual:.2f} {s_moneda}")
                     
                     fig = go.Figure()
-                    fig.add_trace(go.Scatter(x=datos.index, y=datos['Close'], mode='lines', name='Precio', line=dict(color='#228B22', width=2)))
+                    # Aplanamos el índice si es MultiIndex
+                    x_data = datos.index.get_level_values(0) if isinstance(datos.index, pd.MultiIndex) else datos.index
+                    y_data = datos['Close'].squeeze()
+                    
+                    fig.add_trace(go.Scatter(x=x_data, y=y_data, mode='lines', name='Precio', line=dict(color='#228B22', width=2)))
                     fig.update_layout(title=f"Cotización: {ticker_elegido}", template='plotly_dark', margin=dict(l=0, r=0, t=40, b=0), xaxis_title="", yaxis_title=f"Precio ({s_moneda})", hovermode="x unified")
                     
                     st.plotly_chart(fig, use_container_width=True)
                 else:
                     st.warning("⚠️ No hay datos históricos en Yahoo Finance para este activo.")
             except Exception as e:
-                st.error("⚠️ Error al cargar la gráfica y los datos corporativos.")
+                st.error(f"⚠️ Error al cargar la gráfica. Verifica la conexión con Yahoo Finance. ({e})")
 
 # ------------------------------------------
 # PESTAÑA 2: RADAR DE CAZA CON AUTO-GUARDADO
@@ -673,7 +667,7 @@ with tab3:
             # ------------------------------------------------
 
             if st.button("🔄 Auditar Rendimiento Actual", use_container_width=True):
-                with st.spinner("Sincronizando Wall Street y calculando métricas avanzadas..."):
+                with st.spinner("Sincronizando Wall Street y calculando métricas..."):
                     exitos = []
                     cuarentena = []
                     fracasos = []
@@ -682,41 +676,42 @@ with tab3:
                     for d in data_sheet:
                         try:
                             tk_y = a_yahoo(d['Ticker'])
-                            tk = yf.Ticker(tk_y)
-                            
-                            # Descargamos 1 año para calcular el Máximo % y la Ignición
-                            hist = tk.history(period="1y")
+                            hist = yf.download(tk_y, period="1y", progress=False)
                             if hist.empty: continue
                             
-                            p_hoy = hist['Close'].iloc[-1]
-                            p_entrada = float(d['Precio_Aviso'])
+                            p_hoy = float(hist['Close'].iloc[-1])
+                            # Aseguramos formato numérico correcto desde Google Sheets
+                            p_entrada = float(str(d['Precio_Aviso']).replace(',', '.'))
                             fecha_str = str(d['Fecha'])
                             
                             rent = ((p_hoy / p_entrada) - 1) * 100
                             
-                            # --- CÁLCULO DE INDICADORES AVANZADOS ---
+                            # Indicadores Avanzados
                             rent_max = rent
                             ignicion = "N/A"
                             try:
-                                # Filtramos el historial solo desde la fecha en que se cazó
-                                fecha_compra_date = pd.to_datetime(fecha_str).date()
-                                hist_post = hist[hist.index.date >= fecha_compra_date]
+                                fecha_compra_date = pd.to_datetime(fecha_str).tz_localize(None).date()
+                                hist_index_tz_naive = hist.index.tz_localize(None)
+                                mask = hist_index_tz_naive.date >= fecha_compra_date
+                                hist_post = hist[mask]
                             except:
                                 hist_post = hist
                                 
                             if not hist_post.empty:
-                                max_p = hist_post['High'].max()
+                                max_p = float(hist_post['High'].max())
                                 rent_max = ((max_p / p_entrada) - 1) * 100
                                 
-                                # Días hasta tocar un +5% (Ignición)
                                 hit_5 = hist_post[hist_post['High'] >= p_entrada * 1.05]
                                 if not hit_5.empty:
                                     dias_ign = (hit_5.index[0].date() - hist_post.index[0].date()).days
                                     ignicion = f"{dias_ign}d"
-                            # ----------------------------------------
                             
-                            info = tk.info
-                            moneda = info.get('currency', 'USD')
+                            try:
+                                tk_info = yf.Ticker(tk_y)
+                                moneda = tk_info.fast_info.get('currency', 'USD')
+                            except:
+                                moneda = "USD"
+                            
                             simbolos_moneda = {"USD": "$", "EUR": "€", "GBP": "£", "GBp": "GBp", "JPY": "¥"}
                             s_mon = simbolos_moneda.get(moneda, moneda)
 
@@ -728,7 +723,7 @@ with tab3:
                             
                             alpha_total += rent
                             
-                            # --- LA ZONA DE CUARENTENA (-3% DE GRACIA) ---
+                            # Lógica de Cuarentena
                             if rent > 0: 
                                 exitos.append(obj)
                             elif rent >= -3.0: 
@@ -736,7 +731,8 @@ with tab3:
                             else: 
                                 fracasos.append(obj)
                                 
-                        except Exception: 
+                        except Exception as e: 
+                            # st.write(f"Error procesando {d['Ticker']}: {e}") # Descomentar para depurar
                             continue
                     
                     tot = len(exitos) + len(cuarentena) + len(fracasos)
@@ -752,21 +748,19 @@ with tab3:
                         m3.metric(label="⏱️ Base de Datos", value=f"{tot} Activos")
                         st.markdown("---")
                         
-                        # 3 COLUMNAS PARA CLASIFICAR EL RUIDO DEL MERCADO
                         c_w, c_q, c_l = st.columns(3)
                         
-                        # Diseño Ultra-Compacto en una sola línea con Tooltips integrados
                         def pintar_tarjeta(item, color_borde, color_texto):
                             return f"""
                             <div style="background: white; border-radius: 6px; padding: 6px 10px; margin-bottom: 8px; border-left: 4px solid {color_borde}; display: flex; justify-content: space-between; align-items: center; font-size: 13px; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
-                                <div style="display: flex; align-items: center; gap: 10px;">
-                                    <span style="font-weight: 900; color: #073763; width: 45px;" title="{item['N']}">{item['T']}</span>
-                                    <span style="color: #95a5a6; font-size: 11px; width: 110px;">🕒 {item['F']}</span>
+                                <div style="display: flex; align-items: center; flex-wrap: wrap; gap: 8px;">
+                                    <span style="font-weight: 900; color: #073763; width: 55px;" title="{item['N']}">{item['T']}</span>
+                                    <span style="color: #95a5a6; font-size: 11px;">🕒 {item['F']}</span>
                                     <span style="color: #555;">In: <b>{item['E']:.2f}{item['S_MON']}</b> ➔ <b>{item['A']:.2f}{item['S_MON']}</b></span>
-                                    <span style="background:#f0f4f8; padding:2px 6px; border-radius:4px; font-size:11px; margin-left:5px; cursor:help;" title="Rentabilidad Máxima Histórica alcanzada">🔥 {item['RMAX']:+.1f}%</span>
-                                    <span style="background:#f0f4f8; padding:2px 6px; border-radius:4px; font-size:11px; cursor:help;" title="Días que tardó en conseguir un +5% (Ignición)">⏱️ {item['IGN']}</span>
+                                    <span class="stat-badge" title="Rentabilidad Máxima Histórica">🔥 {item['RMAX']:+.1f}%</span>
+                                    <span class="stat-badge" title="Días hasta +5% (Ignición)">⏱️ {item['IGN']}</span>
                                 </div>
-                                <div style="font-weight: 900; font-size: 14px; color: {color_texto};">
+                                <div style="font-weight: 900; font-size: 14px; color: {color_texto}; white-space: nowrap;">
                                     {item['R']:+.2f}%
                                 </div>
                             </div>
@@ -795,6 +789,5 @@ with tab3:
                                     st.markdown(pintar_tarjeta(f, "#FF3333", "#FF3333"), unsafe_allow_html=True)
                             else:
                                 st.info("No hay fallos registrados.")
-
                     else:
-                        st.error("⚠️ Error al auditar la cartera. Inténtalo de nuevo más tarde.")
+                        st.warning("⚠️ No se han podido calcular los datos de rendimiento.")
