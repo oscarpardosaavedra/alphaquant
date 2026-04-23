@@ -310,7 +310,7 @@ with tab1:
     
     if ticker_elegido:
         simbolo_real = ticker_elegido.split(" ")[0]
-        simbolo_yahoo = a_yahoo(simbolo_real)
+        simbolo_yahoo = a_yahoo(simbolo_real) # Este es el símbolo limpio (ej: ITX.MC)
         st.markdown("---")
         
         periodo = st.radio("Rango de tiempo:", ["1 Mes", "3 Meses", "6 Meses", "1 Año", "5 Años", "10 Años", "Máximo"], index=1, horizontal=True)
@@ -318,23 +318,21 @@ with tab1:
         
         with st.spinner(f"Cargando datos de {simbolo_real} y consultando Finnhub..."):
             try:
-                # 1. Datos del Activo
+                # 1. Datos de Precio (Yahoo)
                 datos = yf.download(simbolo_yahoo, period=mapa_tiempo[periodo], progress=False)
                 if isinstance(datos.columns, pd.MultiIndex): datos.columns = datos.columns.get_level_values(0)
 
                 if not datos.empty and 'Close' in datos.columns:
-                    
-                    # 2. Llamada a la API de FINNHUB
+                    # 2. Llamada a la API de FINNHUB (Usando simbolo_yahoo corregido)
                     import requests
                     API_FINNHUB = "d7c2s5hr01quh9fcasf0d7c2s5hr01quh9fcasfg"
-                    
-                    # Inicializamos con "Sin noticias"
                     recom, precio_obj_str, fecha_earnings, sector, insider_trend = "Sin noticias", "Sin noticias", "Sin noticias", "Sin noticias", "Sin noticias"
                     
                     try:
+                        # Usamos simbolo_yahoo para que Finnhub lo encuentre (ej: EBRO.MC)
                         # Recomendación
-                        r_rec = requests.get(f"https://finnhub.io/api/v1/stock/recommendation?symbol={simbolo_real}&token={API_FINNHUB}").json()
-                        if r_rec and len(r_rec) > 0:
+                        r_rec = requests.get(f"https://finnhub.io/api/v1/stock/recommendation?symbol={simbolo_yahoo}&token={API_FINNHUB}").json()
+                        if r_rec and isinstance(r_rec, list) and len(r_rec) > 0:
                             lat = r_rec[0]
                             sb, b, h, s, ss = lat.get('strongBuy',0), lat.get('buy',0), lat.get('hold',0), lat.get('sell',0), lat.get('strongSell',0)
                             if sb + b > h and sb + b > s + ss: recom = "COMPRA FUERTE 🟢"
@@ -342,21 +340,19 @@ with tab1:
                             else: recom = "MANTENER 🟡"
                             
                         # Precio Objetivo
-                        r_pt = requests.get(f"https://finnhub.io/api/v1/stock/price-target?symbol={simbolo_real}&token={API_FINNHUB}").json()
+                        r_pt = requests.get(f"https://finnhub.io/api/v1/stock/price-target?symbol={simbolo_yahoo}&token={API_FINNHUB}").json()
                         if r_pt and 'targetMean' in r_pt and r_pt['targetMean'] > 0:
                             precio_obj_str = f"{r_pt['targetMean']:.2f}"
                             
                         # Sector
-                        r_prof = requests.get(f"https://finnhub.io/api/v1/stock/profile2?symbol={simbolo_real}&token={API_FINNHUB}").json()
+                        r_prof = requests.get(f"https://finnhub.io/api/v1/stock/profile2?symbol={simbolo_yahoo}&token={API_FINNHUB}").json()
                         if r_prof and 'finnhubIndustry' in r_prof:
                             sector = r_prof['finnhubIndustry']
                             
-                        # Insiders (Sentimiento)
+                        # Insiders
                         hoy = datetime.datetime.today().strftime('%Y-%m-%d')
                         pasado = (datetime.datetime.today() - datetime.timedelta(days=180)).strftime('%Y-%m-%d')
-                        futuro = (datetime.datetime.today() + datetime.timedelta(days=90)).strftime('%Y-%m-%d')
-                        
-                        r_ins = requests.get(f"https://finnhub.io/api/v1/stock/insider-sentiment?symbol={simbolo_real}&from={pasado}&to={hoy}&token={API_FINNHUB}").json()
+                        r_ins = requests.get(f"https://finnhub.io/api/v1/stock/insider-sentiment?symbol={simbolo_yahoo}&from={pasado}&to={hoy}&token={API_FINNHUB}").json()
                         if r_ins and 'data' in r_ins and len(r_ins['data']) > 0:
                             mspr = r_ins['data'][-1].get('mspr', 0)
                             if mspr > 5: insider_trend = "COMPRA MASIVA 🟢"
@@ -366,94 +362,76 @@ with tab1:
                             else: insider_trend = "NEUTRAL ⚪"
                             
                         # Earnings
-                        r_earn = requests.get(f"https://finnhub.io/api/v1/calendar/earnings?from={hoy}&to={futuro}&symbol={simbolo_real}&token={API_FINNHUB}").json()
+                        futuro = (datetime.datetime.today() + datetime.timedelta(days=90)).strftime('%Y-%m-%d')
+                        r_earn = requests.get(f"https://finnhub.io/api/v1/calendar/earnings?from={hoy}&to={futuro}&symbol={simbolo_yahoo}&token={API_FINNHUB}").json()
                         if r_earn and 'earningsCalendar' in r_earn and len(r_earn['earningsCalendar']) > 0:
                             fecha_raw = r_earn['earningsCalendar'][0].get('date', 'Sin noticias')
                             if fecha_raw != 'Sin noticias':
                                 fecha_earnings = datetime.datetime.strptime(fecha_raw, "%Y-%m-%d").strftime("%d/%m/%Y")
-                    except:
-                        pass 
+                    except: pass 
 
-                    # 3. Datos de Precio y Moneda
+                    # 3. Datos de Precio y Conversión a Dólares
                     datos_limpios = datos.dropna(subset=['Close'])
                     precio_actual = float(datos_limpios['Close'].iloc[-1])
                     s_moneda_visual = obtener_simbolo_moneda(simbolo_real)
                     
-                    # Formateo del Precio Objetivo
                     if precio_obj_str != "Sin noticias":
-                        precio_obj_float = float(precio_obj_str)
-                        potencial = ((precio_obj_float / precio_actual) - 1) * 100
-                        color_pot = "#228B22" if potencial > 0 else "#FF3333"
-                        potencial_texto = f'<span style="color: {color_pot}; font-weight: bold; font-size: 13px;">({potencial:+.1f}%)</span>'
-                        precio_obj_final = f"{precio_obj_float:,.2f} {s_moneda_visual} {potencial_texto}"
-                    else:
-                        precio_obj_final = "Sin noticias"
+                        p_obj_f = float(precio_obj_str)
+                        pot = ((p_obj_f / precio_actual) - 1) * 100
+                        color_p = "#228B22" if pot > 0 else "#FF3333"
+                        precio_obj_final = f"{p_obj_f:,.2f} {s_moneda_visual} <span style='color:{color_p};font-weight:bold;font-size:13px;'>({pot:+.1f}%)</span>"
+                    else: precio_obj_final = "Sin noticias"
                         
-                    # 4. LÓGICA DE CONVERSIÓN A DÓLARES (ULTRA-ROBUSTA)
+                    # Conversión a dólares robusta (5 días)
                     precio_usd = None
                     mapa_divisas = { "€": "EURUSD=X", "¥": "JPYUSD=X", "GBp": "GBPUSD=X", "kr": "SEKUSD=X", "₹": "INRUSD=X" }
-                    ticker_divisa = mapa_divisas.get(s_moneda_visual)
-                    
-                    if ticker_divisa:
+                    t_div = mapa_divisas.get(s_moneda_visual)
+                    if t_div:
                         try:
-                            div_data = yf.download(ticker_divisa, period="5d", progress=False)
-                            if not div_data.empty:
-                                # Forzamos limpieza de MultiIndex si lo hay
-                                if isinstance(div_data.columns, pd.MultiIndex): div_data.columns = div_data.columns.get_level_values(0)
-                                col_cierre = div_data['Close']
-                                if isinstance(col_cierre, pd.DataFrame): col_cierre = col_cierre.iloc[:, 0]
-                                
-                                tasa = float(col_cierre.dropna().iloc[-1])
+                            d_div = yf.download(t_div, period="5d", progress=False)
+                            if not d_div.empty:
+                                if isinstance(d_div.columns, pd.MultiIndex): d_div.columns = d_div.columns.get_level_values(0)
+                                p_div = d_div['Close']
+                                if isinstance(p_div, pd.DataFrame): p_div = p_div.iloc[:, 0]
+                                tasa = float(p_div.dropna().iloc[-1])
                                 precio_usd = (precio_actual * tasa) / 100 if s_moneda_visual == "GBp" else (precio_actual * tasa)
-                        except:
-                            pass
+                        except: pass
 
-                    texto_conversion = f'<span style="font-size: 18px; color: #7f8c8d; font-weight: 400; margin-left: 10px;">(≈ {precio_usd:,.2f} $)</span>' if precio_usd else ""
+                    t_conv = f'<span style="font-size:18px;color:#7f8c8d;font-weight:400;margin-left:10px;">(≈ {precio_usd:,.2f} $)</span>' if precio_usd else ""
                     
-                    # 5. RENDERIZADO HTML CON TOOLTIPS
-                    html_final = f"""
-                    <div style="background-color: #f8f9fa; padding: 15px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); margin-bottom: 20px;">
-                        <div style="display: flex; justify-content: space-between; align-items: baseline;">
-                            <div>
-                                <p style="margin: 0; font-size: 14px; color: rgba(49, 51, 63, 0.7); font-weight: 400;">Valor Actual ({simbolo_real})</p>
-                                <h2 style="margin: 0; font-weight: 700; color: #1f1f1f; font-size: 32px;">
-                                    {precio_actual:,.2f} {s_moneda_visual}{texto_conversion}
-                                </h2>
-                            </div>
-                            <div style="text-align: right;">
-                                <span style="font-size: 12px; color: #7f8c8d;">🏢 Sector:</span><br>
-                                <span style="font-weight: bold; color: #2c3e50;">{sector}</span>
-                            </div>
+                    # 4. RENDERIZADO HTML PROFESIONAL
+                    st.markdown(f"""
+                    <div style="background-color:#f8f9fa;padding:15px;border-radius:10px;box-shadow:0 4px 6px rgba(0,0,0,0.05);margin-bottom:20px;">
+                        <div style="display:flex;justify-content:space-between;align-items:baseline;">
+                            <div><p style="margin:0;font-size:14px;color:rgba(49,51,63,0.7);">Valor Actual ({simbolo_real})</p>
+                            <h2 style="margin:0;font-weight:700;color:#1f1f1f;font-size:32px;">{precio_actual:,.2f} {s_moneda_visual}{t_conv}</h2></div>
+                            <div style="text-align:right;"><span style="font-size:12px;color:#7f8c8d;">🏢 Sector:</span><br><span style="font-weight:bold;color:#2c3e50;">{sector}</span></div>
                         </div>
                     </div>
-                    
-                    <div style="display: flex; gap: 15px; margin-bottom: 20px;">
-                        <div title="Muestra el consenso actual de los analistas de Wall Street y el precio objetivo promedio esperado a 12 meses." style="flex: 1; background: #ffffff; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); border-top: 4px solid #1E90FF; cursor: help;">
-                            <div style="font-size: 12px; color: #7f8c8d; text-transform: uppercase; font-weight: bold; margin-bottom: 5px;">🏦 Wall Street ℹ️</div>
-                            <div style="font-size: 14px; color: #2c3e50;"><b>Consenso:</b> {recom}</div>
-                            <div style="font-size: 14px; color: #2c3e50; margin-top: 5px;"><b>Precio Obj:</b> {precio_obj_final}</div>
+                    <div style="display:flex;gap:15px;margin-bottom:20px;">
+                        <div title="Consenso de analistas de inversión y precio objetivo promedio a 12 meses." style="flex:1;background:#fff;padding:15px;border-radius:8px;box-shadow:0 2px 4px rgba(0,0,0,0.05);border-top:4px solid #1E90FF;cursor:help;">
+                            <div style="font-size:12px;color:#7f8c8d;text-transform:uppercase;font-weight:bold;margin-bottom:5px;">🏦 Wall Street ℹ️</div>
+                            <div style="font-size:14px;color:#2c3e50;"><b>Consenso:</b> {recom}</div>
+                            <div style="font-size:14px;color:#2c3e50;margin-top:5px;"><b>Precio Obj:</b> {precio_obj_final}</div>
                         </div>
-                        <div title="Fecha oficial o estimada de la próxima presentación de resultados trimestrales." style="flex: 1; background: #ffffff; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); border-top: 4px solid #f39c12; cursor: help;">
-                            <div style="font-size: 12px; color: #7f8c8d; text-transform: uppercase; font-weight: bold; margin-bottom: 5px;">📅 Próximos Earnings ℹ️</div>
-                            <div style="font-size: 18px; color: #2c3e50; font-weight: bold; margin-top: 5px;">{fecha_earnings}</div>
+                        <div title="Próxima fecha confirmada o estimada de resultados financieros trimestrales." style="flex:1;background:#fff;padding:15px;border-radius:8px;box-shadow:0 2px 4px rgba(0,0,0,0.05);border-top:4px solid #f39c12;cursor:help;">
+                            <div style="font-size:12px;color:#7f8c8d;text-transform:uppercase;font-weight:bold;margin-bottom:5px;">📅 Próximos Earnings ℹ️</div>
+                            <div style="font-size:18px;color:#2c3e50;font-weight:bold;margin-top:5px;">{fecha_earnings}</div>
                         </div>
-                        <div title="Rastrea si los directivos de la empresa han estado comprando o vendiendo acciones propias en los últimos 6 meses." style="flex: 1; background: #ffffff; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); border-top: 4px solid #8e44ad; cursor: help;">
-                            <div style="font-size: 12px; color: #7f8c8d; text-transform: uppercase; font-weight: bold; margin-bottom: 5px;">👔 Manos Fuertes ℹ️</div>
-                            <div style="font-size: 14px; color: #2c3e50;"><b>Directivos (6M):</b> {insider_trend}</div>
+                        <div title="Muestra si los directivos (CEO, dueños) han estado comprando o vendiendo acciones propias recientemente." style="flex:1;background:#fff;padding:15px;border-radius:8px;box-shadow:0 2px 4px rgba(0,0,0,0.05);border-top:4px solid #8e44ad;cursor:help;">
+                            <div style="font-size:12px;color:#7f8c8d;text-transform:uppercase;font-weight:bold;margin-bottom:5px;">👔 Manos Fuertes ℹ️</div>
+                            <div style="font-size:14px;color:#2c3e50;"><b>Directivos (6M):</b> {insider_trend}</div>
                         </div>
                     </div>
-                    """
-                    st.markdown(html_final, unsafe_allow_html=True)
+                    """, unsafe_allow_html=True)
 
-                    # 6. Gráfica
+                    # 5. Gráfica
                     fig = go.Figure()
-                    fig.add_trace(go.Scatter(x=datos_limpios.index, y=precio_actual if len(datos_limpios) == 1 else datos_limpios['Close'], mode='lines', name='Precio', line=dict(color='#228B22', width=2)))
-                    fig.update_layout(title=f"Cotización: {ticker_elegido}", template='plotly_dark', margin=dict(l=0, r=0, t=40, b=0), xaxis_title="", yaxis_title=f"Precio ({s_moneda_visual})", hovermode="x unified")
+                    fig.add_trace(go.Scatter(x=datos_limpios.index, y=datos_limpios['Close'], mode='lines', name='Precio', line=dict(color='#228B22', width=2)))
+                    fig.update_layout(title=f"Histórico: {ticker_elegido}", template='plotly_dark', margin=dict(l=0, r=0, t=40, b=0), hovermode="x unified")
                     st.plotly_chart(fig, use_container_width=True)
-                else:
-                    st.warning("⚠️ No se encontraron datos para este activo.")
-            except Exception as e:
-                st.error(f"⚠️ Error técnico: {e}")
+                else: st.warning("⚠️ Sin datos disponibles.")
+            except Exception as e: st.error(f"⚠️ Error técnico: {e}")
 # ------------------------------------------
 # PESTAÑA 2: BATALLA DE ALPHA (COMPARATIVA)
 # ------------------------------------------
