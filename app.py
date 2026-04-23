@@ -302,9 +302,9 @@ def obtener_estado_mercados():
 # ==========================================
 us, eu, asia = obtener_estado_mercados()
 col1, col2, col3 = st.columns(3)
-col1.info(f"**🇺🇸 EE.UU:** {us['estado']} | 🕒 {us['horario']} (Hora Madrid)")
-col2.info(f"**🇪🇺 Europa:** {eu['estado']} | 🕒 {eu['horario']} (Hora Madrid)")
-col3.info(f"**⛩️ Asia:** {asia['estado']} | 🕒 {asia['horario']} (Hora Madrid)")
+col1.info(f"**EE.UU:** {us['estado']} | 🕒 {us['horario']} (Hora Madrid)")
+col2.info(f"**Europa:** {eu['estado']} | 🕒 {eu['horario']} (Hora Madrid)")
+col3.info(f"**Asia:** {asia['estado']} | 🕒 {asia['horario']} (Hora Madrid)")
 st.markdown("---")
 
 tab1, tab2, tab3 = st.tabs(["🔬 Análisis Individual", "🎯 Cazar Alpha (Radar)", "🏆 Sala de Trofeos"])
