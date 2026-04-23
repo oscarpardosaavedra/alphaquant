@@ -422,7 +422,7 @@ with tab2:
             except Exception:
                 pass
 
-        ffor i, ticker in enumerate(tickers_a_escanear):
+        for i, ticker in enumerate(tickers_a_escanear):
             porcentaje = int(((i + 1) / len(tickers_a_escanear)) * 100)
             barra_progreso.progress((i + 1) / len(tickers_a_escanear), text=f"⏳ Evaluando: {ticker} | {porcentaje}%")
             try:
