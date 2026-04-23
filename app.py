@@ -8,23 +8,11 @@ import pytz
 import gspread
 from google.oauth2.service_account import Credentials
 import time
-import requests # <-- NUEVO: Para simular un navegador humano
 
 # ==========================================
-# 1. CONFIGURACIÓN, DB Y SESIÓN ANTI-BANEO
+# 1. CONFIGURACIÓN Y CONEXIÓN DB (BASE DE DATOS)
 # ==========================================
 st.set_page_config(page_title="Alphaquant", page_icon="📈", layout="wide")
-
-# ESCUDO DEFINITIVO: Simulamos ser Google Chrome desde un PC Windows
-@st.cache_resource
-def obtener_sesion_segura():
-    session = requests.Session()
-    session.headers.update({
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-    })
-    return session
-
-sesion_yf = obtener_sesion_segura()
 
 def conectar_db():
     try:
@@ -63,6 +51,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+# Banner Principal
 st.markdown("""
 <div style="background: linear-gradient(135deg, #0f2027 0%, #203a43 50%, #2c5364 100%); padding: 25px; border-radius: 12px; text-align: center; margin-bottom: 30px; box-shadow: 0 4px 8px rgba(0,0,0,0.1);">
     <h1 style="color: white; margin: 0; font-size: 2.8em; font-family: 'Segoe UI', Tahoma, sans-serif; letter-spacing: 2px;">📈 ALPHAQUANT</h1>
@@ -319,15 +308,14 @@ with tab1:
         
         with st.spinner(f"Cargando datos en vivo de {simbolo_real}..."):
             try:
-                # Usamos la sesión segura anti-baneo
-                datos = yf.download(simbolo_yahoo, period=mapa_tiempo[periodo], progress=False, session=sesion_yf)
+                datos = yf.download(simbolo_yahoo, period=mapa_tiempo[periodo], progress=False)
                 
                 if isinstance(datos.columns, pd.MultiIndex):
                     datos.columns = datos.columns.get_level_values(0)
                 
                 if 'Close' in datos.columns and not datos.empty:
                     try:
-                        ticker_obj = yf.Ticker(simbolo_yahoo, session=sesion_yf)
+                        ticker_obj = yf.Ticker(simbolo_yahoo)
                         moneda_codigo = ticker_obj.fast_info.get('currency', 'USD')
                         sector = ticker_obj.info.get('sector', '')
                         industria = ticker_obj.info.get('industry', '')
@@ -404,7 +392,7 @@ with tab2:
         
         alphaSPY = 0
         try:
-            spy_data = yf.download("SPY", period="1mo", progress=False, session=sesion_yf)
+            spy_data = yf.download("SPY", period="1mo", progress=False)
             if isinstance(spy_data.columns, pd.MultiIndex): spy_data.columns = spy_data.columns.get_level_values(0)
             if 'Close' in spy_data.columns:
                 spy_cierres = spy_data['Close'].squeeze() if isinstance(spy_data['Close'], pd.DataFrame) else spy_data['Close']
@@ -425,8 +413,7 @@ with tab2:
             try:
                 sym_yahoo = a_yahoo(ticker)
                 
-                # ESCUDO ANTI-BANEO ACTIVO
-                data_stock = yf.download(sym_yahoo, period="max", progress=False, session=sesion_yf)
+                data_stock = yf.download(sym_yahoo, period="max", progress=False)
                 
                 if isinstance(data_stock.columns, pd.MultiIndex): data_stock.columns = data_stock.columns.get_level_values(0)
                 if data_stock.empty or 'Close' not in data_stock.columns or 'Volume' not in data_stock.columns: 
@@ -474,7 +461,7 @@ with tab2:
                 ret_max = ((precio_actual / start_price) - 1) * 100 if start_price > 0 else 0
                 
                 try:
-                    tk_obj = yf.Ticker(sym_yahoo, session=sesion_yf)
+                    tk_obj = yf.Ticker(sym_yahoo)
                     info = tk_obj.info
                     per = info.get('trailingPE', 999)
                     if per is None: per = 999 
@@ -617,7 +604,7 @@ with tab2:
                 }
             )
         else:
-            st.error("No se han podido descargar datos. Espera unos minutos e inténtalo de nuevo (Yahoo Rate Limit).")
+            st.error("No se han podido descargar datos en este momento. Yahoo Finance podría estar limitando temporalmente tus peticiones.")
 
 
 # ------------------------------------------
@@ -662,7 +649,7 @@ with tab3:
                         try:
                             tk_y = a_yahoo(d['Ticker'])
                             
-                            hist = yf.download(tk_y, period="1y", progress=False, session=sesion_yf)
+                            hist = yf.download(tk_y, period="1y", progress=False)
                             if isinstance(hist.columns, pd.MultiIndex): hist.columns = hist.columns.get_level_values(0)
                             if hist.empty or 'Close' not in hist.columns: continue
                             
@@ -699,7 +686,7 @@ with tab3:
                                     ignicion = f"{dias_ign}d"
                             
                             try:
-                                tk_obj_info = yf.Ticker(tk_y, session=sesion_yf)
+                                tk_obj_info = yf.Ticker(tk_y)
                                 moneda = tk_obj_info.fast_info.get('currency', 'USD')
                             except:
                                 moneda = "USD"
