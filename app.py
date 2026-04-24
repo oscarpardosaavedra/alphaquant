@@ -852,7 +852,7 @@ with tab3:
                 )
 
 # ------------------------------------------
-# PESTAÑA 4: SALA DE TROFEOS (DISEÑO SLIM + TOOLTIPS)
+# PESTAÑA 4: SALA DE TROFEOS (CON NOMBRES DE EMPRESA)
 # ------------------------------------------
 with tab4:
     st.markdown("### 🏆 Sala de Trofeos")
@@ -884,21 +884,29 @@ with tab4:
                         try:
                             ticker = d['Ticker']
                             tk_y = a_yahoo(ticker)
-                            sim_mon = obtener_simbolo_moneda(ticker)
+                            simbolo_moneda = obtener_simbolo_moneda(ticker)
+                            
                             hist = yf.download(tk_y, period="5d", progress=False)
                             if isinstance(hist.columns, pd.MultiIndex): hist.columns = hist.columns.get_level_values(0)
+                            
                             p_hoy = float(hist['Close'].iloc[-1])
                             p_in = float(str(d['Precio_Aviso']).replace(',', '.'))
                             rent = ((p_hoy / p_in) - 1) * 100
                             
-                            f_entrada = datetime.datetime.strptime(d['Fecha'], "%Y-%m-%d %H:%M")
-                            dias = (ahora - f_entrada).days
+                            fecha_entrada = datetime.datetime.strptime(d['Fecha'], "%Y-%m-%d %H:%M")
+                            dias_transcurridos = (ahora - fecha_entrada).days
                             
-                            kpi = ""
-                            if rent >= 5.0: kpi = f"🚀 +5% en {max(1, dias)}d"
-                            elif rent > 0: kpi = f"⏳ {dias}d"
+                            kpi_velocidad = ""
+                            if rent >= 5.0:
+                                kpi_velocidad = f"🚀 +5% en {max(1, dias_transcurridos)}d"
+                            elif rent > 0:
+                                kpi_velocidad = f"⏳ {dias_transcurridos}d"
 
-                            obj = {"T": ticker, "N": d['Empresa'], "E": p_in, "A": p_hoy, "R": rent, "F": d['Fecha'], "KPI": kpi, "M": sim_mon}
+                            # El nombre de la empresa ya venía de la DB en d['Empresa']
+                            obj = {
+                                "T": ticker, "N": d['Empresa'], "E": p_in, "A": p_hoy, 
+                                "R": rent, "F": d['Fecha'], "KPI": kpi_velocidad, "M": simbolo_moneda
+                            }
                             
                             if abs(rent) < 0.1: pendiente.append(obj)
                             elif rent > 0: exitos.append(obj)
@@ -906,14 +914,15 @@ with tab4:
                             else: fracasos.append(obj)
                         except: continue
 
+                    tot_val = len(exitos) + len(cuarentena) + len(fracasos)
+                    w_rate = (len(exitos) / tot_val * 100) if tot_val > 0 else 0
                     c1, c2 = st.columns(2)
-                    tot_v = len(exitos) + len(cuarentena) + len(fracasos)
-                    w_r = (len(exitos) / tot_v * 100) if tot_v > 0 else 0
-                    c1.metric("🎯 Win Rate Global", f"{w_r:.1f}%")
+                    c1.metric("🎯 Win Rate Global", f"{w_rate:.1f}%")
                     c2.metric("🔥 Cohetes (+5%)", len([x for x in exitos if "+5%" in x['KPI']]))
                     
                     st.markdown("---")
                     cols = st.columns(4)
+                    
                     titulos_config = [
                         ("⏸️ Pendiente", "Activos recién añadidos o sin movimiento significativo."),
                         ("🏆 Éxitos", "Activos en verde. Señales que han generado valor."),
@@ -925,16 +934,19 @@ with tab4:
                     
                     for i, l in enumerate(listas):
                         with cols[i]:
-                            # Título con nota al pasar el ratón
                             st.markdown(f'<h4 title="{titulos_config[i][1]}" style="cursor:help;">{titulos_config[i][0]}</h4>', unsafe_allow_html=True)
                             for item in l:
+                                # AQUI INYECTAMOS EL NOMBRE DE LA EMPRESA (item['N'])
                                 st.markdown(f"""
                                 <div style="border-top:3px solid {colores[i]}; background:white; padding:10px; border-radius:8px; margin-bottom:10px; box-shadow:0 2px 5px rgba(0,0,0,0.05);">
                                     <div style="display:flex; justify-content:space-between; align-items:center;">
-                                        <b style="font-size:15px;">{item['T']}</b> 
+                                        <div>
+                                            <b style="font-size:15px;">{item['T']}</b> 
+                                            <span style="font-size:12px; color:#7f8c8d; margin-left:5px;">{item['N']}</span>
+                                        </div>
                                         <b style="color:{colores[i]}; font-size:15px;">{item['R']:+.2f}%</b>
                                     </div>
-                                    <div style="font-size:10px; color:#888; margin-bottom:4px;">Entrada: {item['F']}</div>
+                                    <div style="font-size:10px; color:#888; margin-bottom:4px; margin-top:4px;">Entrada: {item['F']}</div>
                                     <div style="font-size:11px; color:#444;">
                                         In: <b>{item['E']:.2f}{item['M']}</b> | Actual: <b>{item['A']:.2f}{item['M']}</b>
                                     </div>
