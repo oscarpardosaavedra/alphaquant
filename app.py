@@ -642,7 +642,7 @@ with tab2:
                 st.plotly_chart(fig_comp, use_container_width=True)
 
 # ------------------------------------------
-# PESTAÑA 3: RADAR DE CAZA (MOTOR "OPPENHEIMER" V2.0 - ANTI-BORRADO)
+# PESTAÑA 3: RADAR DE CAZA (MOTOR "OPPENHEIMER" V2.0 - TODOPODEROSO)
 # ------------------------------------------
 with tab3:
     st.markdown("### 🎯 Centro de Caza Oppenheimer")
@@ -663,6 +663,7 @@ with tab3:
 
     if mercado_objetivo:
         st.session_state.resultados_radar = None
+        
         # Semáforos de mercado
         if mercado_objetivo == "EEUU" and "Cerrado" in us["estado"]:
             st.warning("⚠️ **Aviso:** Wall Street está cerrado. Los datos son del último cierre.")
@@ -673,7 +674,6 @@ with tab3:
 
         tickers_a_escanear = [t for t in tickers_nombres.keys() if mercado_objetivo == "Todos" or obtener_region(t) == mercado_objetivo]
         
-        # Creamos un contenedor para poder cambiar el texto luego
         mensaje_estado = st.empty()
         mensaje_estado.info(f"🚀 Ejecutando Algoritmo Oppenheimer ULTRA para: **{mercado_objetivo}**...")
         
@@ -695,7 +695,7 @@ with tab3:
             try: existentes_en_db = ws.col_values(1)
             except: pass
 
-# --- 1.5 PRE-CARGADOR DE DIVISAS (Súper rápido y seguro) ---
+        # --- 1.5 PRE-CARGADOR DE DIVISAS ---
         fx_rates = {}
         mapa_divisas_fx = { "€": "EURUSD=X", "¥": "JPYUSD=X", "GBp": "GBPUSD=X", "kr": "SEKUSD=X", "₹": "INRUSD=X" }
         for mon_sim, par_fx in mapa_divisas_fx.items():
@@ -718,17 +718,15 @@ with tab3:
                 df = data[['Close', 'High', 'Low', 'Volume']].dropna()
                 if len(df) < 55: continue 
                 
-                # --- HACK INTRADÍA: FORZAR EL PRECIO DE AHORA MISMO ---
+                # --- HACK INTRADÍA ---
                 try:
                     data_ahora = yf.download(sym_y, period="1d", interval="1m", progress=False)
                     if not data_ahora.empty:
                         if isinstance(data_ahora.columns, pd.MultiIndex): data_ahora.columns = data_ahora.columns.get_level_values(0)
-                        # Sobrescribimos el último precio diario con el último precio de este minuto
                         df.iloc[-1, df.columns.get_loc('Close')] = float(data_ahora['Close'].iloc[-1])
-                        df.iloc[-1, df.columns.get_loc('Volume')] = float(data_ahora['Volume'].sum()) # Sumamos el volumen del día
+                        df.iloc[-1, df.columns.get_loc('Volume')] = float(data_ahora['Volume'].sum())
                         df.iloc[-1, df.columns.get_loc('High')] = float(max(df.iloc[-1]['High'], data_ahora['High'].max()))
                 except: pass
-                # -----------------------------------------------------
 
                 c_hoy = float(df['Close'].iloc[-1])
                 c_ayer = float(df['Close'].iloc[-2])
@@ -743,6 +741,7 @@ with tab3:
                 gain = delta.where(delta > 0, 0).rolling(window=14).mean()
                 loss = -delta.where(delta < 0, 0).rolling(window=14).mean()
                 rsi = float(100 - (100 / (1 + (gain / loss))).iloc[-1])
+                
                 def ret_d(d): return ((c_hoy / float(df['Close'].iloc[-(d+1)])) - 1) * 100 if len(df) > d else 0
                 r1m, r6m, r1y, r5y = ret_d(21), ret_d(126), ret_d(252), ret_d(1260)
                 max_52 = float(df['High'].iloc[-252:].max())
@@ -754,39 +753,57 @@ with tab3:
                 tr = pd.concat([df['High']-df['Low'], np.abs(df['High']-df['Close'].shift()), np.abs(df['Low']-df['Close'].shift())], axis=1).max(axis=1)
                 atr = float(tr.rolling(14).mean().iloc[-1])
                 stop_l = c_hoy - (atr * 2.5)
-                
-# --- MOTOR DE PUNTUACIÓN ULTRA ---
+
+                # --- CÁLCULOS TÉCNICOS EXTRA (PODER TOTAL) ---
+                exp1 = df['Close'].ewm(span=12, adjust=False).mean()
+                exp2 = df['Close'].ewm(span=26, adjust=False).mean()
+                macd = exp1 - exp2
+                signal = macd.ewm(span=9, adjust=False).mean()
+                macd_hoy = macd.iloc[-1]
+                signal_hoy = signal.iloc[-1]
+
+                cruce_oro = False
+                if sma200:
+                    sma50_prev_5 = float(sma50_serie.iloc[-6])
+                    sma200_prev_5 = float(df['Close'].rolling(window=200).mean().iloc[-6])
+                    if sma50 > sma200 and sma50_prev_5 <= sma200_prev_5:
+                        cruce_oro = True
+
+                # --- MOTOR DE PUNTUACIÓN TODOPODEROSO ---
                 p = 0
                 status_t = "Lateral/Bajista"
                 texto_a = []
+                
                 if c_hoy > sma50: p += 10; status_t = "Alcista Corto"
                 if sma200 and c_hoy > sma200: p += 10
-                if sma200 and sma50 > sma200: p += 10; status_t = "Alcista Estructural"
-                if sma50 > sma50_prev: p += 10 
+                if sma200 and sma50 > sma200: 
+                    p += 10
+                    status_t = "Alcista Estructural"
+                    if cruce_oro:
+                        p += 25 
+                        texto_a.append("✨ CRUCE DE ORO RECIENTE (Señal histórica).")
+
+                if macd_hoy > signal_hoy:
+                    p += 15
+                    texto_a.append("📈 Impulso alcista (MACD).")
+
+                if 55 <= rsi <= 68: p += 15; texto_a.append("✅ RSI sano.")
+                elif rsi > 72: p -= 15; texto_a.append("⚠️ Acción muy 'caliente'.")
                 
-                # Penalizaciones y premios (Traducido a lenguaje sencillo)
-                if 55 <= rsi <= 68: p += 20; texto_a.append("✅ RSI sano (ni muy frío ni muy caliente).")
-                elif rsi > 72: p -= 15; texto_a.append("⚠️ Acción muy 'caliente' (riesgo de corrección).")
-                if vol_h > (vol_m * 1.8) and pct_h > 0: p += 20; texto_a.append("🐋 Entran 'ballenas' (mucho dinero hoy).")
-                
-                if obv_hoy > obv_mes: p += 10
-                else: p -= 20; texto_a.append("🚩 Cuidado: Sube el precio, pero con poco dinero real.")
-                
-                reg = obtener_region(ticker)
-                b_1m = alphaSPY_1m if reg == "EEUU" else 0
-                if r1m > (b_1m + 2.0): p += 10; texto_a.append("🏆 Rinde mucho mejor que el resto del mercado.")
-                
-                # --- MÓDULOS DE ÉLITE ---
+                if vol_h > (vol_m * 1.8): 
+                    p += 20
+                    texto_a.append("🐋 Dinero institucional entrando.")
+
                 isF = False
                 isM = False
-                
                 if dist_max <= -20 and c_hoy > sma50 and vol_h > (vol_m * 1.8) and pct_h > 1.5:
-                    p = max(p, 92); isF = True; status_t = "Giro Fénix 🔥"; texto_a = ["🔥 Despertando fuerte tras una gran caída."]
+                    p = max(p, 92); isF = True; status_t = "Giro Fénix 🔥"
                 
                 if pct_h >= 4.5 and vol_h >= (vol_m * 2.5) and c_hoy > sma50:
-                    p = max(p, 95); isM = True; status_t = "Ruptura Momentum ⚡"; texto_a = ["⚡ Explosión gigante de precio y volumen hoy."]
+                    p = max(p, 95); isM = True; status_t = "Ruptura Momentum ⚡"
 
                 pts = max(0, min(100, int(p)))
+
                 if pts >= 90 and ticker not in existentes_en_db and ws is not None:
                     ws.append_row([ticker, tickers_nombres[ticker], datetime.datetime.now().strftime("%Y-%m-%d %H:%M"), float(c_hoy), int(pts)])
                     existentes_en_db.append(ticker)
@@ -798,39 +815,39 @@ with tab3:
                     else: reco = "💎 COMPRA FUERTE (ALFA)"
                 elif pts >= 80: reco = "🟢 ACUMULAR"
                 elif pts >= 70: reco = "🟡 VIGILAR"
-                
-                # --- FORMATO FINAL CON MONEDA Y CONVERSIÓN ---
+
+                icono_senal = "Normal"
+                if cruce_oro: icono_senal = "✨ CRUCE DE ORO"
+                elif isM: icono_senal = "⚡ MOMENTUM"
+                elif isF: icono_senal = "🔥 FÉNIX"
+                elif macd_hoy > signal_hoy and macd.iloc[-2] <= signal.iloc[-2]: icono_senal = "🚀 GIRO MACD"
+
+                # --- FORMATO FINAL Y GUARDADO ---
                 mon = obtener_simbolo_moneda(ticker)
-                
-                t_conv_precio = ""
-                t_conv_stop = ""
                 tasa_v = fx_rates.get(mon)
-                
+                t_conv_p, t_conv_s = "", ""
                 if mon != "$" and tasa_v:
-                    factor = tasa_v / 100 if mon == "GBp" else tasa_v
-                    t_conv_precio = f" (≈ {(c_hoy * factor):.2f} $)"
-                    t_conv_stop = f" (≈ {(stop_l * factor):.2f} $)"
+                    f = tasa_v / 100 if mon == "GBp" else tasa_v
+                    t_conv_p = f" (≈ {(c_hoy * f):.2f} $)"
+                    t_conv_s = f" (≈ {(stop_l * f):.2f} $)"
 
-                str_precio = f"{c_hoy:.2f} {mon}{t_conv_precio}"
-                str_stop = f"{stop_l:.2f} {mon}{t_conv_stop} ({((stop_l/c_hoy)-1)*100:+.1f}%)"
-
-                # Guardamos los resultados (RSI y Volumen devueltos a la tabla)
                 resultados_temporales.append({
                     "TICKER": ticker, 
                     "NOMBRE": tickers_nombres[ticker], 
                     "PUNTOS": pts, 
+                    "SEÑAL ✨": icono_senal,
                     "RECOMENDACIÓN": reco,
                     "TENDENCIA": status_t, 
                     "RSI": f"{rsi:.1f}", 
                     "VOL. vs MEDIA": f"{(vol_h/vol_m):.1f}x",
-                    "PRECIO HOY": str_precio,
-                    "STOP LOSS": str_stop,
+                    "PRECIO HOY": f"{c_hoy:.2f} {mon}{t_conv_p}",
+                    "STOP LOSS": f"{stop_l:.2f} {mon}{t_conv_s} ({((stop_l/c_hoy)-1)*100:+.1f}%)",
                     "% HOY": f"{pct_h:+.2f}%", 
                     "% 1 MES": f"{r1m:+.2f}%", 
                     "% 6 MESES": f"{r6m:+.2f}%", 
                     "% 1 AÑO": f"{r1y:+.2f}%", 
                     "% 5 AÑOS": f"{r5y:+.2f}%", 
-                    "ANÁLISIS": " | ".join(texto_a) if texto_a else "✅ Todo estable y normal."
+                    "ANÁLISIS": " | ".join(texto_a) if texto_a else "✅ Estable."
                 })
                 time.sleep(0.01)
             except: continue
@@ -843,7 +860,6 @@ with tab3:
 
     # --- ZONA DE DIBUJADO DE RESULTADOS ---
     if st.session_state.resultados_radar is not None:
-        # Ponemos el mensaje verde de éxito AQUÍ para que solo salga al terminar
         merc_txt = st.session_state.get('mercado_cazado', 'Todos')
         st.success(f"🎯 Caza terminada para: **{merc_txt}**")
         
@@ -854,25 +870,24 @@ with tab3:
             df_res = df_res.sort_values(by="PUNTOS", ascending=False).reset_index(drop=True)
             st.dataframe(df_res.style.map(color_pct, subset=["% HOY", "% 1 MES", "% 6 MESES", "% 1 AÑO", "% 5 AÑOS"]), 
                          use_container_width=False, 
-                         width=2000,   # Forzamos un ancho gigante para asegurar la barra horizontal
-                         height=400,   # Forzamos una altura contenida para asegurar la barra vertical
-                         hide_index=True,
+                         width=2000, height=400, hide_index=True,
                          column_config={
-                            "TICKER": st.column_config.TextColumn(help="Símbolo en bolsa de la empresa."),
-                            "NOMBRE": st.column_config.TextColumn(help="Nombre de la compañía."),
-                            "PUNTOS": st.column_config.NumberColumn(help="Nota 0-100 calculada por el radar Oppenheimer. Solo de 90 para arriba es compra."),
+                            "TICKER": st.column_config.TextColumn(help="Símbolo en bolsa."),
+                            "NOMBRE": st.column_config.TextColumn(help="Nombre de la empresa."),
+                            "PUNTOS": st.column_config.NumberColumn(help="Nota 0-100. Solo >90 es compra."),
+                            "SEÑAL ✨": st.column_config.TextColumn(help="Eventos clave:\n✨ CRUCE DE ORO: Tendencia 50 supera a 200.\n🚀 GIRO MACD: Impulso alcista nuevo.\n⚡ MOMENTUM: Explosión hoy.\n🔥 FÉNIX: Rebote desde el suelo."),
                             "RECOMENDACIÓN": st.column_config.TextColumn(help="💎 ALFA: Tendencia segura.\n🔥 FÉNIX: Rebote tras gran caída.\n⚡ MOMENTUM: Subida salvaje hoy con volumen extremo."),
-                            "TENDENCIA": st.column_config.TextColumn(help="Estructura según las medias móviles. 'Alcista Estructural' es lo mejor."),
-                            "RSI": st.column_config.TextColumn(help="Mide si está barata o cara. Entre 55 y 68 es ideal. Más de 70 = ¡Peligro, puede caer!"),
-                            "VOL. vs MEDIA": st.column_config.TextColumn(help="¿Entra dinero institucional hoy? Si es más de 1.0x, significa que se negocia más fuerte que un día normal."),
-                            "PRECIO HOY": st.column_config.TextColumn(help="Precio actual (con conversión aproximada a dólares)."),
-                            "STOP LOSS": st.column_config.TextColumn(help="Tu paracaídas. Pon este precio en tu broker para que venda automático si las cosas salen mal."),
+                            "TENDENCIA": st.column_config.TextColumn(help="Estructura de las medias móviles. 'Alcista Estructural' es lo mejor."),
+                            "RSI": st.column_config.TextColumn(help="Fuerza relativa (55-68 es ideal)."),
+                            "VOL. vs MEDIA": st.column_config.TextColumn(help="Volumen de hoy vs media (más de 1.0x es bueno)."),
+                            "PRECIO HOY": st.column_config.TextColumn(help="Precio actual en moneda local y dólares."),
+                            "STOP LOSS": st.column_config.TextColumn(help="Tu paracaídas automático."),
                             "% HOY": st.column_config.TextColumn(help="Rendimiento de hoy."),
                             "% 1 MES": st.column_config.TextColumn(help="Rendimiento del último mes."),
                             "% 6 MESES": st.column_config.TextColumn(help="Rendimiento de los últimos 6 meses."),
                             "% 1 AÑO": st.column_config.TextColumn(help="Rendimiento anualizado."),
                             "% 5 AÑOS": st.column_config.TextColumn(help="Comportamiento a largo plazo."),
-                            "ANÁLISIS": st.column_config.TextColumn(width="large", help="Traducción directa de lo que el algoritmo ve en el gráfico de esta acción.")
+                            "ANÁLISIS": st.column_config.TextColumn(width="large", help="Resumen del algoritmo.")
                          })
 
 # ------------------------------------------
