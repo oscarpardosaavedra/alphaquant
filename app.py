@@ -53,6 +53,19 @@ st.markdown("""
         margin-right: 5px; border: 1px solid #e1e8ed; cursor: help;
     }
     .stat-badge:hover { background: #e1e8ed; }
+    
+    /* ---> TEXTO "EVALUANDO" MÁS GRANDE Y VISIBLE (SIN TOCAR LA BARRA) <--- */
+    [data-testid="stProgress"] p {
+        font-size: 18px !important;
+        font-weight: bold !important;
+        margin-bottom: 5px !important;
+    }
+    [data-testid="stProgress"] code {
+        font-size: 18px !important;
+        color: #073763 !important;
+        background-color: transparent !important;
+        font-weight: 900 !important;
+    }
 </style>
 """, unsafe_allow_html=True)
 
