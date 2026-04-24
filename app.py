@@ -849,7 +849,7 @@ with tab4:
                                     <b style="color:{cols_color[i]};">{item['R']:+.2f}%</b>
                                 </div>
                                 <div style="font-size:10px; color:#888; margin-top:4px;">Entrada: {item['F']}</div>
-                                <div style="font-size:11px; color:#444; margin-top:4px;">In: <b>{item['E']:.2f}{item['M']}</b> | Hoy: <b>{item['A']:.2f}{item['M']}</b></div>
+                                <div style="font-size:11px; color:#444; margin-top:4px;">In: <b>{item['E']:.2f}{item['M']}</b> | Actual: <b>{item['A']:.2f}{item['M']}</b></div>
                                 <div style="font-size:10px; margin-top:6px; color:#1E90FF; font-weight:bold;">{item['KPI']}</div>
                             </div>
                             """, unsafe_allow_html=True)
