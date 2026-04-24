@@ -786,19 +786,22 @@ with tab3:
                 elif pts >= 80: reco = "🟢 ACUMULAR"
                 elif pts >= 70: reco = "🟡 VIGILAR"
 
-                # --- FORMATO FINAL CON MONEDA Y CONVERSIÓN ---
+               # --- FORMATO FINAL CON MONEDA Y CONVERSIÓN ---
                 mon = obtener_simbolo_moneda(ticker)
                 
-                # Calculamos la conversión a dólares usando la memoria del pre-cargador
+                # Calculamos la conversión a dólares para AMBAS columnas
+                t_conv_precio = ""
                 t_conv_stop = ""
                 tasa_v = fx_rates.get(mon)
+                
                 if mon != "$" and tasa_v:
                     # Ajuste para la Libra (que cotiza en peniques)
                     factor = tasa_v / 100 if mon == "GBp" else tasa_v
+                    t_conv_precio = f" (≈ {(c_hoy * factor):.2f} $)"
                     t_conv_stop = f" (≈ {(stop_l * factor):.2f} $)"
 
-                # Construimos los textos finales
-                str_precio = f"{c_hoy:.2f} {mon}"
+                # Construimos los textos finales (ahora el Precio también tiene dólares)
+                str_precio = f"{c_hoy:.2f} {mon}{t_conv_precio}"
                 str_stop = f"{stop_l:.2f} {mon}{t_conv_stop} ({((stop_l/c_hoy)-1)*100:+.1f}%)"
 
                 resultados_temporales.append({
