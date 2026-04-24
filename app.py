@@ -764,29 +764,27 @@ with tab3:
                 if sma200 and sma50 > sma200: p += 10; status_t = "Alcista Estructural"
                 if sma50 > sma50_prev: p += 10 
                 
-                # Penalizaciones y premios estándar
-                if 55 <= rsi <= 68: p += 20; texto_a.append("RSI óptimo.")
-                elif rsi > 72: p -= 15; texto_a.append("Riesgo sobrecompra.")
-                if vol_h > (vol_m * 1.8) and pct_h > 0: p += 20; texto_a.append("Smart Money.")
+                # Penalizaciones y premios (Traducido a lenguaje sencillo)
+                if 55 <= rsi <= 68: p += 20; texto_a.append("✅ RSI sano (ni muy frío ni muy caliente).")
+                elif rsi > 72: p -= 15; texto_a.append("⚠️ Acción muy 'caliente' (riesgo de corrección).")
+                if vol_h > (vol_m * 1.8) and pct_h > 0: p += 20; texto_a.append("🐋 Entran 'ballenas' (mucho dinero hoy).")
                 
                 if obv_hoy > obv_mes: p += 10
-                else: p -= 20; texto_a.append("⚠️ Divergencia OBV.")
+                else: p -= 20; texto_a.append("🚩 Cuidado: Sube el precio, pero con poco dinero real.")
                 
                 reg = obtener_region(ticker)
                 b_1m = alphaSPY_1m if reg == "EEUU" else 0
-                if r1m > (b_1m + 2.0): p += 10; texto_a.append("Bate al mercado.")
+                if r1m > (b_1m + 2.0): p += 10; texto_a.append("🏆 Rinde mucho mejor que el resto del mercado.")
                 
-                # --- MÓDULOS DE ÉLITE (FUERZAN COMPRA) ---
+                # --- MÓDULOS DE ÉLITE ---
                 isF = False
                 isM = False
                 
-                # 1. Módulo Fénix 🔥 (Rebotes desde el suelo)
                 if dist_max <= -20 and c_hoy > sma50 and vol_h > (vol_m * 1.8) and pct_h > 1.5:
-                    p = max(p, 92); isF = True; status_t = "Giro Fénix 🔥"; texto_a = ["Giro explosivo validado."]
+                    p = max(p, 92); isF = True; status_t = "Giro Fénix 🔥"; texto_a = ["🔥 Despertando fuerte tras una gran caída."]
                 
-                # 2. Módulo Momentum ⚡ (Misiles en pleno vuelo)
                 if pct_h >= 4.5 and vol_h >= (vol_m * 2.5) and c_hoy > sma50:
-                    p = max(p, 95); isM = True; status_t = "Ruptura Momentum ⚡"; texto_a = ["Caza Momentum: Explosión inusual de volumen y precio. Riesgo Alto."]
+                    p = max(p, 95); isM = True; status_t = "Ruptura Momentum ⚡"; texto_a = ["⚡ Explosión gigante de precio y volumen hoy."]
 
                 pts = max(0, min(100, int(p)))
                 if pts >= 90 and ticker not in existentes_en_db and ws is not None:
@@ -800,31 +798,31 @@ with tab3:
                     else: reco = "💎 COMPRA FUERTE (ALFA)"
                 elif pts >= 80: reco = "🟢 ACUMULAR"
                 elif pts >= 70: reco = "🟡 VIGILAR"
-
-               # --- FORMATO FINAL CON MONEDA Y CONVERSIÓN ---
+                
+                # --- FORMATO FINAL CON MONEDA Y CONVERSIÓN ---
                 mon = obtener_simbolo_moneda(ticker)
                 
-                # Calculamos la conversión a dólares para AMBAS columnas
                 t_conv_precio = ""
                 t_conv_stop = ""
                 tasa_v = fx_rates.get(mon)
                 
                 if mon != "$" and tasa_v:
-                    # Ajuste para la Libra (que cotiza en peniques)
                     factor = tasa_v / 100 if mon == "GBp" else tasa_v
                     t_conv_precio = f" (≈ {(c_hoy * factor):.2f} $)"
                     t_conv_stop = f" (≈ {(stop_l * factor):.2f} $)"
 
-                # Construimos los textos finales (ahora el Precio también tiene dólares)
                 str_precio = f"{c_hoy:.2f} {mon}{t_conv_precio}"
                 str_stop = f"{stop_l:.2f} {mon}{t_conv_stop} ({((stop_l/c_hoy)-1)*100:+.1f}%)"
 
+                # Guardamos los resultados (RSI y Volumen devueltos a la tabla)
                 resultados_temporales.append({
                     "TICKER": ticker, 
                     "NOMBRE": tickers_nombres[ticker], 
                     "PUNTOS": pts, 
                     "RECOMENDACIÓN": reco,
                     "TENDENCIA": status_t, 
+                    "RSI": f"{rsi:.1f}", 
+                    "VOL. vs MEDIA": f"{(vol_h/vol_m):.1f}x",
                     "PRECIO HOY": str_precio,
                     "STOP LOSS": str_stop,
                     "% HOY": f"{pct_h:+.2f}%", 
@@ -832,7 +830,7 @@ with tab3:
                     "% 6 MESES": f"{r6m:+.2f}%", 
                     "% 1 AÑO": f"{r1y:+.2f}%", 
                     "% 5 AÑOS": f"{r5y:+.2f}%", 
-                    "ANÁLISIS": " ".join(texto_a) if texto_a else "Estable."
+                    "ANÁLISIS": " | ".join(texto_a) if texto_a else "✅ Todo estable y normal."
                 })
                 time.sleep(0.01)
             except: continue
