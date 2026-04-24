@@ -305,7 +305,7 @@ tab1, tab2, tab3, tab4 = st.tabs(["🔬 Análisis Individual", "⚔️ Análisis
 with tab1:
     st.markdown("### 🔍 Selector de Activos")
     
-    col_buscador, col_logo, col_espacio = st.columns([1.5, 0.5, 2])
+    col_buscador, col_logo, col_espacio = st.columns([0.8, 0.4, 2.8])
     with col_buscador:
         ticker_elegido = st.selectbox("Elige la empresa que quieres revisar:", opciones_desplegable)
     with col_logo:
