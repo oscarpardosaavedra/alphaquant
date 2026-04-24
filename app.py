@@ -300,17 +300,16 @@ st.markdown("---")
 tab1, tab2, tab3, tab4 = st.tabs(["🔬 Análisis Individual", "⚔️ Análisis Colectivo", "🎯 Cazar Alpha (Radar)", "🏆 Sala de Trofeos"])
 
 # ------------------------------------------
-# PESTAÑA 1: VISOR DE GRÁFICOS (VERSIÓN DEFINITIVA Y ESTABLE)
+# PESTAÑA 1: VISOR DE GRÁFICOS (TENDENCIA VISIBLE EN NARANJA)
 # ------------------------------------------
 with tab1:
     st.markdown("### 🔍 Selector de Activos")
     
-    # ---> CORRECCIÓN 1: DESPLEGABLE CORTO (0.8, 0.4, 2.8) <---
     col_buscador, col_logo, col_espacio = st.columns([0.8, 0.4, 2.8])
     with col_buscador:
         ticker_elegido = st.selectbox("Elige la empresa que quieres revisar:", opciones_desplegable)
     with col_logo:
-        espacio_logo = st.empty() # Hueco para el logo
+        espacio_logo = st.empty() 
         
     espacio_descripcion = st.empty() 
     espacio_sector = st.empty()
@@ -334,7 +333,7 @@ with tab1:
             
         with st.spinner(f"Cargando datos de {simbolo_real} y rastreando Wall Street..."):
             try:
-                # ---> CORRECCIÓN 2: DESCARGAMOS EL MÁXIMO PARA QUE LA TENDENCIA FUNCIONE SIEMPRE <---
+                # Descargamos el histórico máximo de fondo para poder calcular la Media de 50 siempre
                 datos_brutos = yf.download(simbolo_yahoo, period="max", progress=False)
                 if isinstance(datos_brutos.columns, pd.MultiIndex): datos_brutos.columns = datos_brutos.columns.get_level_values(0)
 
@@ -373,14 +372,10 @@ with tab1:
                                 if len(desc_corta) > 300: desc_corta = desc_corta[:297] + "..."
                             
                             if recom_raw:
-                                traducciones = {
-                                    "strong_buy": "COMPRA FUERTE 🟢", "buy": "COMPRAR ↗️",
-                                    "hold": "MANTENER 🟡", "sell": "VENTA ↘️", "strong_sell": "VENTA MASIVA 🔴"
-                                }
+                                traducciones = {"strong_buy": "COMPRA FUERTE 🟢", "buy": "COMPRAR ↗️", "hold": "MANTENER 🟡", "sell": "VENTA ↘️", "strong_sell": "VENTA MASIVA 🔴"}
                                 recom = traducciones.get(recom_raw.lower(), str(recom_raw).replace('_', ' ').upper())
                             
-                            if p_obj and p_obj > 0: 
-                                precio_obj_str = str(p_obj)
+                            if p_obj and p_obj > 0: precio_obj_str = str(p_obj)
                             
                         try:
                             if ticker_obj:
@@ -454,14 +449,14 @@ with tab1:
                     else:
                         espacio_logo.empty()
 
-                    # CÁLCULOS DEL PRECIO Y TENDENCIA (AHORA SÍ, PERFECTOS)
+                    # CÁLCULOS DEL PRECIO Y TENDENCIA 
                     datos_limpios_completos = datos_brutos.dropna(subset=['Close'])
                     precio_actual = float(datos_limpios_completos['Close'].iloc[-1])
                     
-                    # Calculamos la SMA 50 globalmente con todos los años para no perder el rastro
+                    # Calculamos la SMA 50 globalmente con todos los años
                     sma_50_completa = datos_limpios_completos['Close'].rolling(window=50).mean()
                     
-                    # Cortamos la tabla de datos según lo que haya elegido el usuario en los botones
+                    # Cortamos la tabla de datos según lo elegido en los botones
                     dias_mapa = {"1 Mes": 21, "3 Meses": 63, "6 Meses": 126, "1 Año": 252, "5 Años": 1260, "10 Años": 2520, "Máximo": len(datos_limpios_completos)}
                     dias_mostrar = dias_mapa.get(periodo, len(datos_limpios_completos))
                     
@@ -520,18 +515,22 @@ with tab1:
                         </div>
                         """, unsafe_allow_html=True)
 
-                    # --- GRÁFICA CON OPCIÓN DE TENDENCIA ---
+                    # --- GRÁFICA CON OPCIÓN DE TENDENCIA EN NARANJA ---
                     fig = go.Figure()
                     fig.add_trace(go.Scatter(x=datos_limpios.index, y=datos_limpios['Close'], mode='lines', name='Precio', line=dict(color='#228B22', width=2)))
                     
                     if mostrar_tendencia:
-                        fig.add_trace(go.Scatter(
-                            x=datos_limpios.index, 
-                            y=sma_50, 
-                            mode='lines', 
-                            name='Tendencia (SMA 50)', 
-                            line=dict(color='rgba(255, 255, 255, 0.7)', width=1.5, dash='dash')
-                        ))
+                        # Verificamos que realmente hayamos podido calcular la SMA (no sean todo NaNs)
+                        if not sma_50.isna().all():
+                            fig.add_trace(go.Scatter(
+                                x=datos_limpios.index, 
+                                y=sma_50, 
+                                mode='lines', 
+                                name='SMA 50', 
+                                line=dict(color='#FFA500', width=2.5) # Color Naranja/Oro y línea sólida
+                            ))
+                        else:
+                            st.info("La empresa es muy reciente y no tiene 50 días de historia para calcular la tendencia.")
 
                     fig.update_layout(
                         title=f"Histórico: {ticker_elegido}", 
@@ -544,6 +543,7 @@ with tab1:
                     
                 else: st.warning("⚠️ Sin datos disponibles.")
             except Exception as e: st.error(f"⚠️ Error técnico: {e}")
+
 # ------------------------------------------
 # PESTAÑA 2: BATALLA DE ALPHA (COMPARATIVA)
 # ------------------------------------------
