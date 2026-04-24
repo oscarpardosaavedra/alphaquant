@@ -695,6 +695,17 @@ with tab3:
             try: existentes_en_db = ws.col_values(1)
             except: pass
 
+# --- 1.5 PRE-CARGADOR DE DIVISAS (Súper rápido y seguro) ---
+        fx_rates = {}
+        mapa_divisas_fx = { "€": "EURUSD=X", "¥": "JPYUSD=X", "GBp": "GBPUSD=X", "kr": "SEKUSD=X", "₹": "INRUSD=X" }
+        for mon_sim, par_fx in mapa_divisas_fx.items():
+            try:
+                d_fx = yf.download(par_fx, period="1d", progress=False)
+                if not d_fx.empty:
+                    if isinstance(d_fx.columns, pd.MultiIndex): d_fx.columns = d_fx.columns.get_level_values(0)
+                    fx_rates[mon_sim] = float(d_fx['Close'].dropna().iloc[-1])
+            except: pass
+        
         # 2. BUCLE CUANTITATIVO
         for i, ticker in enumerate(tickers_a_escanear):
             porcentaje = int(((i + 1) / len(tickers_a_escanear)) * 100)
@@ -775,12 +786,35 @@ with tab3:
                 elif pts >= 80: reco = "🟢 ACUMULAR"
                 elif pts >= 70: reco = "🟡 VIGILAR"
 
+                # --- FORMATO FINAL CON MONEDA Y CONVERSIÓN ---
+                mon = obtener_simbolo_moneda(ticker)
+                
+                # Calculamos la conversión a dólares usando la memoria del pre-cargador
+                t_conv_stop = ""
+                tasa_v = fx_rates.get(mon)
+                if mon != "$" and tasa_v:
+                    # Ajuste para la Libra (que cotiza en peniques)
+                    factor = tasa_v / 100 if mon == "GBp" else tasa_v
+                    t_conv_stop = f" (≈ {(stop_l * factor):.2f} $)"
+
+                # Construimos los textos finales
+                str_precio = f"{c_hoy:.2f} {mon}"
+                str_stop = f"{stop_l:.2f} {mon}{t_conv_stop} ({((stop_l/c_hoy)-1)*100:+.1f}%)"
+
                 resultados_temporales.append({
-                    "TICKER": ticker, "NOMBRE": tickers_nombres[ticker], "PUNTOS": pts, "RECOMENDACIÓN": reco,
-                    "TENDENCIA": status_t, "PRECIO HOY": f"{c_hoy:.2f} {obtener_simbolo_moneda(ticker)}",
-                    "STOP LOSS": f"{stop_l:.2f} ({((stop_l/c_hoy)-1):+.1f}%)", "% HOY": f"{pct_h:+.2f}%", 
-                    "% 1 MES": f"{r1m:+.2f}%", "% 6 MESES": f"{r6m:+.2f}%", "% 1 AÑO": f"{r1y:+.2f}%", 
-                    "% 5 AÑOS": f"{r5y:+.2f}%", "ANÁLISIS": " ".join(texto_a) if texto_a else "Estable."
+                    "TICKER": ticker, 
+                    "NOMBRE": tickers_nombres[ticker], 
+                    "PUNTOS": pts, 
+                    "RECOMENDACIÓN": reco,
+                    "TENDENCIA": status_t, 
+                    "PRECIO HOY": str_precio,
+                    "STOP LOSS": str_stop,
+                    "% HOY": f"{pct_h:+.2f}%", 
+                    "% 1 MES": f"{r1m:+.2f}%", 
+                    "% 6 MESES": f"{r6m:+.2f}%", 
+                    "% 1 AÑO": f"{r1y:+.2f}%", 
+                    "% 5 AÑOS": f"{r5y:+.2f}%", 
+                    "ANÁLISIS": " ".join(texto_a) if texto_a else "Estable."
                 })
                 time.sleep(0.01)
             except: continue
