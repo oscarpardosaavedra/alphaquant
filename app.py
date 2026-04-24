@@ -750,99 +750,73 @@ with tab3:
                     elif sma50 < sma200 and distancia_m > -1.8 and sma50 > sma50_prev:
                         proximidad_oro = True
 
-# --- 2. MÓDULO COMPRESIÓN (El Muelle con Secado de Volumen) ---
+                # --- 2. MÓDULO COMPRESIÓN (El Muelle) ---
                 max_14 = float(df['High'].iloc[-14:].max())
                 min_14 = float(df['Low'].iloc[-14:].min())
                 rango_14d = ((max_14 / min_14) - 1) * 100
-                
-                # Evaluamos el "Secado de Volumen" (El volumen de los últimos 5 días es mucho menor que la media mensual)
-                vol_5d = float(df['Volume'].iloc[-5:].mean())
-                secado_volumen = (vol_5d < (vol_m * 0.8)) 
-
-                es_compresion = (rango_14d < 6.0 and c_hoy > sma50 and rsi > 50 and secado_volumen)
+                es_compresion = (rango_14d < 6.0 and c_hoy > sma50 and rsi > 50)
 
                 # --- 3. MÓDULO MOMENTUM (Cohete) ---
                 es_cohete = (pct_h >= 4.0 and c_hoy > sma50)
-
-                # --- 4. MÉTRICAS INSTITUCIONALES (Wall Street) ---
-                max_52 = float(df['High'].iloc[-252:].max())
-                dist_max = ((c_hoy / max_52) - 1) * 100
-                
-                # Fuerza Relativa (Cuánto le saca de ventaja al S&P 500 en el último mes)
-                b_1m = alphaSPY_1m if obtener_region(ticker) == "EEUU" else 0
-                outperformance = r1m - b_1m
-
-                # Fénix (Rebote desde el fondo)
-                isF = (dist_max <= -20 and c_hoy > sma50 and pct_h > 2.0)
 
                 # --- MOTOR DE PUNTUACIÓN Y ANÁLISIS ELABORADO ---
                 p = 0
                 status_t = "Alcista" if c_hoy > sma50 else "Bajista"
                 
+                # Generador de Reporte Analítico (Lenguaje Natural)
                 analisis_parts = []
-                analisis_parts.append(f"Estructura {status_t.lower()} primaria.")
+                analisis_parts.append(f"La acción mantiene una estructura {status_t.lower()} primaria.")
 
                 if c_hoy > sma50: p += 10
                 if sma200 and c_hoy > sma200: p += 10
                 
-                # Módulo Oro
+                # Suma de Patrones
                 if cruce_reciente: 
                     p += 25
-                    analisis_parts.append("✨ 'Cruce de Oro' confirmado (fuerte señal institucional).")
+                    analisis_parts.append("Acaba de confirmar un 'Cruce de Oro' técnico, lo cual representa una fuerte señal institucional de ciclo alcista a largo plazo.")
                 elif proximidad_oro: 
                     p += 15
-                    analisis_parts.append("🎯 Pre-Oro: Medias convergiendo para posible cruce alcista.")
+                    analisis_parts.append("Detectada alta probabilidad de 'Cruce de Oro' inminente; las medias de corto y largo plazo están convergiendo.")
                 
-                # Módulo Muelle (Ahora con exigencia de secado de volumen)
                 if es_compresion: 
                     p += 25
-                    analisis_parts.append(f"🤫 VCP Real: Rango hiper-estrecho ({rango_14d:.1f}%) con 'secado de volumen'. Los vendedores se han agotado.")
+                    analisis_parts.append(f"Muestra un Patrón de Compresión de Volatilidad (VCP): el precio apenas se ha movido un {rango_14d:.1f}% en 2 semanas, indicando una acumulación silenciosa antes de una posible ruptura explosiva.")
                 
-                # Módulo Cohete
                 if es_cohete: 
                     p += 30
-                    analisis_parts.append(f"🚀 Ruptura de Momentum (+{pct_h:.1f}% hoy).")
+                    analisis_parts.append(f"Hoy registra una ruptura agresiva con un avance intradiario del {pct_h:.1f}%, activando la alerta de fuerte momentum direccional.")
                 
-                # Filtro Wall Street 1: Proximidad a Máximos
-                if dist_max >= -15.0:
-                    p += 15
-                    analisis_parts.append("🏆 Cotiza a menos de un 15% de sus máximos anuales (alta probabilidad de ruptura histórica).")
-                elif dist_max < -40.0 and not isF:
-                    p -= 20
-                    analisis_parts.append("⚠️ Acción hundida. Peligro de resistencia vendedora estructural.")
-
-                # Filtro Wall Street 2: Fuerza Relativa (Relative Strength)
-                if outperformance > 5.0:
-                    p += 15
-                    analisis_parts.append(f"💪 Fuerza Relativa extrema: Rinde un {outperformance:.1f}% MÁS que el mercado general este mes.")
-
                 if macd_h > signal_h: 
-                    p += 10
-                    analisis_parts.append("📈 MACD acompañando al alza.")
+                    p += 15
+                    analisis_parts.append("El flujo direccional positivo es respaldado por el indicador MACD.")
 
                 # RSI Inteligente
                 if 50 <= rsi <= 70: 
-                    p += 10
-                    analisis_parts.append(f"RSI óptimo ({rsi:.1f}).")
+                    p += 15
+                    analisis_parts.append(f"Su indicador de fuerza (RSI en {rsi:.1f}) se encuentra en zona de control óptima, con margen para seguir subiendo sin sobrecalentarse.")
                 elif rsi > 70:
                     if es_cohete: 
-                        analisis_parts.append(f"RSI alto ({rsi:.1f}) justificado por pura fuerza motriz.")
+                        analisis_parts.append(f"Aunque el RSI está elevado ({rsi:.1f}), en este contexto técnico confirma pura fuerza motriz en lugar de un simple riesgo de sobrecompra.")
                     else: 
                         p -= 15
-                        analisis_parts.append(f"⚠️ Precaución: Posible sobrecompra (RSI {rsi:.1f}).")
+                        analisis_parts.append(f"Se advierte precaución técnica a muy corto plazo debido a lecturas de sobrecompra (RSI en {rsi:.1f}).")
 
-                # Volumen Inteligente 
+                # Volumen Inteligente (1.2x para cazar entradas a media sesión)
                 if vol_h > (vol_m * 1.2): 
-                    p += 15
-                    analisis_parts.append(f"🐋 Inyección de volumen institucional ({(vol_h/vol_m):.1f}x).")
+                    p += 20
+                    analisis_parts.append(f"Todo este movimiento técnico viene inyectado con volumen institucional notable ({(vol_h/vol_m):.1f}x veces superior a su media habitual).")
 
+                # Fénix (Rebote desde el fondo)
+                max_52 = float(df['High'].iloc[-252:].max())
+                dist_max = ((c_hoy / max_52) - 1) * 100
+                isF = (dist_max <= -20 and c_hoy > sma50 and pct_h > 2.0)
                 if isF: 
                     p = max(p, 92)
-                    analisis_parts.append("🔥 Intentando rebote técnico tras castigo severo.")
+                    analisis_parts.append("El activo está intentando un rebote técnico importante tras una corrección prolongada previa.")
 
                 pts = max(0, min(100, int(p)))
                 analisis_final_texto = " ".join(analisis_parts)
-                
+
                 # --- FUSIÓN ÚNICA: LA ESTRATEGIA ---
                 if pct_h >= 5.0 and vol_h > (vol_m * 1.0) and c_hoy > sma50:
                     pts = max(pts, 95)
@@ -877,6 +851,7 @@ with tab3:
                     t_p = f" (≈ {(c_hoy * f):.2f} $)"
                     t_s = f" (≈ {(stop_v * f):.2f} $)"
 
+                # AQUÍ ELIMINAMOS LAS CLAVES "SEÑAL" Y "TENDENCIA"
                 resultados_temporales.append({
                     "TICKER": ticker,
                     "NOMBRE": tickers_nombres[ticker],
@@ -912,14 +887,14 @@ with tab3:
             
             st.dataframe(df_res.style.map(color_pct, subset=["% HOY", "% 1 MES", "% 6 MESES", "% 1 AÑO", "% 5 AÑOS"]), 
                          use_container_width=False, 
-                         width=2400, # Ancho forzado para barra horizontal
-                         height=600, # Alto forzado para barra vertical
+                         width=2400, 
+                         height=600, 
                          hide_index=True,
                          column_config={
                             "TICKER": st.column_config.TextColumn(help="Símbolo oficial de la empresa en la bolsa."),
                             "NOMBRE": st.column_config.TextColumn(help="Nombre comercial."),
                             "PUNTOS": st.column_config.ProgressColumn("Rating IA", help="Nota global (0-100). >90 es recomendación clara de compra.", min_value=0, max_value=100, format="%d"),
-                            "🎯 SETUP": st.column_config.TextColumn("Patrón de Entrada", help="🤫 ACECHO: Lleva días en compresión (muelle). Ideal para acumular antes del despegue.\n⚡ MOMENTUM: Ya está explotando al alza hoy. \n✨ ORO: La media de 50 cruzó la de 200 (Señal histórica alcista a largo plazo).\n⏳ PRE-ORO: A punto de ocurrir un Cruce de Oro.\n🔥 FÉNIX: Rebote desde un suelo profundo."),
+                            "🎯 SETUP": st.column_config.TextColumn("Patrón de Entrada", help="🤫 ACECHO: Lleva días en compresión (muelle). Ideal para acumular antes del despegue.\n⚡ MOMENTUM: Ya está explotando al alza hoy. \n✨ ORO: La media de 50 cruzó la de 200 (Señal histórica alcista a largo plazo).\n⏳ PRE-ORO: A punto de ocurrir un Cruce de Oro.\n🔥 FÉNIX: Rebote desde un suelo profundo.\n💎 ALFA: Compra Fuerte."),
                             "RSI": st.column_config.TextColumn("RSI", help="Termómetro de fuerza relativa. Entre 55 y 68 es la zona dorada de crecimiento."),
                             "VOL. x": st.column_config.TextColumn("Volumen x", help="Volumen hoy vs la media del último mes. Si es mayor a 1.2x, el mercado está respaldando la subida."),
                             "PRECIO": st.column_config.TextColumn("Precio Actual", help="Cotización y conversión estimada a USD."),
@@ -931,7 +906,6 @@ with tab3:
                             "% 5 AÑOS": st.column_config.TextColumn("5 Años", help="Rendimiento a largo plazo."),
                             "ANÁLISIS": st.column_config.TextColumn("Reporte del Algoritmo", width="large", help="Resumen elaborado de la estructura de mercado actual generada por la IA Oppenheimer.")
                          })
-
 # ------------------------------------------
 # PESTAÑA 4: SALA DE TROFEOS (PERSISTENTE)
 # ------------------------------------------
