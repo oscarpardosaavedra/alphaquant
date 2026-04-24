@@ -880,17 +880,16 @@ with tab4:
                     
                     for i, l in enumerate(listas):
                         with cols[i]:
-
-                st.markdown(f"""
-                <div style="border-top:3px solid {colores[i]}; background:white; padding:10px; border-radius:8px; margin-bottom:10px; box-shadow:0 2px 5px rgba(0,0,0,0.05);">
-                    <div style="display:flex; justify-content:space-between; align-items:center;">
-                        <b style="font-size:15px;">{item['T']}</b> 
-                        <b style="color:{colores[i]}; font-size:15px;">{item['R']:+.2f}%</b>
-                    </div>
-                    <div style="font-size:10px; color:#888; margin-bottom:4px;">{item['F']}</div>
-                    <div style="font-size:11px; color:#444;">
-                        In: <b>{item['E']:.2f}{item['M']}</b> | Actual: <b>{item['A']:.2f}{item['M']}</b>
-                    </div>
-                    <div style="font-size:10px; margin-top:6px; color:#1E90FF; font-weight:bold;">{item['KPI']}</div>
-                </div>
-                """, unsafe_allow_html=True)
+                            st.markdown(f"""
+                            <div style="border-top:3px solid {colores[i]}; background:white; padding:10px; border-radius:8px; margin-bottom:10px; box-shadow:0 2px 5px rgba(0,0,0,0.05);">
+                                <div style="display:flex; justify-content:space-between; align-items:center;">
+                                    <b style="font-size:15px;">{item['T']}</b> 
+                                    <b style="color:{colores[i]}; font-size:15px;">{item['R']:+.2f}%</b>
+                                </div>
+                                <div style="font-size:10px; color:#888; margin-bottom:4px;">{item['F']}</div>
+                                <div style="font-size:11px; color:#444;">
+                                    In: <b>{item['E']:.2f}{item['M']}</b> | Actual: <b>{item['A']:.2f}{item['M']}</b>
+                                </div>
+                                <div style="font-size:10px; margin-top:6px; color:#1E90FF; font-weight:bold;">{item['KPI']}</div>
+                            </div>
+                            """, unsafe_allow_html=True)
