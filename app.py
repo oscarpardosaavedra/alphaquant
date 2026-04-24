@@ -300,7 +300,6 @@ def obtener_estado_mercados():
     
     return {"estado": est_us, "horario": horario_us}, {"estado": est_eu, "horario": horario_eu}, {"estado": est_as, "horario": horario_as}
 
-# ---> FUNCIÓN DE COLOR MOVIDA A ZONA GLOBAL <---
 def color_pct(val):
     if isinstance(val, str) and '%' in val:
         if val.startswith('+'): return 'color: #228B22;' 
@@ -692,6 +691,19 @@ with tab3:
             try: existentes_en_db = ws.col_values(1)
             except: pass
 
+        # 1.5 PRE-DESCARGA DE TIPOS DE CAMBIO (Velocidad extrema)
+        fx_rates = {}
+        mapa_divisas_fx = { "€": "EURUSD=X", "¥": "JPYUSD=X", "GBp": "GBPUSD=X", "kr": "SEKUSD=X", "₹": "INRUSD=X" }
+        for mon, par in mapa_divisas_fx.items():
+            try:
+                d_div_fx = yf.download(par, period="5d", progress=False)
+                if not d_div_fx.empty:
+                    if isinstance(d_div_fx.columns, pd.MultiIndex): d_div_fx.columns = d_div_fx.columns.get_level_values(0)
+                    p_div_fx = d_div_fx['Close']
+                    if isinstance(p_div_fx, pd.DataFrame): p_div_fx = p_div_fx.iloc[:, 0]
+                    fx_rates[mon] = float(p_div_fx.dropna().iloc[-1])
+            except: pass
+
         # 2. BUCLE CUANTITATIVO
         for i, ticker in enumerate(tickers_a_escanear):
             porcentaje = int(((i + 1) / len(tickers_a_escanear)) * 100)
@@ -760,10 +772,23 @@ with tab3:
                 elif pts >= 80: reco = "🟢 ACUMULAR"
                 elif pts >= 70: reco = "🟡 VIGILAR"
 
+                # CONVERSIÓN VISUAL A DÓLARES
+                moneda_ticker = obtener_simbolo_moneda(ticker)
+                tasa_conv = fx_rates.get(moneda_ticker)
+                txt_conv_precio = ""
+                txt_conv_stop = ""
+                if moneda_ticker != "$" and tasa_conv:
+                    factor = tasa_conv / 100 if moneda_ticker == "GBp" else tasa_conv
+                    txt_conv_precio = f" (≈ {(c_hoy * factor):.2f} $)"
+                    txt_conv_stop = f" (≈ {(stop_l * factor):.2f} $)"
+
+                str_precio = f"{c_hoy:.2f} {moneda_ticker}{txt_conv_precio}"
+                str_stop = f"{stop_l:.2f} {moneda_ticker}{txt_conv_stop} ({((stop_l/c_hoy)-1):+.1f}%)"
+
                 resultados_temporales.append({
                     "TICKER": ticker, "NOMBRE": tickers_nombres[ticker], "PUNTOS": pts, "RECOMENDACIÓN": reco,
-                    "TENDENCIA": status_t, "PRECIO HOY": f"{c_hoy:.2f} {obtener_simbolo_moneda(ticker)}",
-                    "STOP LOSS": f"{stop_l:.2f} ({((stop_l/c_hoy)-1):+.1f}%)", "% HOY": f"{pct_h:+.2f}%", 
+                    "TENDENCIA": status_t, "PRECIO HOY": str_precio,
+                    "STOP LOSS": str_stop, "% HOY": f"{pct_h:+.2f}%", 
                     "% 1 MES": f"{r1m:+.2f}%", "% 6 MESES": f"{r6m:+.2f}%", "% 1 AÑO": f"{r1y:+.2f}%", 
                     "% 5 AÑOS": f"{r5y:+.2f}%", "ANÁLISIS": " ".join(texto_a) if texto_a else "Estable."
                 })
@@ -780,7 +805,7 @@ with tab3:
                      use_container_width=True, hide_index=True,
                      column_config={"PUNTOS": st.column_config.NumberColumn(help="Nota 0-100."),
                                     "RECOMENDACIÓN": st.column_config.TextColumn(help="💎 ALFA: Cohete estable.\n🔥 FÉNIX: Rebote suelo."),
-                                    "STOP LOSS": st.column_config.TextColumn(help="Precio de salida ATR."),
+                                    "STOP LOSS": st.column_config.TextColumn(help="Precio de salida ATR en tu broker."),
                                     "ANÁLISIS": st.column_config.TextColumn(width="large")})
 
 # ------------------------------------------
@@ -849,7 +874,7 @@ with tab4:
                                     <b style="color:{cols_color[i]};">{item['R']:+.2f}%</b>
                                 </div>
                                 <div style="font-size:10px; color:#888; margin-top:4px;">Entrada: {item['F']}</div>
-                                <div style="font-size:11px; color:#444; margin-top:4px;">In: <b>{item['E']:.2f}{item['M']}</b> | Actual: <b>{item['A']:.2f}{item['M']}</b></div>
+                                <div style="font-size:11px; color:#444; margin-top:4px;">In: <b>{item['E']:.2f}{item['M']}</b> | Hoy: <b>{item['A']:.2f}{item['M']}</b></div>
                                 <div style="font-size:10px; margin-top:6px; color:#1E90FF; font-weight:bold;">{item['KPI']}</div>
                             </div>
                             """, unsafe_allow_html=True)
