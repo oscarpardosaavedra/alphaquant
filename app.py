@@ -305,7 +305,7 @@ tab1, tab2, tab3, tab4 = st.tabs(["🔬 Análisis Individual", "⚔️ Análisis
 with tab1:
     st.markdown("### 🔍 Selector de Activos")
     
-    col_buscador, col_logo, col_espacio = st.columns([0.8, 0.4, 2.8])
+    col_buscador, col_logo, col_espacio = st.columns([1.5, 0.5, 2])
     with col_buscador:
         ticker_elegido = st.selectbox("Elige la empresa que quieres revisar:", opciones_desplegable)
     with col_logo:
@@ -325,9 +325,17 @@ with tab1:
         
         # 2. PONEMOS LOS BOTONES DE TIEMPO AQUÍ ABAJO (Justo encima del gráfico)
         st.markdown("<br>", unsafe_allow_html=True) # Un poco de aire
-        periodo = st.radio("⏱️ Rango de tiempo del gráfico:", ["1 Mes", "3 Meses", "6 Meses", "1 Año", "5 Años", "10 Años", "Máximo"], index=1, horizontal=True)
-        mapa_tiempo = {"1 Mes": "1mo", "3 Meses": "3mo", "6 Meses": "6mo", "1 Año": "1y", "5 Años": "5y", "10 Años": "10y", "Máximo": "max"}
         
+        col_tiempo, col_tendencia = st.columns([3, 1])
+        with col_tiempo:
+            periodo = st.radio("⏱️ Rango de tiempo del gráfico:", ["1 Mes", "3 Meses", "6 Meses", "1 Año", "5 Años", "10 Años", "Máximo"], index=1, horizontal=True)
+            mapa_tiempo = {"1 Mes": "1mo", "3 Meses": "3mo", "6 Meses": "6mo", "1 Año": "1y", "5 Años": "5y", "10 Años": "10y", "Máximo": "max"}
+        
+        with col_tendencia:
+            st.markdown("<br>", unsafe_allow_html=True) # Para alinear con los botones
+            # ---> AQUÍ ESTÁ EL TEXTO DE AYUDA (TOOLTIP) <---
+            mostrar_tendencia = st.toggle("📈 Mostrar Tendencia (SMA 50)", help="Dibuja una Media Móvil Simple de 50 sesiones. Actúa como una línea de tendencia suavizada: si el precio está por encima, la tendencia es alcista; si está por debajo, es bajista.")
+            
         with st.spinner(f"Cargando datos de {simbolo_real} y rastreando Wall Street..."):
             try:
                 # 1. Datos Yahoo (Precio Histórico)
@@ -521,11 +529,34 @@ with tab1:
                         </div>
                         """, unsafe_allow_html=True)
 
-                    # 5. Gráfica
+                    # --- GRÁFICA CON OPCIÓN DE TENDENCIA ---
                     fig = go.Figure()
+                    # Línea del precio normal (verde)
                     fig.add_trace(go.Scatter(x=datos_limpios.index, y=datos_limpios['Close'], mode='lines', name='Precio', line=dict(color='#228B22', width=2)))
-                    fig.update_layout(title=f"Histórico: {ticker_elegido}", template='plotly_dark', margin=dict(l=0, r=0, t=40, b=0), hovermode="x unified")
+                    
+                    # Si el usuario activa el toggle, dibujamos la SMA 50
+                    if mostrar_tendencia:
+                        if len(datos_limpios) >= 50:
+                            sma_50 = datos_limpios['Close'].rolling(window=50).mean()
+                            fig.add_trace(go.Scatter(
+                                x=datos_limpios.index, 
+                                y=sma_50, 
+                                mode='lines', 
+                                name='Tendencia (SMA 50)', 
+                                line=dict(color='rgba(255, 255, 255, 0.6)', width=1.5, dash='dash')
+                            ))
+                        else:
+                            st.info("No hay suficientes datos históricos para calcular la tendencia de 50 días en este rango de tiempo.")
+
+                    fig.update_layout(
+                        title=f"Histórico: {ticker_elegido}", 
+                        template='plotly_dark', 
+                        margin=dict(l=0, r=0, t=40, b=0), 
+                        hovermode="x unified",
+                        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+                    )
                     st.plotly_chart(fig, use_container_width=True)
+                    
                 else: st.warning("⚠️ Sin datos disponibles.")
             except Exception as e: st.error(f"⚠️ Error técnico: {e}")
 # ------------------------------------------
