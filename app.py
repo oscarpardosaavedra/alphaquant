@@ -760,28 +760,30 @@ with tab3:
                 elif pts >= 80: reco = "🟢 ACUMULAR"
                 elif pts >= 70: reco = "🟡 VIGILAR"
 
-                # --- NUEVO: CÁLCULO DE DIVISAS PARA PRECIO Y STOP LOSS ---
-                simbolo_m = obtener_simbolo_moneda(ticker)
-                txt_precio = f"{c_hoy:.2f} {simbolo_m}"
-                txt_stop = f"{stop_loss:.2f} {simbolo_m} ({dist_stop:+.1f}%)"
-
-                mapa_divisas = { "€": "EURUSD=X", "¥": "JPYUSD=X", "GBp": "GBPUSD=X", "kr": "SEKUSD=X", "₹": "INRUSD=X" }
-                t_div = mapa_divisas.get(simbolo_m)
+                # --- CONVERSIÓN DE DIVISA (BLINDADA PARA NO ROMPER LA LISTA) ---
+                mon = obtener_simbolo_moneda(ticker)
+                txt_stop = f"{stop_loss:.2f} {mon} ({dist_stop:+.1f}%)"
                 
-                if t_div:
-                    try:
-                        d_div = yf.download(t_div, period="1d", progress=False)
-                        if isinstance(d_div.columns, pd.MultiIndex): d_div.columns = d_div.columns.get_level_values(0)
-                        tasa = float(d_div['Close'].dropna().iloc[-1])
-                        factor = tasa / 100 if simbolo_m == "GBp" else tasa
-                        txt_precio = f"{c_hoy:.2f} {simbolo_m} (≈ {(c_hoy * factor):.2f} $)"
-                        txt_stop = f"{stop_loss:.2f} {simbolo_m} (≈ {(stop_loss * factor):.2f} $) ({dist_stop:+.1f}%)"
-                    except: pass
+                if mon != "$":
+                    mapa_divisas = { "€": "EURUSD=X", "¥": "JPYUSD=X", "GBp": "GBPUSD=X", "kr": "SEKUSD=X", "₹": "INRUSD=X" }
+                    t_div = mapa_divisas.get(mon)
+                    if t_div:
+                        try:
+                            # TRY separado: Si esto falla, no perdemos la acción
+                            d_div = yf.download(t_div, period="1d", progress=False)
+                            if not d_div.empty:
+                                if isinstance(d_div.columns, pd.MultiIndex): d_div.columns = d_div.columns.get_level_values(0)
+                                tasa = float(d_div['Close'].dropna().iloc[-1])
+                                factor = tasa / 100 if mon == "GBp" else tasa
+                                txt_stop = f"{stop_loss:.2f} {mon} (≈ {(stop_loss * factor):.2f} $) ({dist_stop:+.1f}%)"
+                        except Exception: 
+                            pass # Si Yahoo falla, mostramos el Stop en euros y punto
 
+                # GUARDAMOS LA ACCIÓN SIEMPRE, TENGA LOS PUNTOS QUE TENGA
                 resultados_temporales.append({
                     "TICKER": ticker, "NOMBRE": tickers_nombres[ticker], "PUNTOS": pts, "RECOMENDACIÓN": reco,
                     "TENDENCIA": status_t, "RSI": f"{rsi:.1f}", "VOL. vs MEDIA": f"{(vol_h/vol_m):.1f}x",
-                    "PRECIO": txt_precio, "STOP LOSS": txt_stop, 
+                    "PRECIO": f"{c_hoy:.2f} {mon}", "STOP LOSS": txt_stop, 
                     "% HOY": f"{pct_h:+.2f}%", "% 1 MES": f"{r1m:+.2f}%", "% 6 MESES": f"{r6m:+.2f}%", 
                     "% 1 AÑO": f"{r1y:+.2f}%", "% 5 AÑOS": f"{r5y:+.2f}%", "MAX (52s)": f"{dist_max:+.2f}%", "ANÁLISIS": analisis_final
                 })
