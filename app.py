@@ -736,7 +736,9 @@ with tab3:
                 sma50_serie = df['Close'].rolling(window=50).mean()
                 sma50 = float(sma50_serie.iloc[-1])
                 sma50_prev = float(sma50_serie.iloc[-6])
-                sma200 = float(df['Close'].rolling(window=200).mean().iloc[-1]) if len(df) >= 200 else None
+                sma200_serie = df['Close'].rolling(window=200).mean()
+                sma200 = float(sma200_serie.iloc[-1]) if len(df) >= 200 else None
+                
                 delta = df['Close'].diff()
                 gain = delta.where(delta > 0, 0).rolling(window=14).mean()
                 loss = -delta.where(delta < 0, 0).rolling(window=14).mean()
@@ -754,7 +756,7 @@ with tab3:
                 atr = float(tr.rolling(14).mean().iloc[-1])
                 stop_l = c_hoy - (atr * 2.5)
 
-                # --- CÁLCULOS TÉCNICOS EXTRA (PODER TOTAL) ---
+                # --- CÁLCULOS TÉCNICOS EXTRA ---
                 exp1 = df['Close'].ewm(span=12, adjust=False).mean()
                 exp2 = df['Close'].ewm(span=26, adjust=False).mean()
                 macd = exp1 - exp2
@@ -762,132 +764,110 @@ with tab3:
                 macd_hoy = macd.iloc[-1]
                 signal_hoy = signal.iloc[-1]
 
-                cruce_oro = False
+                # --- DETECTOR DE CRUCE DE ORO (CONFIRMADO E INMINENTE) ---
+                cruce_reciente = False
+                proximidad_oro = False
                 if sma200:
-                    sma50_prev_5 = float(sma50_serie.iloc[-6])
-                    sma200_prev_5 = float(df['Close'].rolling(window=200).mean().iloc[-6])
-                    if sma50 > sma200 and sma50_prev_5 <= sma200_prev_5:
-                        cruce_oro = True
+                    distancia_medias = ((sma50 / sma200) - 1) * 100
+                    # Confirmado (hoy arriba, ayer abajo)
+                    if sma50 > sma200 and sma50_serie.iloc[-2] <= sma200_serie.iloc[-2]:
+                        cruce_reciente = True
+                    # Inminente (debajo pero a menos de 1.8% y la de 50 subiendo fuerte)
+                    elif sma50 < sma200 and distancia_medias > -1.8 and sma50 > sma50_prev:
+                        proximidad_oro = True
 
-                # --- MOTOR DE PUNTUACIÓN TODOPODEROSO ---
+                # --- MOTOR DE PUNTUACIÓN ---
                 p = 0
-                status_t = "Lateral/Bajista"
+                status_t = "Lateral"
                 texto_a = []
                 
                 if c_hoy > sma50: p += 10; status_t = "Alcista Corto"
                 if sma200 and c_hoy > sma200: p += 10
                 if sma200 and sma50 > sma200: 
-                    p += 10
-                    status_t = "Alcista Estructural"
-                    if cruce_oro:
-                        p += 25 
-                        texto_a.append("✨ CRUCE DE ORO RECIENTE (Señal histórica).")
-
-                if macd_hoy > signal_hoy:
-                    p += 15
-                    texto_a.append("📈 Impulso alcista (MACD).")
-
-                if 55 <= rsi <= 68: p += 15; texto_a.append("✅ RSI sano.")
-                elif rsi > 72: p -= 15; texto_a.append("⚠️ Acción muy 'caliente'.")
+                    p += 10; status_t = "Alcista Estructural"
+                    if cruce_reciente: p += 25; texto_a.append("🚀 ¡Cruce de Oro confirmado!")
                 
-                if vol_h > (vol_m * 1.8): 
-                    p += 20
-                    texto_a.append("🐋 Dinero institucional entrando.")
+                if proximidad_oro: p += 15; texto_a.append("🎯 Pre-Oro: A punto de explotar.")
+                if macd_hoy > signal_hoy: p += 15; texto_a.append("📈 Impulso MACD alcista.")
+                if 55 <= rsi <= 68: p += 15; texto_a.append("✅ RSI óptimo.")
+                elif rsi > 72: p -= 15; texto_a.append("⚠️ Sobrecompra.")
+                if vol_h > (vol_m * 1.8): p += 20; texto_a.append("🐋 Manos fuertes entrando.")
 
                 isF = False
                 isM = False
                 if dist_max <= -20 and c_hoy > sma50 and vol_h > (vol_m * 1.8) and pct_h > 1.5:
-                    p = max(p, 92); isF = True; status_t = "Giro Fénix 🔥"
-                
+                    p = max(p, 92); isF = True
                 if pct_h >= 4.5 and vol_h >= (vol_m * 2.5) and c_hoy > sma50:
-                    p = max(p, 95); isM = True; status_t = "Ruptura Momentum ⚡"
+                    p = max(p, 95); isM = True
 
                 pts = max(0, min(100, int(p)))
 
+                # --- FUSIÓN DE ESTRATEGIA (VERDICTO ÚNICO) ---
+                if pts >= 90:
+                    if cruce_reciente: veredicto = "✨ ORO (Tendencia Élite)"
+                    elif proximidad_oro: veredicto = "⏳ PRE-ORO (Oportunidad)"
+                    elif isM: veredicto = "⚡ MOMENTUM (Cohete)"
+                    elif isF: veredicto = "🔥 FÉNIX (Rebote)"
+                    else: veredicto = "💎 ALFA (Compra Fuerte)"
+                elif pts >= 80: veredicto = "🟢 ACUMULAR"
+                elif pts >= 70: veredicto = "🟡 VIGILAR"
+                else: veredicto = "⚪ ESPERAR"
+
+                # Guardamos registro en DB si es excelente
                 if pts >= 90 and ticker not in existentes_en_db and ws is not None:
                     ws.append_row([ticker, tickers_nombres[ticker], datetime.datetime.now().strftime("%Y-%m-%d %H:%M"), float(c_hoy), int(pts)])
                     existentes_en_db.append(ticker)
 
-                reco = "⚪ ESPERAR"
-                if pts >= 90:
-                    if isM: reco = "⚡ COMPRA (MOMENTUM)"
-                    elif isF: reco = "🔥 COMPRA (FÉNIX)"
-                    else: reco = "💎 COMPRA FUERTE (ALFA)"
-                elif pts >= 80: reco = "🟢 ACUMULAR"
-                elif pts >= 70: reco = "🟡 VIGILAR"
-
-                icono_senal = "Normal"
-                if cruce_oro: icono_senal = "✨ CRUCE DE ORO"
-                elif isM: icono_senal = "⚡ MOMENTUM"
-                elif isF: icono_senal = "🔥 FÉNIX"
-                elif macd_hoy > signal_hoy and macd.iloc[-2] <= signal.iloc[-2]: icono_senal = "🚀 GIRO MACD"
-
-                # --- FORMATO FINAL Y GUARDADO ---
+                # Formateo de moneda y conversiones
                 mon = obtener_simbolo_moneda(ticker)
                 tasa_v = fx_rates.get(mon)
                 t_conv_p, t_conv_s = "", ""
                 if mon != "$" and tasa_v:
-                    f = tasa_v / 100 if mon == "GBp" else tasa_v
-                    t_conv_p = f" (≈ {(c_hoy * f):.2f} $)"
-                    t_conv_s = f" (≈ {(stop_l * f):.2f} $)"
+                    factor = tasa_v / 100 if mon == "GBp" else tasa_v
+                    t_conv_p = f" (≈ {(c_hoy * factor):.2f} $)"
+                    t_conv_s = f" (≈ {(stop_l * factor):.2f} $)"
 
                 resultados_temporales.append({
                     "TICKER": ticker, 
                     "NOMBRE": tickers_nombres[ticker], 
-                    "PUNTOS": pts, 
-                    "SEÑAL ✨": icono_senal,
-                    "RECOMENDACIÓN": reco,
-                    "TENDENCIA": status_t, 
+                    "RATING": pts, 
+                    "🎯 ESTRATEGIA": veredicto,
                     "RSI": f"{rsi:.1f}", 
-                    "VOL. vs MEDIA": f"{(vol_h/vol_m):.1f}x",
-                    "PRECIO HOY": f"{c_hoy:.2f} {mon}{t_conv_p}",
-                    "STOP LOSS": f"{stop_l:.2f} {mon}{t_conv_s} ({((stop_l/c_hoy)-1)*100:+.1f}%)",
-                    "% HOY": f"{pct_h:+.2f}%", 
-                    "% 1 MES": f"{r1m:+.2f}%", 
-                    "% 6 MESES": f"{r6m:+.2f}%", 
-                    "% 1 AÑO": f"{r1y:+.2f}%", 
-                    "% 5 AÑOS": f"{r5y:+.2f}%", 
-                    "ANÁLISIS": " | ".join(texto_a) if texto_a else "✅ Estable."
+                    "VOL. x": f"{(vol_h/vol_m):.1f}x",
+                    "PRECIO": f"{c_hoy:.2f}{mon}{t_conv_p}",
+                    "STOP LOSS": f"{stop_l:.2f}{mon}{t_conv_s}",
+                    "ANÁLISIS": f"[{status_t}] " + (" | ".join(texto_a) if texto_a else "Estable.")
                 })
                 time.sleep(0.01)
             except: continue
             
         barra_progreso.empty()
         mensaje_estado.empty()
-        
         st.session_state.resultados_radar = resultados_temporales
         st.session_state.mercado_cazado = mercado_objetivo
 
-    # --- ZONA DE DIBUJADO DE RESULTADOS ---
+    # --- DIBUJADO DE RESULTADOS ---
     if st.session_state.resultados_radar is not None:
         merc_txt = st.session_state.get('mercado_cazado', 'Todos')
         st.success(f"🎯 Caza terminada para: **{merc_txt}**")
         
         if len(st.session_state.resultados_radar) == 0:
-            st.info("🕵️‍♂️ **Escaneo completado:** Ningún activo de este mercado ha alcanzado hoy la excelencia (90+ puntos).")
+            st.info("🕵️‍♂️ **Escaneo completado:** Ningún activo ha superado el filtro de 90 puntos.")
         else:
             df_res = pd.DataFrame(st.session_state.resultados_radar)
-            df_res = df_res.sort_values(by="PUNTOS", ascending=False).reset_index(drop=True)
-            st.dataframe(df_res.style.map(color_pct, subset=["% HOY", "% 1 MES", "% 6 MESES", "% 1 AÑO", "% 5 AÑOS"]), 
-                         use_container_width=False, 
-                         width=2000, height=400, hide_index=True,
+            df_res = df_res.sort_values(by="RATING", ascending=False).reset_index(drop=True)
+            
+            st.dataframe(df_res, 
+                         use_container_width=True, 
+                         height=500, 
+                         hide_index=True,
                          column_config={
-                            "TICKER": st.column_config.TextColumn(help="Símbolo en bolsa."),
-                            "NOMBRE": st.column_config.TextColumn(help="Nombre de la empresa."),
-                            "PUNTOS": st.column_config.NumberColumn(help="Nota 0-100. Solo >90 es compra."),
-                            "SEÑAL ✨": st.column_config.TextColumn(help="Eventos clave:\n✨ CRUCE DE ORO: Tendencia 50 supera a 200.\n🚀 GIRO MACD: Impulso alcista nuevo.\n⚡ MOMENTUM: Explosión hoy.\n🔥 FÉNIX: Rebote desde el suelo."),
-                            "RECOMENDACIÓN": st.column_config.TextColumn(help="💎 ALFA: Tendencia segura.\n🔥 FÉNIX: Rebote tras gran caída.\n⚡ MOMENTUM: Subida salvaje hoy con volumen extremo."),
-                            "TENDENCIA": st.column_config.TextColumn(help="Estructura de las medias móviles. 'Alcista Estructural' es lo mejor."),
-                            "RSI": st.column_config.TextColumn(help="Fuerza relativa (55-68 es ideal)."),
-                            "VOL. vs MEDIA": st.column_config.TextColumn(help="Volumen de hoy vs media (más de 1.0x es bueno)."),
-                            "PRECIO HOY": st.column_config.TextColumn(help="Precio actual en moneda local y dólares."),
-                            "STOP LOSS": st.column_config.TextColumn(help="Tu paracaídas automático."),
-                            "% HOY": st.column_config.TextColumn(help="Rendimiento de hoy."),
-                            "% 1 MES": st.column_config.TextColumn(help="Rendimiento del último mes."),
-                            "% 6 MESES": st.column_config.TextColumn(help="Rendimiento de los últimos 6 meses."),
-                            "% 1 AÑO": st.column_config.TextColumn(help="Rendimiento anualizado."),
-                            "% 5 AÑOS": st.column_config.TextColumn(help="Comportamiento a largo plazo."),
-                            "ANÁLISIS": st.column_config.TextColumn(width="large", help="Resumen del algoritmo.")
+                            "RATING": st.column_config.ProgressColumn("Rating", help="Nota 0-100", min_value=0, max_value=100, format="%d"),
+                            "🎯 ESTRATEGIA": st.column_config.TextColumn("Estrategia", help="✨ ORO: Tendencia histórica.\n⏳ PRE-ORO: Anticipación al cruce.\n⚡ MOMENTUM: Explosión hoy.\n🔥 FÉNIX: Rebote suelo."),
+                            "RSI": st.column_config.TextColumn("RSI", help="Ideal entre 55-68."),
+                            "VOL. x": st.column_config.TextColumn("Vol. x", help="Volumen hoy vs media mensual."),
+                            "STOP LOSS": st.column_config.TextColumn("Escudo Venta", help="Precio de salida automático en tu broker."),
+                            "ANÁLISIS": st.column_config.TextColumn("Contexto Algorítmico", width="large")
                          })
 
 # ------------------------------------------
