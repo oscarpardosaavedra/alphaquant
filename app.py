@@ -755,19 +755,37 @@ with tab3:
                     ws.append_row([ticker, tickers_nombres[ticker], datetime.datetime.now().strftime("%Y-%m-%d %H:%M"), float(c_hoy), int(pts)])
                     existentes_en_db.append(ticker)
 
-                reco = "⚪ ESPERAR"
+reco = "⚪ ESPERAR"
                 if pts >= 90: reco = "💎 COMPRA FUERTE (ALFA)" if not isF else "🔥 COMPRA (FÉNIX)"
                 elif pts >= 80: reco = "🟢 ACUMULAR"
                 elif pts >= 70: reco = "🟡 VIGILAR"
 
+                # --- NUEVO: CÁLCULO DE DIVISAS PARA PRECIO Y STOP LOSS ---
+                simbolo_m = obtener_simbolo_moneda(ticker)
+                txt_precio = f"{c_hoy:.2f} {simbolo_m}"
+                txt_stop = f"{stop_loss:.2f} {simbolo_m} ({dist_stop:+.1f}%)"
+
+                mapa_divisas = { "€": "EURUSD=X", "¥": "JPYUSD=X", "GBp": "GBPUSD=X", "kr": "SEKUSD=X", "₹": "INRUSD=X" }
+                t_div = mapa_divisas.get(simbolo_m)
+                
+                if t_div:
+                    try:
+                        d_div = yf.download(t_div, period="1d", progress=False)
+                        if isinstance(d_div.columns, pd.MultiIndex): d_div.columns = d_div.columns.get_level_values(0)
+                        tasa = float(d_div['Close'].dropna().iloc[-1])
+                        factor = tasa / 100 if simbolo_m == "GBp" else tasa
+                        txt_precio = f"{c_hoy:.2f} {simbolo_m} (≈ {(c_hoy * factor):.2f} $)"
+                        txt_stop = f"{stop_loss:.2f} {simbolo_m} (≈ {(stop_loss * factor):.2f} $) ({dist_stop:+.1f}%)"
+                    except: pass
+
                 resultados_temporales.append({
                     "TICKER": ticker, "NOMBRE": tickers_nombres[ticker], "PUNTOS": pts, "RECOMENDACIÓN": reco,
-                    "TENDENCIA": status_t, "PRECIO HOY": f"{c_hoy:.2f} {obtener_simbolo_moneda(ticker)}",
-                    "STOP LOSS": f"{stop_l:.2f} ({((stop_l/c_hoy)-1):+.1f}%)", "% HOY": f"{pct_h:+.2f}%", 
-                    "% 1 MES": f"{r1m:+.2f}%", "% 6 MESES": f"{r6m:+.2f}%", "% 1 AÑO": f"{r1y:+.2f}%", 
-                    "% 5 AÑOS": f"{r5y:+.2f}%", "ANÁLISIS": " ".join(texto_a) if texto_a else "Estable."
+                    "TENDENCIA": status_t, "RSI": f"{rsi:.1f}", "VOL. vs MEDIA": f"{(vol_h/vol_m):.1f}x",
+                    "PRECIO": txt_precio, "STOP LOSS": txt_stop, 
+                    "% HOY": f"{pct_h:+.2f}%", "% 1 MES": f"{r1m:+.2f}%", "% 6 MESES": f"{r6m:+.2f}%", 
+                    "% 1 AÑO": f"{r1y:+.2f}%", "% 5 AÑOS": f"{r5y:+.2f}%", "MAX (52s)": f"{dist_max:+.2f}%", "ANÁLISIS": analisis_final
                 })
-                time.sleep(0.01)
+                time.sleep(0.05) 
             except: continue
             
         barra_progreso.progress(100, text="✅ Caza Finalizada")
