@@ -662,10 +662,10 @@ with tab3:
     elif btn_asia: mercado_objetivo = "Asia"
 
     if mercado_objetivo:
-        # Limpieza de fantasmas antes de empezar
+        # 0. Limpieza de estado para evitar "fantasmas"
         st.session_state.resultados_radar = None
         
-        if mercado_objetivo == "EEUU" and "Cerrado" in us["estado"]: st.warning("⚠️ **Aviso:** Wall Street cerrado.")
+        if mercado_objetivo == "EEUU" and "Cerrado" in us["estado"]: st.warning("⚠️ **Aviso:** Wall Street está cerrado.")
         elif mercado_objetivo == "Europa" and "Cerrado" in eu["estado"]: st.warning("⚠️ **Aviso:** Mercado europeo cerrado.")
         elif mercado_objetivo == "Asia" and "Cerrado" in asia["estado"]: st.warning("⚠️ **Aviso:** Mercado asiático cerrado.")
 
@@ -674,10 +674,10 @@ with tab3:
         mensaje_estado = st.empty()
         mensaje_estado.info(f"🚀 Ejecutando Algoritmo Oppenheimer ULTRA para: **{mercado_objetivo}**...")
         
-        barra_progreso = st.progress(0, text="Escaneando ADN de activos...")
+        barra_progreso = st.progress(0, text="Analizando ADN financiero...")
         resultados_temporales = []
         
-        # 1. CALIBRACIÓN BENCHMARK
+        # 1. Calibración Benchmark
         alphaSPY_1m = 0
         try:
             spy_data = yf.download("SPY", period="1y", progress=False)
@@ -686,13 +686,13 @@ with tab3:
             alphaSPY_1m = ((float(spy_cierres.iloc[-1]) / float(spy_cierres.iloc[-21])) - 1) * 100
         except: pass
 
+        # 2. Base de Datos y Divisas
         ws = conectar_db()
         existentes_en_db = []
         if ws:
             try: existentes_en_db = ws.col_values(1)
             except: pass
 
-        # Pre-cargador de divisas
         fx_rates = {}
         mapa_fx = { "€": "EURUSD=X", "¥": "JPYUSD=X", "GBp": "GBPUSD=X", "kr": "SEKUSD=X", "₹": "INRUSD=X" }
         for mon_sim, par_fx in mapa_fx.items():
@@ -703,10 +703,10 @@ with tab3:
                     fx_rates[mon_sim] = float(d_fx['Close'].dropna().iloc[-1])
             except: pass
         
-        # 2. BUCLE DE CAZA
+        # 3. BUCLE DE ANÁLISIS
         for i, ticker in enumerate(tickers_a_escanear):
             porc = int(((i + 1) / len(tickers_a_escanear)) * 100)
-            barra_progreso.progress((i + 1) / len(tickers_a_escanear), text=f"⏳ `Evaluando: {ticker.ljust(6)} | {porc}%`")
+            barra_progreso.progress((i + 1) / len(tickers_a_escanear), text=f"⏳ `Cazando: {ticker.ljust(6)} | {porc}%`")
             
             try:
                 sym_y = a_yahoo(ticker)
@@ -715,53 +715,52 @@ with tab3:
                 df = data[['Close', 'High', 'Low', 'Volume']].dropna()
                 if len(df) < 200: continue 
 
-                # Datos básicos
+                # Datos básicos y medias
                 c_hoy = float(df['Close'].iloc[-1])
                 c_ayer = float(df['Close'].iloc[-2])
                 pct_h = ((c_hoy / c_ayer) - 1) * 100
                 vol_h, vol_m = float(df['Volume'].iloc[-1]), float(df['Volume'].iloc[-20:].mean())
                 
-                # Medias y RSI
                 sma50_serie = df['Close'].rolling(window=50).mean()
                 sma200_serie = df['Close'].rolling(window=200).mean()
                 sma50, sma200 = float(sma50_serie.iloc[-1]), float(sma200_serie.iloc[-1])
                 sma50_prev = float(sma50_serie.iloc[-6])
                 
+                # RSI e Impulso MACD
                 delta = df['Close'].diff()
                 gain = delta.where(delta > 0, 0).rolling(14).mean()
                 loss = -delta.where(delta < 0, 0).rolling(14).mean()
                 rsi = float(100 - (100 / (1 + (gain / loss))).iloc[-1])
                 
-                # ATR y Stop Loss
-                tr = pd.concat([df['High']-df['Low'], np.abs(df['High']-df['Close'].shift()), np.abs(df['Low']-df['Close'].shift())], axis=1).max(axis=1)
-                atr = float(tr.rolling(14).mean().iloc[-1])
-                stop_l = c_hoy - (atr * 2.5)
-
-                # MACD e Impulso
                 exp1 = df['Close'].ewm(span=12, adjust=False).mean()
                 exp2 = df['Close'].ewm(span=26, adjust=False).mean()
-                macd_h, signal_h = (exp1 - exp2).iloc[-1], (exp1 - exp2).ewm(span=9, adjust=False).mean().iloc[-1]
+                macd_h = (exp1 - exp2).iloc[-1]
+                signal_h = (exp1 - exp2).ewm(span=9, adjust=False).mean().iloc[-1]
 
-                # --- DETECTOR DE CRUCE DE ORO (PRE Y POST) ---
+                # --- DETECTOR CRUCE DE ORO (PRE Y POST) ---
                 cruce_reciente = False
                 proximidad_oro = False
-                distancia = ((sma50 / sma200) - 1) * 100
-                if sma50 > sma200 and sma50_serie.iloc[-2] <= sma200_serie.iloc[-2]: cruce_reciente = True
-                elif sma50 < sma200 and distancia > -1.8 and sma50 > sma50_prev: proximidad_oro = True
+                distancia_m = ((sma50 / sma200) - 1) * 100
+                if sma50 > sma200 and sma50_serie.iloc[-2] <= sma200_serie.iloc[-2]:
+                    cruce_reciente = True
+                elif sma50 < sma200 and distancia_m > -1.8 and sma50 > sma50_prev:
+                    proximidad_oro = True
 
-                # --- MOTOR DE PUNTUACIÓN ---
+                # --- MOTOR DE PUNTUACIÓN TODOPODEROSO ---
                 p = 0
                 status_t = "Lateral"
                 texto_a = []
+                
                 if c_hoy > sma50: p += 10; status_t = "Alcista Corto"
                 if c_hoy > sma200: p += 10; status_t = "Alcista Estructural"
-                if cruce_reciente: p += 25; texto_a.append("🚀 Cruce de Oro!")
-                if proximidad_oro: p += 15; texto_a.append("🎯 Pre-Oro (Inminente)")
-                if macd_h > signal_h: p += 15; texto_a.append("📈 Impulso MACD")
-                if 55 <= rsi <= 68: p += 15
-                if vol_h > (vol_m * 1.8): p += 20; texto_a.append("🐋 Ballenas comprando")
+                if cruce_reciente: p += 25; texto_a.append("✨ Cruce de Oro confirmado.")
+                if proximidad_oro: p += 15; texto_a.append("🎯 Pre-Oro: A punto de cruzar.")
+                if macd_h > signal_h: p += 15; texto_a.append("📈 MACD al alza.")
+                if 55 <= rsi <= 68: p += 15; texto_a.append("✅ RSI equilibrado.")
+                elif rsi > 72: p -= 15; texto_a.append("⚠️ Muy caliente.")
+                if vol_h > (vol_m * 1.8): p += 20; texto_a.append("🐋 Entrada institucional.")
 
-                # Módulos Especiales
+                # Módulos Momentum y Fénix
                 max_52 = float(df['High'].iloc[-252:].max())
                 dist_max = ((c_hoy / max_52) - 1) * 100
                 isF = (dist_max <= -20 and c_hoy > sma50 and vol_h > (vol_m * 1.8) and pct_h > 1.5)
@@ -771,34 +770,43 @@ with tab3:
 
                 pts = max(0, min(100, int(p)))
 
-                # --- ESTRATEGIA ÚNICA ---
+                # --- VERDICTO DE ESTRATEGIA ---
                 if pts >= 90:
-                    if cruce_reciente: est = "✨ ORO (Tendencia Élite)"
-                    elif proximidad_oro: est = "⏳ PRE-ORO (Oportunidad)"
+                    if cruce_reciente: est = "✨ ORO (Élite)"
+                    elif proximidad_oro: est = "⏳ PRE-ORO (Entrada)"
                     elif isM: est = "⚡ MOMENTUM (Cohete)"
                     elif isF: est = "🔥 FÉNIX (Rebote)"
-                    else: est = "💎 ALFA (Compra Fuerte)"
+                    else: est = "💎 ALFA (Fuerte)"
                 elif pts >= 80: est = "🟢 ACUMULAR"
                 elif pts >= 70: est = "🟡 VIGILAR"
                 else: est = "⚪ ESPERAR"
 
-                # Guardar en DB
+                # DB Trofeos
                 if pts >= 90 and ticker not in existentes_en_db and ws:
                     ws.append_row([ticker, tickers_nombres[ticker], datetime.datetime.now().strftime("%Y-%m-%d %H:%M"), float(c_hoy), int(pts)])
                     existentes_en_db.append(ticker)
 
-                # Formateo moneda
+                # Formateo moneda y Stop Loss
                 mon = obtener_simbolo_moneda(ticker)
+                tr_vals = pd.concat([df['High']-df['Low'], np.abs(df['High']-df['Close'].shift()), np.abs(df['Low']-df['Close'].shift())], axis=1).max(axis=1)
+                atr_v = float(tr_vals.rolling(14).mean().iloc[-1])
+                stop_v = c_hoy - (atr_v * 2.5)
+                
                 t_p, t_s = "", ""
                 if mon != "$" and fx_rates.get(mon):
                     f = fx_rates[mon] / 100 if mon == "GBp" else fx_rates[mon]
                     t_p = f" (≈ {(c_hoy * f):.2f} $)"
-                    t_s = f" (≈ {(stop_l * f):.2f} $)"
+                    t_s = f" (≈ {(stop_v * f):.2f} $)"
 
                 resultados_temporales.append({
-                    "TICKER": ticker, "NOMBRE": tickers_nombres[ticker], "RATING": pts, 
-                    "🎯 ESTRATEGIA": est, "RSI": f"{rsi:.1f}", "VOL. x": f"{(vol_h/vol_m):.1f}x",
-                    "PRECIO": f"{c_hoy:.2f}{mon}{t_p}", "STOP LOSS": f"{stop_l:.2f}{mon}{t_s}",
+                    "TICKER": ticker,
+                    "NOMBRE": tickers_nombres[ticker],
+                    "RATING": pts,
+                    "🎯 ESTRATEGIA": est,
+                    "RSI": f"{rsi:.1f}",
+                    "VOLUMEN": f"{(vol_h/vol_m):.1f}x",
+                    "PRECIO": f"{c_hoy:.2f}{mon}{t_p}",
+                    "STOP LOSS": f"{stop_v:.2f}{mon}{t_s}",
                     "ANÁLISIS": f"[{status_t}] " + (" | ".join(texto_a) if texto_a else "Estable.")
                 })
             except: continue
@@ -813,19 +821,21 @@ with tab3:
         st.success(f"🎯 Caza terminada para: **{st.session_state.get('mercado_cazado', 'Todos')}**")
         
         if not st.session_state.resultados_radar:
-            st.info("🕵️‍♂️ Sin activos de 90+ puntos hoy.")
+            st.info("🕵️‍♂️ Sin activos detectados con la puntuación mínima.")
         else:
             df_res = pd.DataFrame(st.session_state.resultados_radar)
             df_res = df_res.sort_values(by="RATING", ascending=False).reset_index(drop=True)
             
-            # --- AQUÍ ESTABA EL ERROR: HEMOS QUITADO EL .style.map QUE PETA ---
             st.dataframe(df_res, 
-                         use_container_width=True, height=500, hide_index=True,
+                         use_container_width=True, 
+                         height=500, 
+                         hide_index=True,
                          column_config={
-                            "RATING": st.column_config.ProgressColumn("Rating", help="Nota 0-100", min_value=0, max_value=100, format="%d"),
-                            "🎯 ESTRATEGIA": st.column_config.TextColumn("Estrategia", help="✨ ORO: Confirmado.\n⏳ PRE-ORO: A punto de cruzar.\n⚡ MOMENTUM: Subida salvaje.\n🔥 FÉNIX: Rebote suelo."),
-                            "ANÁLISIS": st.column_config.TextColumn("Contexto", width="large"),
-                            "STOP LOSS": st.column_config.TextColumn("Escudo Venta", help="Precio para salir si cae.")
+                            "RATING": st.column_config.ProgressColumn("Puntos", help="Rating Oppenheimer (0-100).", min_value=0, max_value=100, format="%d"),
+                            "🎯 ESTRATEGIA": st.column_config.TextColumn("Estrategia", help="✨ ORO: Tendencia histórica.\n⏳ PRE-ORO: Antes del cruce.\n⚡ MOMENTUM: Subida salvaje.\n🔥 FÉNIX: Rebote suelo."),
+                            "VOLUMEN": st.column_config.TextColumn("Volumen x", help="Volumen hoy vs media del mes."),
+                            "STOP LOSS": st.column_config.TextColumn("Escudo Venta", help="Precio de salida para proteger capital."),
+                            "ANÁLISIS": st.column_config.TextColumn("Contexto", width="large", help="Explicación detallada del algoritmo.")
                          })
 
 # ------------------------------------------
