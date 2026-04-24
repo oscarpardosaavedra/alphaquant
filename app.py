@@ -641,7 +641,7 @@ with tab2:
                 st.plotly_chart(fig_comp, use_container_width=True)
 
 # ------------------------------------------
-# PESTAÑA 3: RADAR DE CAZA (MOTOR "OPPENHEIMER" V2.0 - COLUMNAS QUANT)
+# PESTAÑA 3: RADAR DE CAZA (MOTOR "OPPENHEIMER" V2.0 + TOOLTIPS)
 # ------------------------------------------
 with tab3:
     st.markdown("### 🎯 Selecciona tu Objetivo")
@@ -704,7 +704,6 @@ with tab3:
             
             try:
                 sym_y = a_yahoo(ticker)
-                # Bajamos 2 años para tener datos de la SMA 200
                 data = yf.download(sym_y, period="2y", progress=False)
                 
                 if isinstance(data.columns, pd.MultiIndex): data.columns = data.columns.get_level_values(0)
@@ -712,63 +711,43 @@ with tab3:
                 
                 if len(df) < 50: continue
                 
-                # --- CÁLCULOS QUANT ---
+                # --- CÁLCULOS ---
                 c_hoy = float(df['Close'].iloc[-1])
                 c_ayer = float(df['Close'].iloc[-2])
                 pct_h = ((c_hoy / c_ayer) - 1) * 100
                 vol_h = float(df['Volume'].iloc[-1])
                 vol_m = float(df['Volume'].iloc[-20:].mean())
-                
-                # Medias (Tendencia)
                 sma50 = float(df['Close'].rolling(window=50).mean().iloc[-1])
                 sma200 = float(df['Close'].rolling(window=200).mean().iloc[-1]) if len(df) >= 200 else None
-                
-                # RSI 14 (Momentum)
                 delta = df['Close'].diff()
                 gain = delta.where(delta > 0, 0).rolling(window=14).mean()
                 loss = -delta.where(delta < 0, 0).rolling(window=14).mean()
                 rs = gain / loss
                 rsi = float(100 - (100 / (1 + rs)).iloc[-1])
                 
-                # Rendimientos
                 def ret_d(d): return ((c_hoy / float(df['Close'].iloc[-(d+1)])) - 1) * 100 if len(df) > d else 0
                 r1m, r6m, r1y = ret_d(21), ret_d(126), ret_d(252)
-                
                 max_52 = float(df['High'].iloc[-252:].max())
                 dist_max = ((c_hoy / max_52) - 1) * 100
                 
-                # --- SISTEMA DE PUNTUACIÓN (Máx 100) ---
+                # --- PUNTUACIÓN ---
                 p = 30
                 status_t = "Neutral"
-                
-                if c_hoy > sma50: 
-                    p += 15
-                    status_t = "Alcista Corto"
+                if c_hoy > sma50: p += 15; status_t = "Alcista Corto"
                 if sma200 and c_hoy > sma200: p += 10
-                if sma200 and sma50 > sma200: 
-                    p += 10
-                    status_t = "Alcista Fuerte (Oro)"
-                
-                if 55 <= rsi <= 72: p += 15 # RSI Punto Dulce
-                elif rsi > 75: p -= 10 # Sobrecompra
-                elif rsi < 35: p -= 10 # Debilidad
-                
-                if vol_h > (vol_m * 1.5) and pct_h > 0: p += 15 # Smart Money
-                
+                if sma200 and sma50 > sma200: p += 10; status_t = "Alcista Fuerte (Oro)"
+                if 55 <= rsi <= 72: p += 15
+                elif rsi > 75: p -= 10
+                elif rsi < 35: p -= 10
+                if vol_h > (vol_m * 1.5) and pct_h > 0: p += 15
                 reg = obtener_region(ticker)
                 if r1m > (alphaSPY_1m if reg == "EEUU" else 0): p += 10
                 if r6m < 0: p -= 15
-
-                # Sistema Fénix (Detector de giros en el suelo)
                 isF = False
                 if dist_max <= -20 and c_hoy > sma50 and vol_h > (vol_m * 1.3) and pct_h > 1.5:
-                    p = max(p, 92)
-                    isF = True
-                    status_t = "Giro Fénix 🔥"
+                    p = max(p, 92); isF = True; status_t = "Giro Fénix 🔥"
                 
                 pts = max(0, min(100, int(p)))
-
-                # Guardado automático en DB si es excelente
                 if pts >= 90 and ticker not in existentes_en_db and ws is not None:
                     fecha_h = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
                     ws.append_row([ticker, tickers_nombres[ticker], fecha_h, float(c_hoy), int(pts)])
@@ -786,7 +765,7 @@ with tab3:
                     "% 1 MES": f"{r1m:+.2f}%", "% 6 MESES": f"{r6m:+.2f}%", "% 1 AÑO": f"{r1y:+.2f}%",
                     "MAX (52s)": f"{dist_max:+.2f}%"
                 })
-                time.sleep(0.05) # Súper rápido
+                time.sleep(0.05)
             except: continue
             
         barra_progreso.progress(100, text="✅ Escaneo Finalizado")
@@ -802,10 +781,23 @@ with tab3:
                 elif val.startswith('-'): return 'color: #FF3333;' 
             return ''
         
-        st.dataframe(df_res.style.map(color_pct, subset=["% HOY", "% 1 MES", "% 6 MESES", "% 1 AÑO", "MAX (52s)"]), use_container_width=True, hide_index=True)
+        # CONFIGURACIÓN DE COLUMNAS CON TOOLTIPS
+        st.dataframe(
+            df_res.style.map(color_pct, subset=["% HOY", "% 1 MES", "% 6 MESES", "% 1 AÑO", "MAX (52s)"]), 
+            use_container_width=True, 
+            hide_index=True,
+            column_config={
+                "PUNTOS": st.column_config.NumberColumn(help="Probabilidad matemática de éxito (0-100) basada en Tendencia, RSI, Volumen y Fuerza Relativa."),
+                "RECOMENDACIÓN": st.column_config.TextColumn(help="Sugerencia operativa basada en la puntuación actual."),
+                "TENDENCIA": st.column_config.TextColumn(help="Estado de las medias móviles de 50 y 200 días. 'Oro' es tendencia alcista estructural."),
+                "RSI": st.column_config.TextColumn(help="Fuerza del movimiento. 55-72 es la zona ideal. >75 indica agotamiento."),
+                "VOL. vs MEDIA": st.column_config.TextColumn(help="Volumen de hoy frente a su media mensual. >1.5x indica entrada de ballenas."),
+                "MAX (52s)": st.column_config.TextColumn(help="Distancia al máximo anual. Si es menor a -20% y sube con volumen, activa señal Fénix.")
+            }
+        )
 
 # ------------------------------------------
-# PESTAÑA 4: SALA DE TROFEOS (AUDITORÍA COMPACTA)
+# PESTAÑA 4: SALA DE TROFEOS (CON TOOLTIPS EN TÍTULOS)
 # ------------------------------------------
 with tab4:
     st.markdown("### 🏆 Sala de Trofeos")
@@ -838,27 +830,19 @@ with tab4:
                             ticker = d['Ticker']
                             tk_y = a_yahoo(ticker)
                             simbolo_moneda = obtener_simbolo_moneda(ticker)
-                            
                             hist = yf.download(tk_y, period="5d", progress=False)
                             if isinstance(hist.columns, pd.MultiIndex): hist.columns = hist.columns.get_level_values(0)
-                            
                             p_hoy = float(hist['Close'].iloc[-1])
                             p_in = float(str(d['Precio_Aviso']).replace(',', '.'))
                             rent = ((p_hoy / p_in) - 1) * 100
-                            
                             fecha_entrada = datetime.datetime.strptime(d['Fecha'], "%Y-%m-%d %H:%M")
-                            dias_transcurridos = (ahora - fecha_entrada).days
+                            dias = (ahora - fecha_entrada).days
                             
-                            kpi_velocidad = ""
-                            if rent >= 5.0:
-                                kpi_velocidad = f"🚀 +5% en {max(1, dias_transcurridos)}d"
-                            elif rent > 0:
-                                kpi_velocidad = f"⏳ {dias_transcurridos}d"
+                            kpi = ""
+                            if rent >= 5.0: kpi = f"🚀 +5% en {max(1, dias)}d"
+                            elif rent > 0: kpi = f"⏳ {dias}d"
 
-                            obj = {
-                                "T": ticker, "N": d['Empresa'], "E": p_in, "A": p_hoy, 
-                                "R": rent, "F": d['Fecha'], "KPI": kpi_velocidad, "M": simbolo_moneda
-                            }
+                            obj = {"T": ticker, "N": d['Empresa'], "E": p_in, "A": p_hoy, "R": rent, "F": d['Fecha'], "KPI": kpi, "M": simbolo_moneda}
                             
                             if abs(rent) < 0.1: pendiente.append(obj)
                             elif rent > 0: exitos.append(obj)
@@ -874,15 +858,23 @@ with tab4:
                     
                     st.markdown("---")
                     cols = st.columns(4)
-                    titulos = ["⏸️ Pendiente", "🏆 Éxitos", "⏳ Cuarentena", "🪦 Fracasos"]
+                    
+                    # CONFIGURACIÓN DE TÍTULOS CON TOOLTIP HTML
+                    titulos_info = [
+                        ("⏸️ Pendiente", "Activos sin cambio. Mercado cerrado o recién cazados."),
+                        ("🏆 Éxitos", "Activos en verde. El algoritmo ha acertado la dirección."),
+                        ("⏳ Cuarentena", "Pérdida leve (<3%). Ruido normal de mercado o consolidación."),
+                        ("🪦 Fracasos", "Caída superior al 3%. Posible fallo de señal o giro de tendencia.")
+                    ]
+                    
                     listas = [pendiente, exitos, cuarentena, fracasos]
                     colores = ["#bdc3c7", "#228B22", "#f39c12", "#FF3333"]
                     
                     for i, l in enumerate(listas):
                         with cols[i]:
-                            st.markdown(f"#### {titulos[i]}")
+                            # Título con tooltip al pasar el ratón
+                            st.markdown(f'<h4 title="{titulos_info[i][1]}" style="cursor:help;">{titulos_info[i][0]}</h4>', unsafe_allow_html=True)
                             for item in l:
-                                # DISEÑO HORIZONTAL: In y Actual en la misma línea
                                 st.markdown(f"""
                                 <div style="border-top:3px solid {colores[i]}; background:white; padding:10px; border-radius:8px; margin-bottom:10px; box-shadow:0 2px 5px rgba(0,0,0,0.05);">
                                     <div style="display:flex; justify-content:space-between; align-items:center;">
