@@ -8,6 +8,7 @@ import pytz
 import gspread
 from google.oauth2.service_account import Credentials
 import time
+import requests
 
 # ==========================================
 # 1. CONFIGURACIÓN Y CONEXIÓN DB (BASE DE DATOS)
@@ -338,14 +339,31 @@ with tab1:
                     recom, precio_obj_str, fecha_earnings, sector, insider_trend = "Sin noticias", "Sin noticias", "Sin noticias", "Sin noticias", "Sin noticias"
                     
                     # 2. MOTOR DE EXTRACCIÓN (Yahoo + Finnhub)
-                    import requests
                     API_FINNHUB = "d7c2s5hr01quh9fcasf0d7c2s5hr01quh9fcasfg"
                     
+                    # --- MECANISMO ANTI-FALLOS YAHOO FINANCE ---
+                    info = {}
+                    ticker_obj = None
+                    for _ in range(4): # Lo intentamos 4 veces
+                        try:
+                            # Truco: usar una sesión con User-Agent de navegador evita que Yahoo bloquee la IP
+                            sess = requests.Session()
+                            sess.headers.update({'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'})
+                            
+                            ticker_obj = yf.Ticker(simbolo_yahoo, session=sess)
+                            temp_info = ticker_obj.info
+                            
+                            # Comprobamos que traiga datos reales y no un diccionario vacío
+                            if isinstance(temp_info, dict) and len(temp_info) > 5:
+                                info = temp_info
+                                break
+                        except:
+                            pass
+                        time.sleep(0.5)
+                    # ---------------------------------------------
+                    
                     try:
-                        ticker_obj = yf.Ticker(simbolo_yahoo)
-                        info = ticker_obj.info
-                        
-                        if isinstance(info, dict):
+                        if isinstance(info, dict) and info:
                             sector = info.get('sector', 'Sin noticias')
                             descripcion_completa = info.get('longBusinessSummary', 'Sin descripción disponible.')
                             recom_raw = info.get('recommendationKey')
@@ -379,11 +397,12 @@ with tab1:
                             
                         # Calendario Yahoo
                         try:
-                            cal = ticker_obj.calendar
-                            if isinstance(cal, dict) and 'Earnings Date' in cal:
-                                fechas = cal['Earnings Date']
-                                if isinstance(fechas, list) and len(fechas) > 0 and pd.notnull(fechas[0]):
-                                    fecha_earnings = fechas[0].strftime("%d/%m/%Y")
+                            if ticker_obj is not None:
+                                cal = ticker_obj.calendar
+                                if isinstance(cal, dict) and 'Earnings Date' in cal:
+                                    fechas = cal['Earnings Date']
+                                    if isinstance(fechas, list) and len(fechas) > 0 and pd.notnull(fechas[0]):
+                                        fecha_earnings = fechas[0].strftime("%d/%m/%Y")
                         except: pass
                             
                     except Exception:
@@ -492,6 +511,7 @@ with tab1:
                     st.plotly_chart(fig, use_container_width=True)
                 else: st.warning("⚠️ Sin datos disponibles.")
             except Exception as e: st.error(f"⚠️ Error técnico: {e}")
+
 # ------------------------------------------
 # PESTAÑA 2: BATALLA DE ALPHA (COMPARATIVA)
 # ------------------------------------------
@@ -681,11 +701,17 @@ with tab3:
                 ret_max = ((precio_actual / start_price) - 1) * 100 if start_price > 0 else 0
                 
                 try:
-                    tk_obj = yf.Ticker(sym_yahoo)
-                    info = tk_obj.info
-                    per = info.get('trailingPE', 999)
-                    if per is None: per = 999 
-                    sector = info.get('sector', 'N/A')
+                    session_yf_radar = requests.Session()
+                    session_yf_radar.headers.update({'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'})
+                    tk_obj = yf.Ticker(sym_yahoo, session=session_yf_radar)
+                    info_tk = tk_obj.info
+                    if isinstance(info_tk, dict) and len(info_tk) > 5:
+                        per = info_tk.get('trailingPE', 999)
+                        if per is None: per = 999 
+                        sector = info_tk.get('sector', 'N/A')
+                    else:
+                        per = 999
+                        sector = "N/A"
                 except:
                     per = 999
                     sector = "N/A"
