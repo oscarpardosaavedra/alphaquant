@@ -672,10 +672,12 @@ with tab3:
 
         tickers_a_escanear = [t for t in tickers_nombres.keys() if mercado_objetivo == "Todos" or obtener_region(t) == mercado_objetivo]
         
-        st.info(f"🚀 Ejecutando Algoritmo Oppenheimer ULTRA para: **{mercado_objetivo}**...")
+        # Creamos un contenedor para poder cambiar el texto luego
+        mensaje_estado = st.empty()
+        mensaje_estado.info(f"🚀 Ejecutando Algoritmo Oppenheimer ULTRA para: **{mercado_objetivo}**...")
         
         barra_progreso = st.progress(0, text="Calibrando benchmark global y escaneando ADN de activos...")
-        resultados_temporales = [] 
+        resultados_temporales = []
         
         # 1. CALIBRACIÓN BENCHMARK
         alphaSPY_1m = 0
@@ -784,8 +786,11 @@ with tab3:
             
         barra_progreso.progress(100, text="✅ Caza Finalizada")
         st.session_state.resultados_radar = resultados_temporales
+        
+        # Sobrescribimos el mensaje de "Ejecutando" por el de "Terminado"
+        mensaje_estado.success(f"🎯 Caza terminada para: **{mercado_objetivo}**.")
 
-    if st.session_state.resultados_radar:
+    if st.session_state.resultados_radar is not None:
         df_res = pd.DataFrame(st.session_state.resultados_radar)
         df_res = df_res.sort_values(by="PUNTOS", ascending=False).reset_index(drop=True)
         st.dataframe(df_res.style.map(color_pct, subset=["% HOY", "% 1 MES", "% 6 MESES", "% 1 AÑO", "% 5 AÑOS"]), 
