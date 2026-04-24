@@ -664,41 +664,37 @@ with tab3:
     if mercado_objetivo:
         st.session_state.resultados_radar = None
         
-        # Semáforos de mercado
-        if mercado_objetivo == "EEUU" and "Cerrado" in us["estado"]:
-            st.warning("⚠️ **Aviso:** Wall Street está cerrado. Los datos son del último cierre.")
-        elif mercado_objetivo == "Europa" and "Cerrado" in eu["estado"]:
-            st.warning("⚠️ **Aviso:** Mercado europeo cerrado.")
-        elif mercado_objetivo == "Asia" and "Cerrado" in asia["estado"]:
-            st.warning("⚠️ **Aviso:** Mercado asiático cerrado.")
+        if mercado_objetivo == "EEUU" and "Cerrado" in us["estado"]: st.warning("⚠️ **Aviso:** Wall Street está cerrado.")
+        elif mercado_objetivo == "Europa" and "Cerrado" in eu["estado"]: st.warning("⚠️ **Aviso:** Mercado europeo cerrado.")
+        elif mercado_objetivo == "Asia" and "Cerrado" in asia["estado"]: st.warning("⚠️ **Aviso:** Mercado asiático cerrado.")
 
         tickers_a_escanear = [t for t in tickers_nombres.keys() if mercado_objetivo == "Todos" or obtener_region(t) == mercado_objetivo]
         
         mensaje_estado = st.empty()
         mensaje_estado.info(f"🚀 Ejecutando Algoritmo Oppenheimer ULTRA para: **{mercado_objetivo}**...")
         
-        barra_progreso = st.progress(0, text="Calibrando benchmark global y escaneando ADN de activos...")
+        barra_progreso = st.progress(0, text="Analizando ADN financiero...")
         resultados_temporales = []
         
-        # 1. CALIBRACIÓN BENCHMARK
+        # 1. Calibración Benchmark
         alphaSPY_1m = 0
         try:
             spy_data = yf.download("SPY", period="1y", progress=False)
             if isinstance(spy_data.columns, pd.MultiIndex): spy_data.columns = spy_data.columns.get_level_values(0)
             spy_cierres = spy_data['Close'].dropna()
             alphaSPY_1m = ((float(spy_cierres.iloc[-1]) / float(spy_cierres.iloc[-21])) - 1) * 100
-        except Exception: pass
+        except: pass
 
+        # 2. Base de Datos y Divisas
         ws = conectar_db()
         existentes_en_db = []
         if ws:
             try: existentes_en_db = ws.col_values(1)
             except: pass
 
-        # --- 1.5 PRE-CARGADOR DE DIVISAS ---
         fx_rates = {}
-        mapa_divisas_fx = { "€": "EURUSD=X", "¥": "JPYUSD=X", "GBp": "GBPUSD=X", "kr": "SEKUSD=X", "₹": "INRUSD=X" }
-        for mon_sim, par_fx in mapa_divisas_fx.items():
+        mapa_fx = { "€": "EURUSD=X", "¥": "JPYUSD=X", "GBp": "GBPUSD=X", "kr": "SEKUSD=X", "₹": "INRUSD=X" }
+        for mon_sim, par_fx in mapa_fx.items():
             try:
                 d_fx = yf.download(par_fx, period="1d", progress=False)
                 if not d_fx.empty:
@@ -706,18 +702,18 @@ with tab3:
                     fx_rates[mon_sim] = float(d_fx['Close'].dropna().iloc[-1])
             except: pass
         
-        # 2. BUCLE CUANTITATIVO
+        # 3. BUCLE DE ANÁLISIS
         for i, ticker in enumerate(tickers_a_escanear):
-            porcentaje = int(((i + 1) / len(tickers_a_escanear)) * 100)
-            barra_progreso.progress((i + 1) / len(tickers_a_escanear), text=f"⏳ `Evaluando: {ticker.ljust(6)} | {porcentaje}%`")
+            porc = int(((i + 1) / len(tickers_a_escanear)) * 100)
+            barra_progreso.progress((i + 1) / len(tickers_a_escanear), text=f"⏳ `Cazando: {ticker.ljust(6)} | {porc}%`")
             
             try:
                 sym_y = a_yahoo(ticker)
                 data = yf.download(sym_y, period="5y", progress=False)
                 if isinstance(data.columns, pd.MultiIndex): data.columns = data.columns.get_level_values(0)
                 df = data[['Close', 'High', 'Low', 'Volume']].dropna()
-                if len(df) < 55: continue 
-                
+                if len(df) < 200: continue 
+
                 # --- HACK INTRADÍA ---
                 try:
                     data_ahora = yf.download(sym_y, period="1d", interval="1m", progress=False)
@@ -728,166 +724,148 @@ with tab3:
                         df.iloc[-1, df.columns.get_loc('High')] = float(max(df.iloc[-1]['High'], data_ahora['High'].max()))
                 except: pass
 
+                # Datos básicos y medias
                 c_hoy = float(df['Close'].iloc[-1])
                 c_ayer = float(df['Close'].iloc[-2])
                 pct_h = ((c_hoy / c_ayer) - 1) * 100
-                vol_h = float(df['Volume'].iloc[-1])
-                vol_m = float(df['Volume'].iloc[-20:].mean())
+                vol_h, vol_m = float(df['Volume'].iloc[-1]), float(df['Volume'].iloc[-20:].mean())
+                
                 sma50_serie = df['Close'].rolling(window=50).mean()
-                sma50 = float(sma50_serie.iloc[-1])
+                sma200_serie = df['Close'].rolling(window=200).mean()
+                sma50, sma200 = float(sma50_serie.iloc[-1]), float(sma200_serie.iloc[-1])
                 sma50_prev = float(sma50_serie.iloc[-6])
-                sma200 = float(df['Close'].rolling(window=200).mean().iloc[-1]) if len(df) >= 200 else None
+                
+                # RSI y Rentabilidades Históricas
                 delta = df['Close'].diff()
-                gain = delta.where(delta > 0, 0).rolling(window=14).mean()
-                loss = -delta.where(delta < 0, 0).rolling(window=14).mean()
+                gain = delta.where(delta > 0, 0).rolling(14).mean()
+                loss = -delta.where(delta < 0, 0).rolling(14).mean()
                 rsi = float(100 - (100 / (1 + (gain / loss))).iloc[-1])
                 
                 def ret_d(d): return ((c_hoy / float(df['Close'].iloc[-(d+1)])) - 1) * 100 if len(df) > d else 0
                 r1m, r6m, r1y, r5y = ret_d(21), ret_d(126), ret_d(252), ret_d(1260)
-                max_52 = float(df['High'].iloc[-252:].max())
-                dist_max = ((c_hoy / max_52) - 1) * 100
                 
-                # OBV y ATR
-                obv = (np.sign(delta) * df['Volume']).fillna(0).cumsum()
-                obv_hoy, obv_mes = float(obv.iloc[-1]), float(obv.iloc[-21])
-                tr = pd.concat([df['High']-df['Low'], np.abs(df['High']-df['Close'].shift()), np.abs(df['Low']-df['Close'].shift())], axis=1).max(axis=1)
-                atr = float(tr.rolling(14).mean().iloc[-1])
-                stop_l = c_hoy - (atr * 2.5)
-
-                # --- CÁLCULOS TÉCNICOS EXTRA (PODER TOTAL) ---
+                # Impulso MACD
                 exp1 = df['Close'].ewm(span=12, adjust=False).mean()
                 exp2 = df['Close'].ewm(span=26, adjust=False).mean()
-                macd = exp1 - exp2
-                signal = macd.ewm(span=9, adjust=False).mean()
-                macd_hoy = macd.iloc[-1]
-                signal_hoy = signal.iloc[-1]
+                macd_h = (exp1 - exp2).iloc[-1]
+                signal_h = (exp1 - exp2).ewm(span=9, adjust=False).mean().iloc[-1]
 
-                cruce_oro = False
-                if sma200:
-                    sma50_prev_5 = float(sma50_serie.iloc[-6])
-                    sma200_prev_5 = float(df['Close'].rolling(window=200).mean().iloc[-6])
-                    if sma50 > sma200 and sma50_prev_5 <= sma200_prev_5:
-                        cruce_oro = True
+                # --- DETECTOR CRUCE DE ORO (PRE Y POST) ---
+                cruce_reciente = False
+                proximidad_oro = False
+                distancia_m = ((sma50 / sma200) - 1) * 100
+                if sma50 > sma200 and sma50_serie.iloc[-2] <= sma200_serie.iloc[-2]:
+                    cruce_reciente = True
+                elif sma50 < sma200 and distancia_m > -1.8 and sma50 > sma50_prev:
+                    proximidad_oro = True
 
                 # --- MOTOR DE PUNTUACIÓN TODOPODEROSO ---
                 p = 0
-                status_t = "Lateral/Bajista"
+                status_t = "Lateral"
                 texto_a = []
                 
                 if c_hoy > sma50: p += 10; status_t = "Alcista Corto"
-                if sma200 and c_hoy > sma200: p += 10
-                if sma200 and sma50 > sma200: 
-                    p += 10
-                    status_t = "Alcista Estructural"
-                    if cruce_oro:
-                        p += 25 
-                        texto_a.append("✨ CRUCE DE ORO RECIENTE (Señal histórica).")
+                if c_hoy > sma200: p += 10; status_t = "Alcista Estructural"
+                if cruce_reciente: p += 25; texto_a.append("✨ Cruce de Oro confirmado.")
+                if proximidad_oro: p += 15; texto_a.append("🎯 Pre-Oro: A punto de cruzar.")
+                if macd_h > signal_h: p += 15; texto_a.append("📈 MACD al alza.")
+                if 55 <= rsi <= 68: p += 15; texto_a.append("✅ RSI equilibrado.")
+                elif rsi > 72: p -= 15; texto_a.append("⚠️ Muy caliente.")
+                if vol_h > (vol_m * 1.8): p += 20; texto_a.append("🐋 Entrada institucional.")
 
-                if macd_hoy > signal_hoy:
-                    p += 15
-                    texto_a.append("📈 Impulso alcista (MACD).")
-
-                if 55 <= rsi <= 68: p += 15; texto_a.append("✅ RSI sano.")
-                elif rsi > 72: p -= 15; texto_a.append("⚠️ Acción muy 'caliente'.")
-                
-                if vol_h > (vol_m * 1.8): 
-                    p += 20
-                    texto_a.append("🐋 Dinero institucional entrando.")
-
-                isF = False
-                isM = False
-                if dist_max <= -20 and c_hoy > sma50 and vol_h > (vol_m * 1.8) and pct_h > 1.5:
-                    p = max(p, 92); isF = True; status_t = "Giro Fénix 🔥"
-                
-                if pct_h >= 4.5 and vol_h >= (vol_m * 2.5) and c_hoy > sma50:
-                    p = max(p, 95); isM = True; status_t = "Ruptura Momentum ⚡"
+                # Módulos Momentum y Fénix
+                max_52 = float(df['High'].iloc[-252:].max())
+                dist_max = ((c_hoy / max_52) - 1) * 100
+                isF = (dist_max <= -20 and c_hoy > sma50 and vol_h > (vol_m * 1.8) and pct_h > 1.5)
+                isM = (pct_h >= 4.5 and vol_h >= (vol_m * 2.5) and c_hoy > sma50)
+                if isF: p = max(p, 92)
+                if isM: p = max(p, 95)
 
                 pts = max(0, min(100, int(p)))
 
-                if pts >= 90 and ticker not in existentes_en_db and ws is not None:
+                # --- VERDICTO DE ESTRATEGIA ---
+                if pts >= 90:
+                    if cruce_reciente: est = "✨ ORO (Élite)"
+                    elif proximidad_oro: est = "⏳ PRE-ORO (Entrada)"
+                    elif isM: est = "⚡ MOMENTUM (Cohete)"
+                    elif isF: est = "🔥 FÉNIX (Rebote)"
+                    else: est = "💎 ALFA (Fuerte)"
+                elif pts >= 80: est = "🟢 ACUMULAR"
+                elif pts >= 70: est = "🟡 VIGILAR"
+                else: est = "⚪ ESPERAR"
+
+                # DB Trofeos
+                if pts >= 90 and ticker not in existentes_en_db and ws:
                     ws.append_row([ticker, tickers_nombres[ticker], datetime.datetime.now().strftime("%Y-%m-%d %H:%M"), float(c_hoy), int(pts)])
                     existentes_en_db.append(ticker)
 
-                reco = "⚪ ESPERAR"
-                if pts >= 90:
-                    if isM: reco = "⚡ COMPRA (MOMENTUM)"
-                    elif isF: reco = "🔥 COMPRA (FÉNIX)"
-                    else: reco = "💎 COMPRA FUERTE (ALFA)"
-                elif pts >= 80: reco = "🟢 ACUMULAR"
-                elif pts >= 70: reco = "🟡 VIGILAR"
-
-                icono_senal = "Normal"
-                if cruce_oro: icono_senal = "✨ CRUCE DE ORO"
-                elif isM: icono_senal = "⚡ MOMENTUM"
-                elif isF: icono_senal = "🔥 FÉNIX"
-                elif macd_hoy > signal_hoy and macd.iloc[-2] <= signal.iloc[-2]: icono_senal = "🚀 GIRO MACD"
-
-                # --- FORMATO FINAL Y GUARDADO ---
+                # Formateo moneda y Stop Loss
                 mon = obtener_simbolo_moneda(ticker)
-                tasa_v = fx_rates.get(mon)
-                t_conv_p, t_conv_s = "", ""
-                if mon != "$" and tasa_v:
-                    f = tasa_v / 100 if mon == "GBp" else tasa_v
-                    t_conv_p = f" (≈ {(c_hoy * f):.2f} $)"
-                    t_conv_s = f" (≈ {(stop_l * f):.2f} $)"
+                tr_vals = pd.concat([df['High']-df['Low'], np.abs(df['High']-df['Close'].shift()), np.abs(df['Low']-df['Close'].shift())], axis=1).max(axis=1)
+                atr_v = float(tr_vals.rolling(14).mean().iloc[-1])
+                stop_v = c_hoy - (atr_v * 2.5)
+                
+                t_p, t_s = "", ""
+                if mon != "$" and fx_rates.get(mon):
+                    f = fx_rates[mon] / 100 if mon == "GBp" else fx_rates[mon]
+                    t_p = f" (≈ {(c_hoy * f):.2f} $)"
+                    t_s = f" (≈ {(stop_v * f):.2f} $)"
 
                 resultados_temporales.append({
-                    "TICKER": ticker, 
-                    "NOMBRE": tickers_nombres[ticker], 
-                    "PUNTOS": pts, 
-                    "SEÑAL ✨": icono_senal,
-                    "RECOMENDACIÓN": reco,
-                    "TENDENCIA": status_t, 
-                    "RSI": f"{rsi:.1f}", 
-                    "VOL. vs MEDIA": f"{(vol_h/vol_m):.1f}x",
-                    "PRECIO HOY": f"{c_hoy:.2f} {mon}{t_conv_p}",
-                    "STOP LOSS": f"{stop_l:.2f} {mon}{t_conv_s} ({((stop_l/c_hoy)-1)*100:+.1f}%)",
+                    "TICKER": ticker,
+                    "NOMBRE": tickers_nombres[ticker],
+                    "PUNTOS": pts,
+                    "ESTRATEGIA": est,
+                    "RSI": f"{rsi:.1f}",
+                    "VOL. x": f"{(vol_h/vol_m):.1f}x",
+                    "PRECIO": f"{c_hoy:.2f}{mon}{t_p}",
+                    "STOP LOSS": f"{stop_v:.2f}{mon}{t_s}",
                     "% HOY": f"{pct_h:+.2f}%", 
                     "% 1 MES": f"{r1m:+.2f}%", 
                     "% 6 MESES": f"{r6m:+.2f}%", 
                     "% 1 AÑO": f"{r1y:+.2f}%", 
                     "% 5 AÑOS": f"{r5y:+.2f}%", 
-                    "ANÁLISIS": " | ".join(texto_a) if texto_a else "✅ Estable."
+                    "ANÁLISIS": f"[{status_t}] " + (" | ".join(texto_a) if texto_a else "Estable.")
                 })
                 time.sleep(0.01)
             except: continue
             
         barra_progreso.empty()
         mensaje_estado.empty()
-        
         st.session_state.resultados_radar = resultados_temporales
         st.session_state.mercado_cazado = mercado_objetivo
 
-    # --- ZONA DE DIBUJADO DE RESULTADOS ---
+    # --- DIBUJADO DE RESULTADOS ---
     if st.session_state.resultados_radar is not None:
-        merc_txt = st.session_state.get('mercado_cazado', 'Todos')
-        st.success(f"🎯 Caza terminada para: **{merc_txt}**")
+        st.success(f"🎯 Caza terminada para: **{st.session_state.get('mercado_cazado', 'Todos')}**")
         
-        if len(st.session_state.resultados_radar) == 0:
-            st.info("🕵️‍♂️ **Escaneo completado:** Ningún activo de este mercado ha alcanzado hoy la excelencia (90+ puntos).")
+        if not st.session_state.resultados_radar:
+            st.info("🕵️‍♂️ Sin activos detectados con la puntuación mínima.")
         else:
             df_res = pd.DataFrame(st.session_state.resultados_radar)
             df_res = df_res.sort_values(by="PUNTOS", ascending=False).reset_index(drop=True)
+            
+            # --- HEMOS VUELTO A ACTIVAR EL COLOR PARA LOS PORCENTAJES ---
             st.dataframe(df_res.style.map(color_pct, subset=["% HOY", "% 1 MES", "% 6 MESES", "% 1 AÑO", "% 5 AÑOS"]), 
                          use_container_width=False, 
-                         width=2000, height=400, hide_index=True,
+                         width=2200, 
+                         height=500, 
+                         hide_index=True,
                          column_config={
                             "TICKER": st.column_config.TextColumn(help="Símbolo en bolsa."),
                             "NOMBRE": st.column_config.TextColumn(help="Nombre de la empresa."),
-                            "PUNTOS": st.column_config.NumberColumn(help="Nota 0-100. Solo >90 es compra."),
-                            "SEÑAL ✨": st.column_config.TextColumn(help="Eventos clave:\n✨ CRUCE DE ORO: Tendencia 50 supera a 200.\n🚀 GIRO MACD: Impulso alcista nuevo.\n⚡ MOMENTUM: Explosión hoy.\n🔥 FÉNIX: Rebote desde el suelo."),
-                            "RECOMENDACIÓN": st.column_config.TextColumn(help="💎 ALFA: Tendencia segura.\n🔥 FÉNIX: Rebote tras gran caída.\n⚡ MOMENTUM: Subida salvaje hoy con volumen extremo."),
-                            "TENDENCIA": st.column_config.TextColumn(help="Estructura de las medias móviles. 'Alcista Estructural' es lo mejor."),
-                            "RSI": st.column_config.TextColumn(help="Fuerza relativa (55-68 es ideal)."),
-                            "VOL. vs MEDIA": st.column_config.TextColumn(help="Volumen de hoy vs media (más de 1.0x es bueno)."),
-                            "PRECIO HOY": st.column_config.TextColumn(help="Precio actual en moneda local y dólares."),
-                            "STOP LOSS": st.column_config.TextColumn(help="Tu paracaídas automático."),
-                            "% HOY": st.column_config.TextColumn(help="Rendimiento de hoy."),
-                            "% 1 MES": st.column_config.TextColumn(help="Rendimiento del último mes."),
-                            "% 6 MESES": st.column_config.TextColumn(help="Rendimiento de los últimos 6 meses."),
-                            "% 1 AÑO": st.column_config.TextColumn(help="Rendimiento anualizado."),
-                            "% 5 AÑOS": st.column_config.TextColumn(help="Comportamiento a largo plazo."),
-                            "ANÁLISIS": st.column_config.TextColumn(width="large", help="Resumen del algoritmo.")
+                            "PUNTOS": st.column_config.ProgressColumn("Rating", help="Nota 0-100 calculada por el radar.", min_value=0, max_value=100, format="%d"),
+                            "ESTRATEGIA": st.column_config.TextColumn("🎯 Estrategia", help="✨ ORO: Tendencia histórica.\n⏳ PRE-ORO: Antes del cruce.\n⚡ MOMENTUM: Subida salvaje.\n🔥 FÉNIX: Rebote suelo."),
+                            "RSI": st.column_config.TextColumn("RSI", help="Mide si está barata o cara. Entre 55 y 68 es ideal."),
+                            "VOL. x": st.column_config.TextColumn("Vol. x", help="Volumen hoy vs media del mes."),
+                            "PRECIO": st.column_config.TextColumn("Precio Actual", help="Moneda local y dólares."),
+                            "STOP LOSS": st.column_config.TextColumn("Escudo Venta", help="Precio de salida automático en el broker."),
+                            "% HOY": st.column_config.TextColumn("Hoy", help="Rendimiento de hoy."),
+                            "% 1 MES": st.column_config.TextColumn("1 Mes", help="Rendimiento del último mes."),
+                            "% 6 MESES": st.column_config.TextColumn("6 Meses", help="Rendimiento de los últimos 6 meses."),
+                            "% 1 AÑO": st.column_config.TextColumn("1 Año", help="Rendimiento anualizado."),
+                            "% 5 AÑOS": st.column_config.TextColumn("5 Años", help="Rendimiento a largo plazo."),
+                            "ANÁLISIS": st.column_config.TextColumn("Contexto", width="large", help="Explicación detallada del algoritmo.")
                          })
 
 # ------------------------------------------
