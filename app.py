@@ -300,7 +300,7 @@ st.markdown("---")
 tab1, tab2, tab3, tab4 = st.tabs(["🔬 Análisis Individual", "⚔️ Análisis Colectivo", "🎯 Cazar Alpha (Radar)", "🏆 Sala de Trofeos"])
 
 # ------------------------------------------
-# PESTAÑA 1: VISOR DE GRÁFICOS (TENDENCIA VISIBLE EN NARANJA)
+# PESTAÑA 1: VISOR DE GRÁFICOS (VERSIÓN DEFINITIVA Y ESTABLE)
 # ------------------------------------------
 with tab1:
     st.markdown("### 🔍 Selector de Activos")
@@ -323,17 +323,21 @@ with tab1:
         
         st.markdown("<br>", unsafe_allow_html=True) 
         
-        col_tiempo, col_tendencia = st.columns([3, 1])
+        # --- AHORA HAY ESPACIO PARA 2 INTERRUPTORES ---
+        col_tiempo, col_t1, col_t2 = st.columns([2.5, 1, 1])
         with col_tiempo:
-            periodo = st.radio("⏱️ Rango de tiempo del gráfico:", ["1 Mes", "3 Meses", "6 Meses", "1 Año", "5 Años", "10 Años", "Máximo"], index=1, horizontal=True)
+            periodo = st.radio("⏱️ Rango de tiempo:", ["1 Mes", "3 Meses", "6 Meses", "1 Año", "5 Años", "10 Años", "Máximo"], index=1, horizontal=True)
             
-        with col_tendencia:
+        with col_t1:
             st.markdown("<br>", unsafe_allow_html=True) 
-            mostrar_tendencia = st.toggle("📈 Mostrar Tendencia (SMA 50)", help="Dibuja una Media Móvil Simple de 50 sesiones. Actúa como una línea de tendencia suavizada: si el precio está por encima, la tendencia es alcista; si está por debajo, es bajista.")
+            mostrar_tendencia = st.toggle("📈 SMA 50 (Medio)", help="Media Móvil de 50 días. Mide el pulso a medio plazo.")
+            
+        with col_t2:
+            st.markdown("<br>", unsafe_allow_html=True) 
+            mostrar_tendencia_200 = st.toggle("🚀 SMA 200 (Largo)", help="Media de 200 días. Si la SMA 50 cruza por encima de esta línea, se produce un 'Cruce de Oro' (Señal alcista muy fuerte).")
             
         with st.spinner(f"Cargando datos de {simbolo_real} y rastreando Wall Street..."):
             try:
-                # Descargamos el histórico máximo de fondo para poder calcular la Media de 50 siempre
                 datos_brutos = yf.download(simbolo_yahoo, period="max", progress=False)
                 if isinstance(datos_brutos.columns, pd.MultiIndex): datos_brutos.columns = datos_brutos.columns.get_level_values(0)
 
@@ -343,7 +347,6 @@ with tab1:
                     desc_corta = ""
                     logo_url = ""
                     
-                    # MOTOR DE EXTRACCIÓN (Yahoo + Finnhub)
                     API_FINNHUB = "d7c2s5hr01quh9fcasf0d7c2s5hr01quh9fcasfg"
                     import requests
                     
@@ -449,19 +452,21 @@ with tab1:
                     else:
                         espacio_logo.empty()
 
-                    # CÁLCULOS DEL PRECIO Y TENDENCIA 
+                    # CÁLCULOS DEL PRECIO Y AMBAS TENDENCIAS 
                     datos_limpios_completos = datos_brutos.dropna(subset=['Close'])
                     precio_actual = float(datos_limpios_completos['Close'].iloc[-1])
                     
-                    # Calculamos la SMA 50 globalmente con todos los años
+                    # Calculamos ambas SMAs globalmente
                     sma_50_completa = datos_limpios_completos['Close'].rolling(window=50).mean()
+                    sma_200_completa = datos_limpios_completos['Close'].rolling(window=200).mean()
                     
-                    # Cortamos la tabla de datos según lo elegido en los botones
+                    # Cortamos la tabla de datos
                     dias_mapa = {"1 Mes": 21, "3 Meses": 63, "6 Meses": 126, "1 Año": 252, "5 Años": 1260, "10 Años": 2520, "Máximo": len(datos_limpios_completos)}
                     dias_mostrar = dias_mapa.get(periodo, len(datos_limpios_completos))
                     
                     datos_limpios = datos_limpios_completos.iloc[-dias_mostrar:]
                     sma_50 = sma_50_completa.iloc[-dias_mostrar:]
+                    sma_200 = sma_200_completa.iloc[-dias_mostrar:]
                     
                     s_moneda_visual = obtener_simbolo_moneda(simbolo_real)
                     
@@ -515,22 +520,31 @@ with tab1:
                         </div>
                         """, unsafe_allow_html=True)
 
-                    # --- GRÁFICA CON OPCIÓN DE TENDENCIA EN NARANJA ---
+                    # --- GRÁFICA CON DOS TENDENCIAS ---
                     fig = go.Figure()
                     fig.add_trace(go.Scatter(x=datos_limpios.index, y=datos_limpios['Close'], mode='lines', name='Precio', line=dict(color='#228B22', width=2)))
                     
                     if mostrar_tendencia:
-                        # Verificamos que realmente hayamos podido calcular la SMA (no sean todo NaNs)
                         if not sma_50.isna().all():
                             fig.add_trace(go.Scatter(
                                 x=datos_limpios.index, 
                                 y=sma_50, 
                                 mode='lines', 
-                                name='SMA 50', 
-                                line=dict(color='#FFA500', width=2.5) # Color Naranja/Oro y línea sólida
+                                name='SMA 50 (Medio)', 
+                                line=dict(color='#FFA500', width=2.5) 
+                            ))
+                            
+                    if mostrar_tendencia_200:
+                        if not sma_200.isna().all():
+                            fig.add_trace(go.Scatter(
+                                x=datos_limpios.index, 
+                                y=sma_200, 
+                                mode='lines', 
+                                name='SMA 200 (Largo)', 
+                                line=dict(color='#9b59b6', width=2.5, dash='dot') # Color Morado y punteado
                             ))
                         else:
-                            st.info("La empresa es muy reciente y no tiene 50 días de historia para calcular la tendencia.")
+                            st.info("La empresa es muy reciente y no tiene 200 días de historia para calcular la tendencia a largo plazo.")
 
                     fig.update_layout(
                         title=f"Histórico: {ticker_elegido}", 
