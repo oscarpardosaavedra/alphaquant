@@ -568,78 +568,6 @@ with tab1:
                     
                 else: st.warning("⚠️ Sin datos disponibles.")
             except Exception as e: st.error(f"⚠️ Error técnico: {e}")
-# ------------------------------------------
-# PESTAÑA 2: BATALLA DE ALPHA (COMPARATIVA)
-# ------------------------------------------
-with tab2:
-    st.markdown("### ⚔️ Comparativa Múltiple")
-    st.write("Selecciona varios activos para ver cuál está rindiendo mejor en un mismo periodo de tiempo. Todos empezarán en Base 0 (0% de rendimiento) para una comparación justa.")
-    
-    col_comp1, col_comp2 = st.columns([3, 1])
-    
-    with col_comp1:
-        opciones_comp = ["SPY (S&P 500)", "QQQ (Nasdaq 100)"] + opciones_desplegable
-        seleccionados = st.multiselect(
-            "Elige los activos a enfrentar (Puedes elegir todos los que quieras):", 
-            opciones_comp, 
-            default=["SPY (S&P 500)"]
-        )
-        
-    with col_comp2:
-        periodo_comp = st.radio(
-            "Rango de tiempo:", 
-            ["1 Mes", "3 Meses", "6 Meses", "1 Año", "5 Años", "Máximo"], 
-            index=3,
-            key="radio_batalla" 
-        )
-        
-    mapa_tiempo_comp = {"1 Mes": "1mo", "3 Meses": "3mo", "6 Meses": "6mo", "1 Año": "1y", "5 Años": "5y", "Máximo": "max"}
-
-    if seleccionados:
-        if st.button("🚀 Iniciar Batalla de Rendimiento", use_container_width=True):
-            with st.spinner("Descargando históricos y sincronizando la escala a Base 100..."):
-                fig_comp = go.Figure()
-                
-                for sel in seleccionados:
-                    sym_real = sel.split(" ")[0]
-                    sym_y = "SPY" if sym_real == "SPY" else ("QQQ" if sym_real == "QQQ" else a_yahoo(sym_real))
-                    
-                    try:
-                        df_comp = yf.download(sym_y, period=mapa_tiempo_comp[periodo_comp], progress=False)
-                        if isinstance(df_comp.columns, pd.MultiIndex): 
-                            df_comp.columns = df_comp.columns.get_level_values(0)
-                        
-                        df_comp = df_comp.dropna(subset=['Close'])
-                        
-                        if not df_comp.empty:
-                            cierres_comp = df_comp['Close'].squeeze()
-                            precio_inicial = float(cierres_comp.iloc[0])
-                            pct_cambio = ((cierres_comp / precio_inicial) - 1) * 100
-                            
-                            es_indice = sym_real in ["SPY", "QQQ"]
-                            grosor = 3 if es_indice else 2
-                            estilo_linea = 'dot' if es_indice else 'solid'
-                            
-                            fig_comp.add_trace(go.Scatter(
-                                x=pct_cambio.index, 
-                                y=pct_cambio, 
-                                mode='lines', 
-                                name=sym_real,
-                                line=dict(width=grosor, dash=estilo_linea)
-                            ))
-                    except Exception as e:
-                        st.warning(f"⚠️ No se pudo cargar el histórico de {sym_real}.")
-
-                fig_comp.update_layout(
-                    title=f"Rendimiento Comparativo Acumulado",
-                    template='plotly_dark',
-                    xaxis_title="",
-                    yaxis_title="Rendimiento Acumulado (%)",
-                    hovermode="x unified",
-                    margin=dict(l=0, r=0, t=40, b=0)
-                )
-                
-                st.plotly_chart(fig_comp, use_container_width=True)
 
 # ------------------------------------------
 # PESTAÑA 3: RADAR DE CAZA (MOTOR "OPPENHEIMER" V2.0 - TODOPODEROSO)
@@ -685,7 +613,6 @@ with tab3:
             alphaSPY_1m = ((float(spy_cierres.iloc[-1]) / float(spy_cierres.iloc[-21])) - 1) * 100
         except: pass
 
-        # 2. Base de Datos y Divisas
         ws = conectar_db()
         existentes_en_db = []
         if ws:
@@ -724,7 +651,6 @@ with tab3:
                         df.iloc[-1, df.columns.get_loc('High')] = float(max(df.iloc[-1]['High'], data_ahora['High'].max()))
                 except: pass
 
-                # Datos básicos y medias
                 c_hoy = float(df['Close'].iloc[-1])
                 c_ayer = float(df['Close'].iloc[-2])
                 pct_h = ((c_hoy / c_ayer) - 1) * 100
@@ -735,7 +661,6 @@ with tab3:
                 sma50, sma200 = float(sma50_serie.iloc[-1]), float(sma200_serie.iloc[-1])
                 sma50_prev = float(sma50_serie.iloc[-6])
                 
-                # RSI y Rentabilidades Históricas
                 delta = df['Close'].diff()
                 gain = delta.where(delta > 0, 0).rolling(14).mean()
                 loss = -delta.where(delta < 0, 0).rolling(14).mean()
@@ -744,13 +669,12 @@ with tab3:
                 def ret_d(d): return ((c_hoy / float(df['Close'].iloc[-(d+1)])) - 1) * 100 if len(df) > d else 0
                 r1m, r6m, r1y, r5y = ret_d(21), ret_d(126), ret_d(252), ret_d(1260)
                 
-                # Impulso MACD
                 exp1 = df['Close'].ewm(span=12, adjust=False).mean()
                 exp2 = df['Close'].ewm(span=26, adjust=False).mean()
                 macd_h = (exp1 - exp2).iloc[-1]
                 signal_h = (exp1 - exp2).ewm(span=9, adjust=False).mean().iloc[-1]
 
-                # --- DETECTOR CRUCE DE ORO (PRE Y POST) ---
+                # --- DETECTOR CRUCE DE ORO ---
                 cruce_reciente = False
                 proximidad_oro = False
                 distancia_m = ((sma50 / sma200) - 1) * 100
@@ -759,7 +683,7 @@ with tab3:
                 elif sma50 < sma200 and distancia_m > -1.8 and sma50 > sma50_prev:
                     proximidad_oro = True
 
-                # --- MOTOR DE PUNTUACIÓN TODOPODEROSO ---
+                # --- MOTOR DE PUNTUACIÓN ---
                 p = 0
                 status_t = "Lateral"
                 texto_a = []
@@ -773,7 +697,6 @@ with tab3:
                 elif rsi > 72: p -= 15; texto_a.append("⚠️ Muy caliente.")
                 if vol_h > (vol_m * 1.8): p += 20; texto_a.append("🐋 Entrada institucional.")
 
-                # Módulos Momentum y Fénix
                 max_52 = float(df['High'].iloc[-252:].max())
                 dist_max = ((c_hoy / max_52) - 1) * 100
                 isF = (dist_max <= -20 and c_hoy > sma50 and vol_h > (vol_m * 1.8) and pct_h > 1.5)
@@ -783,23 +706,22 @@ with tab3:
 
                 pts = max(0, min(100, int(p)))
 
-                # --- VERDICTO DE ESTRATEGIA ---
+                # --- FUSIÓN TOTAL: COLUMNA "SETUP" ---
+                # Si no llega a 90 puntos, directamente te dice que mires otra cosa
                 if pts >= 90:
-                    if cruce_reciente: est = "✨ ORO (Élite)"
-                    elif proximidad_oro: est = "⏳ PRE-ORO (Entrada)"
-                    elif isM: est = "⚡ MOMENTUM (Cohete)"
-                    elif isF: est = "🔥 FÉNIX (Rebote)"
-                    else: est = "💎 ALFA (Fuerte)"
-                elif pts >= 80: est = "🟢 ACUMULAR"
-                elif pts >= 70: est = "🟡 VIGILAR"
-                else: est = "⚪ ESPERAR"
+                    if cruce_reciente: setup = "✨ ORO (Fuerza Máxima)"
+                    elif proximidad_oro: setup = "⏳ PRE-ORO (Anticipación)"
+                    elif isM: setup = "⚡ MOMENTUM (Subida Vertical)"
+                    elif isF: setup = "🔥 FÉNIX (Giro desde el Suelo)"
+                    else: setup = "💎 ALFA (Tendencia Segura)"
+                elif pts >= 80: setup = "🟢 ACUMULAR"
+                elif pts >= 70: setup = "🟡 VIGILAR"
+                else: setup = "⚪ IGNORAR"
 
-                # DB Trofeos
                 if pts >= 90 and ticker not in existentes_en_db and ws:
                     ws.append_row([ticker, tickers_nombres[ticker], datetime.datetime.now().strftime("%Y-%m-%d %H:%M"), float(c_hoy), int(pts)])
                     existentes_en_db.append(ticker)
 
-                # Formateo moneda y Stop Loss
                 mon = obtener_simbolo_moneda(ticker)
                 tr_vals = pd.concat([df['High']-df['Low'], np.abs(df['High']-df['Close'].shift()), np.abs(df['Low']-df['Close'].shift())], axis=1).max(axis=1)
                 atr_v = float(tr_vals.rolling(14).mean().iloc[-1])
@@ -815,7 +737,7 @@ with tab3:
                     "TICKER": ticker,
                     "NOMBRE": tickers_nombres[ticker],
                     "PUNTOS": pts,
-                    "ESTRATEGIA": est,
+                    "🎯 SETUP": setup,
                     "RSI": f"{rsi:.1f}",
                     "VOL. x": f"{(vol_h/vol_m):.1f}x",
                     "PRECIO": f"{c_hoy:.2f}{mon}{t_p}",
@@ -825,9 +747,8 @@ with tab3:
                     "% 6 MESES": f"{r6m:+.2f}%", 
                     "% 1 AÑO": f"{r1y:+.2f}%", 
                     "% 5 AÑOS": f"{r5y:+.2f}%", 
-                    "ANÁLISIS": f"[{status_t}] " + (" | ".join(texto_a) if texto_a else "Estable.")
+                    "ANÁLISIS": f"[{status_t}] " + (" | ".join(texto_a) if texto_a else "Sin alertas.")
                 })
-                time.sleep(0.01)
             except: continue
             
         barra_progreso.empty()
@@ -840,32 +761,31 @@ with tab3:
         st.success(f"🎯 Caza terminada para: **{st.session_state.get('mercado_cazado', 'Todos')}**")
         
         if not st.session_state.resultados_radar:
-            st.info("🕵️‍♂️ Sin activos detectados con la puntuación mínima.")
+            st.info("🕵️‍♂️ Sin activos detectados.")
         else:
             df_res = pd.DataFrame(st.session_state.resultados_radar)
             df_res = df_res.sort_values(by="PUNTOS", ascending=False).reset_index(drop=True)
             
-            # --- HEMOS VUELTO A ACTIVAR EL COLOR PARA LOS PORCENTAJES ---
             st.dataframe(df_res.style.map(color_pct, subset=["% HOY", "% 1 MES", "% 6 MESES", "% 1 AÑO", "% 5 AÑOS"]), 
                          use_container_width=False, 
                          width=2200, 
                          height=500, 
                          hide_index=True,
                          column_config={
-                            "TICKER": st.column_config.TextColumn(help="Símbolo en bolsa."),
-                            "NOMBRE": st.column_config.TextColumn(help="Nombre de la empresa."),
-                            "PUNTOS": st.column_config.ProgressColumn("Rating", help="Nota 0-100 calculada por el radar.", min_value=0, max_value=100, format="%d"),
-                            "ESTRATEGIA": st.column_config.TextColumn("🎯 Estrategia", help="✨ ORO: Tendencia histórica.\n⏳ PRE-ORO: Antes del cruce.\n⚡ MOMENTUM: Subida salvaje.\n🔥 FÉNIX: Rebote suelo."),
-                            "RSI": st.column_config.TextColumn("RSI", help="Mide si está barata o cara. Entre 55 y 68 es ideal."),
-                            "VOL. x": st.column_config.TextColumn("Vol. x", help="Volumen hoy vs media del mes."),
-                            "PRECIO": st.column_config.TextColumn("Precio Actual", help="Moneda local y dólares."),
-                            "STOP LOSS": st.column_config.TextColumn("Escudo Venta", help="Precio de salida automático en el broker."),
-                            "% HOY": st.column_config.TextColumn("Hoy", help="Rendimiento de hoy."),
-                            "% 1 MES": st.column_config.TextColumn("1 Mes", help="Rendimiento del último mes."),
-                            "% 6 MESES": st.column_config.TextColumn("6 Meses", help="Rendimiento de los últimos 6 meses."),
-                            "% 1 AÑO": st.column_config.TextColumn("1 Año", help="Rendimiento anualizado."),
-                            "% 5 AÑOS": st.column_config.TextColumn("5 Años", help="Rendimiento a largo plazo."),
-                            "ANÁLISIS": st.column_config.TextColumn("Contexto", width="large", help="Explicación detallada del algoritmo.")
+                            "TICKER": st.column_config.TextColumn(help="Símbolo."),
+                            "NOMBRE": st.column_config.TextColumn(help="Nombre."),
+                            "PUNTOS": st.column_config.ProgressColumn("Rating", help="Nota global (0-100).", min_value=0, max_value=100, format="%d"),
+                            "🎯 SETUP": st.column_config.TextColumn("Patrón de Entrada", help="✨ ORO: Tendencia histórica cruzada.\n⏳ PRE-ORO: A punto de cruzar.\n⚡ MOMENTUM: Subida salvaje hoy.\n🔥 FÉNIX: Rebote suelo."),
+                            "RSI": st.column_config.TextColumn("RSI", help="Fuerza relativa (55-68 es ideal)."),
+                            "VOL. x": st.column_config.TextColumn("Volumen x", help="Volumen hoy vs media del mes."),
+                            "PRECIO": st.column_config.TextColumn("Precio Actual"),
+                            "STOP LOSS": st.column_config.TextColumn("Stop Loss", help="Precio para salir con pérdidas mínimas."),
+                            "% HOY": st.column_config.TextColumn("Hoy"),
+                            "% 1 MES": st.column_config.TextColumn("1 Mes"),
+                            "% 6 MESES": st.column_config.TextColumn("6 Meses"),
+                            "% 1 AÑO": st.column_config.TextColumn("1 Año"),
+                            "% 5 AÑOS": st.column_config.TextColumn("5 Años"),
+                            "ANÁLISIS": st.column_config.TextColumn("Contexto", width="large", help="Explicación del motor Oppenheimer.")
                          })
 
 # ------------------------------------------
