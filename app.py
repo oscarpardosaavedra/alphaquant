@@ -662,22 +662,19 @@ with tab3:
     elif btn_asia: mercado_objetivo = "Asia"
 
     if mercado_objetivo:
+        # Limpieza de fantasmas antes de empezar
         st.session_state.resultados_radar = None
         
-        # Semáforos de mercado
-        if mercado_objetivo == "EEUU" and "Cerrado" in us["estado"]:
-            st.warning("⚠️ **Aviso:** Wall Street está cerrado. Los datos son del último cierre.")
-        elif mercado_objetivo == "Europa" and "Cerrado" in eu["estado"]:
-            st.warning("⚠️ **Aviso:** Mercado europeo cerrado.")
-        elif mercado_objetivo == "Asia" and "Cerrado" in asia["estado"]:
-            st.warning("⚠️ **Aviso:** Mercado asiático cerrado.")
+        if mercado_objetivo == "EEUU" and "Cerrado" in us["estado"]: st.warning("⚠️ **Aviso:** Wall Street cerrado.")
+        elif mercado_objetivo == "Europa" and "Cerrado" in eu["estado"]: st.warning("⚠️ **Aviso:** Mercado europeo cerrado.")
+        elif mercado_objetivo == "Asia" and "Cerrado" in asia["estado"]: st.warning("⚠️ **Aviso:** Mercado asiático cerrado.")
 
         tickers_a_escanear = [t for t in tickers_nombres.keys() if mercado_objetivo == "Todos" or obtener_region(t) == mercado_objetivo]
         
         mensaje_estado = st.empty()
         mensaje_estado.info(f"🚀 Ejecutando Algoritmo Oppenheimer ULTRA para: **{mercado_objetivo}**...")
         
-        barra_progreso = st.progress(0, text="Calibrando benchmark global y escaneando ADN de activos...")
+        barra_progreso = st.progress(0, text="Escaneando ADN de activos...")
         resultados_temporales = []
         
         # 1. CALIBRACIÓN BENCHMARK
@@ -687,7 +684,7 @@ with tab3:
             if isinstance(spy_data.columns, pd.MultiIndex): spy_data.columns = spy_data.columns.get_level_values(0)
             spy_cierres = spy_data['Close'].dropna()
             alphaSPY_1m = ((float(spy_cierres.iloc[-1]) / float(spy_cierres.iloc[-21])) - 1) * 100
-        except Exception: pass
+        except: pass
 
         ws = conectar_db()
         existentes_en_db = []
@@ -695,10 +692,10 @@ with tab3:
             try: existentes_en_db = ws.col_values(1)
             except: pass
 
-        # --- 1.5 PRE-CARGADOR DE DIVISAS ---
+        # Pre-cargador de divisas
         fx_rates = {}
-        mapa_divisas_fx = { "€": "EURUSD=X", "¥": "JPYUSD=X", "GBp": "GBPUSD=X", "kr": "SEKUSD=X", "₹": "INRUSD=X" }
-        for mon_sim, par_fx in mapa_divisas_fx.items():
+        mapa_fx = { "€": "EURUSD=X", "¥": "JPYUSD=X", "GBp": "GBPUSD=X", "kr": "SEKUSD=X", "₹": "INRUSD=X" }
+        for mon_sim, par_fx in mapa_fx.items():
             try:
                 d_fx = yf.download(par_fx, period="1d", progress=False)
                 if not d_fx.empty:
@@ -706,139 +703,104 @@ with tab3:
                     fx_rates[mon_sim] = float(d_fx['Close'].dropna().iloc[-1])
             except: pass
         
-        # 2. BUCLE CUANTITATIVO
+        # 2. BUCLE DE CAZA
         for i, ticker in enumerate(tickers_a_escanear):
-            porcentaje = int(((i + 1) / len(tickers_a_escanear)) * 100)
-            barra_progreso.progress((i + 1) / len(tickers_a_escanear), text=f"⏳ `Evaluando: {ticker.ljust(6)} | {porcentaje}%`")
+            porc = int(((i + 1) / len(tickers_a_escanear)) * 100)
+            barra_progreso.progress((i + 1) / len(tickers_a_escanear), text=f"⏳ `Evaluando: {ticker.ljust(6)} | {porc}%`")
             
             try:
                 sym_y = a_yahoo(ticker)
                 data = yf.download(sym_y, period="5y", progress=False)
                 if isinstance(data.columns, pd.MultiIndex): data.columns = data.columns.get_level_values(0)
                 df = data[['Close', 'High', 'Low', 'Volume']].dropna()
-                if len(df) < 55: continue 
-                
-                # --- HACK INTRADÍA ---
-                try:
-                    data_ahora = yf.download(sym_y, period="1d", interval="1m", progress=False)
-                    if not data_ahora.empty:
-                        if isinstance(data_ahora.columns, pd.MultiIndex): data_ahora.columns = data_ahora.columns.get_level_values(0)
-                        df.iloc[-1, df.columns.get_loc('Close')] = float(data_ahora['Close'].iloc[-1])
-                        df.iloc[-1, df.columns.get_loc('Volume')] = float(data_ahora['Volume'].sum())
-                        df.iloc[-1, df.columns.get_loc('High')] = float(max(df.iloc[-1]['High'], data_ahora['High'].max()))
-                except: pass
+                if len(df) < 200: continue 
 
+                # Datos básicos
                 c_hoy = float(df['Close'].iloc[-1])
                 c_ayer = float(df['Close'].iloc[-2])
                 pct_h = ((c_hoy / c_ayer) - 1) * 100
-                vol_h = float(df['Volume'].iloc[-1])
-                vol_m = float(df['Volume'].iloc[-20:].mean())
+                vol_h, vol_m = float(df['Volume'].iloc[-1]), float(df['Volume'].iloc[-20:].mean())
+                
+                # Medias y RSI
                 sma50_serie = df['Close'].rolling(window=50).mean()
-                sma50 = float(sma50_serie.iloc[-1])
-                sma50_prev = float(sma50_serie.iloc[-6])
                 sma200_serie = df['Close'].rolling(window=200).mean()
-                sma200 = float(sma200_serie.iloc[-1]) if len(df) >= 200 else None
+                sma50, sma200 = float(sma50_serie.iloc[-1]), float(sma200_serie.iloc[-1])
+                sma50_prev = float(sma50_serie.iloc[-6])
                 
                 delta = df['Close'].diff()
-                gain = delta.where(delta > 0, 0).rolling(window=14).mean()
-                loss = -delta.where(delta < 0, 0).rolling(window=14).mean()
+                gain = delta.where(delta > 0, 0).rolling(14).mean()
+                loss = -delta.where(delta < 0, 0).rolling(14).mean()
                 rsi = float(100 - (100 / (1 + (gain / loss))).iloc[-1])
                 
-                def ret_d(d): return ((c_hoy / float(df['Close'].iloc[-(d+1)])) - 1) * 100 if len(df) > d else 0
-                r1m, r6m, r1y, r5y = ret_d(21), ret_d(126), ret_d(252), ret_d(1260)
-                max_52 = float(df['High'].iloc[-252:].max())
-                dist_max = ((c_hoy / max_52) - 1) * 100
-                
-                # OBV y ATR
-                obv = (np.sign(delta) * df['Volume']).fillna(0).cumsum()
-                obv_hoy, obv_mes = float(obv.iloc[-1]), float(obv.iloc[-21])
+                # ATR y Stop Loss
                 tr = pd.concat([df['High']-df['Low'], np.abs(df['High']-df['Close'].shift()), np.abs(df['Low']-df['Close'].shift())], axis=1).max(axis=1)
                 atr = float(tr.rolling(14).mean().iloc[-1])
                 stop_l = c_hoy - (atr * 2.5)
 
-                # --- CÁLCULOS TÉCNICOS EXTRA ---
+                # MACD e Impulso
                 exp1 = df['Close'].ewm(span=12, adjust=False).mean()
                 exp2 = df['Close'].ewm(span=26, adjust=False).mean()
-                macd = exp1 - exp2
-                signal = macd.ewm(span=9, adjust=False).mean()
-                macd_hoy = macd.iloc[-1]
-                signal_hoy = signal.iloc[-1]
+                macd_h, signal_h = (exp1 - exp2).iloc[-1], (exp1 - exp2).ewm(span=9, adjust=False).mean().iloc[-1]
 
-                # --- DETECTOR DE CRUCE DE ORO (CONFIRMADO E INMINENTE) ---
+                # --- DETECTOR DE CRUCE DE ORO (PRE Y POST) ---
                 cruce_reciente = False
                 proximidad_oro = False
-                if sma200:
-                    distancia_medias = ((sma50 / sma200) - 1) * 100
-                    # Confirmado (hoy arriba, ayer abajo)
-                    if sma50 > sma200 and sma50_serie.iloc[-2] <= sma200_serie.iloc[-2]:
-                        cruce_reciente = True
-                    # Inminente (debajo pero a menos de 1.8% y la de 50 subiendo fuerte)
-                    elif sma50 < sma200 and distancia_medias > -1.8 and sma50 > sma50_prev:
-                        proximidad_oro = True
+                distancia = ((sma50 / sma200) - 1) * 100
+                if sma50 > sma200 and sma50_serie.iloc[-2] <= sma200_serie.iloc[-2]: cruce_reciente = True
+                elif sma50 < sma200 and distancia > -1.8 and sma50 > sma50_prev: proximidad_oro = True
 
                 # --- MOTOR DE PUNTUACIÓN ---
                 p = 0
                 status_t = "Lateral"
                 texto_a = []
-                
                 if c_hoy > sma50: p += 10; status_t = "Alcista Corto"
-                if sma200 and c_hoy > sma200: p += 10
-                if sma200 and sma50 > sma200: 
-                    p += 10; status_t = "Alcista Estructural"
-                    if cruce_reciente: p += 25; texto_a.append("🚀 ¡Cruce de Oro confirmado!")
-                
-                if proximidad_oro: p += 15; texto_a.append("🎯 Pre-Oro: A punto de explotar.")
-                if macd_hoy > signal_hoy: p += 15; texto_a.append("📈 Impulso MACD alcista.")
-                if 55 <= rsi <= 68: p += 15; texto_a.append("✅ RSI óptimo.")
-                elif rsi > 72: p -= 15; texto_a.append("⚠️ Sobrecompra.")
-                if vol_h > (vol_m * 1.8): p += 20; texto_a.append("🐋 Manos fuertes entrando.")
+                if c_hoy > sma200: p += 10; status_t = "Alcista Estructural"
+                if cruce_reciente: p += 25; texto_a.append("🚀 Cruce de Oro!")
+                if proximidad_oro: p += 15; texto_a.append("🎯 Pre-Oro (Inminente)")
+                if macd_h > signal_h: p += 15; texto_a.append("📈 Impulso MACD")
+                if 55 <= rsi <= 68: p += 15
+                if vol_h > (vol_m * 1.8): p += 20; texto_a.append("🐋 Ballenas comprando")
 
-                isF = False
-                isM = False
-                if dist_max <= -20 and c_hoy > sma50 and vol_h > (vol_m * 1.8) and pct_h > 1.5:
-                    p = max(p, 92); isF = True
-                if pct_h >= 4.5 and vol_h >= (vol_m * 2.5) and c_hoy > sma50:
-                    p = max(p, 95); isM = True
+                # Módulos Especiales
+                max_52 = float(df['High'].iloc[-252:].max())
+                dist_max = ((c_hoy / max_52) - 1) * 100
+                isF = (dist_max <= -20 and c_hoy > sma50 and vol_h > (vol_m * 1.8) and pct_h > 1.5)
+                isM = (pct_h >= 4.5 and vol_h >= (vol_m * 2.5) and c_hoy > sma50)
+                if isF: p = max(p, 92)
+                if isM: p = max(p, 95)
 
                 pts = max(0, min(100, int(p)))
 
-                # --- FUSIÓN DE ESTRATEGIA (VERDICTO ÚNICO) ---
+                # --- ESTRATEGIA ÚNICA ---
                 if pts >= 90:
-                    if cruce_reciente: veredicto = "✨ ORO (Tendencia Élite)"
-                    elif proximidad_oro: veredicto = "⏳ PRE-ORO (Oportunidad)"
-                    elif isM: veredicto = "⚡ MOMENTUM (Cohete)"
-                    elif isF: veredicto = "🔥 FÉNIX (Rebote)"
-                    else: veredicto = "💎 ALFA (Compra Fuerte)"
-                elif pts >= 80: veredicto = "🟢 ACUMULAR"
-                elif pts >= 70: veredicto = "🟡 VIGILAR"
-                else: veredicto = "⚪ ESPERAR"
+                    if cruce_reciente: est = "✨ ORO (Tendencia Élite)"
+                    elif proximidad_oro: est = "⏳ PRE-ORO (Oportunidad)"
+                    elif isM: est = "⚡ MOMENTUM (Cohete)"
+                    elif isF: est = "🔥 FÉNIX (Rebote)"
+                    else: est = "💎 ALFA (Compra Fuerte)"
+                elif pts >= 80: est = "🟢 ACUMULAR"
+                elif pts >= 70: est = "🟡 VIGILAR"
+                else: est = "⚪ ESPERAR"
 
-                # Guardamos registro en DB si es excelente
-                if pts >= 90 and ticker not in existentes_en_db and ws is not None:
+                # Guardar en DB
+                if pts >= 90 and ticker not in existentes_en_db and ws:
                     ws.append_row([ticker, tickers_nombres[ticker], datetime.datetime.now().strftime("%Y-%m-%d %H:%M"), float(c_hoy), int(pts)])
                     existentes_en_db.append(ticker)
 
-                # Formateo de moneda y conversiones
+                # Formateo moneda
                 mon = obtener_simbolo_moneda(ticker)
-                tasa_v = fx_rates.get(mon)
-                t_conv_p, t_conv_s = "", ""
-                if mon != "$" and tasa_v:
-                    factor = tasa_v / 100 if mon == "GBp" else tasa_v
-                    t_conv_p = f" (≈ {(c_hoy * factor):.2f} $)"
-                    t_conv_s = f" (≈ {(stop_l * factor):.2f} $)"
+                t_p, t_s = "", ""
+                if mon != "$" and fx_rates.get(mon):
+                    f = fx_rates[mon] / 100 if mon == "GBp" else fx_rates[mon]
+                    t_p = f" (≈ {(c_hoy * f):.2f} $)"
+                    t_s = f" (≈ {(stop_l * f):.2f} $)"
 
                 resultados_temporales.append({
-                    "TICKER": ticker, 
-                    "NOMBRE": tickers_nombres[ticker], 
-                    "RATING": pts, 
-                    "🎯 ESTRATEGIA": veredicto,
-                    "RSI": f"{rsi:.1f}", 
-                    "VOL. x": f"{(vol_h/vol_m):.1f}x",
-                    "PRECIO": f"{c_hoy:.2f}{mon}{t_conv_p}",
-                    "STOP LOSS": f"{stop_l:.2f}{mon}{t_conv_s}",
+                    "TICKER": ticker, "NOMBRE": tickers_nombres[ticker], "RATING": pts, 
+                    "🎯 ESTRATEGIA": est, "RSI": f"{rsi:.1f}", "VOL. x": f"{(vol_h/vol_m):.1f}x",
+                    "PRECIO": f"{c_hoy:.2f}{mon}{t_p}", "STOP LOSS": f"{stop_l:.2f}{mon}{t_s}",
                     "ANÁLISIS": f"[{status_t}] " + (" | ".join(texto_a) if texto_a else "Estable.")
                 })
-                time.sleep(0.01)
             except: continue
             
         barra_progreso.empty()
@@ -848,26 +810,22 @@ with tab3:
 
     # --- DIBUJADO DE RESULTADOS ---
     if st.session_state.resultados_radar is not None:
-        merc_txt = st.session_state.get('mercado_cazado', 'Todos')
-        st.success(f"🎯 Caza terminada para: **{merc_txt}**")
+        st.success(f"🎯 Caza terminada para: **{st.session_state.get('mercado_cazado', 'Todos')}**")
         
-        if len(st.session_state.resultados_radar) == 0:
-            st.info("🕵️‍♂️ **Escaneo completado:** Ningún activo ha superado el filtro de 90 puntos.")
+        if not st.session_state.resultados_radar:
+            st.info("🕵️‍♂️ Sin activos de 90+ puntos hoy.")
         else:
             df_res = pd.DataFrame(st.session_state.resultados_radar)
             df_res = df_res.sort_values(by="RATING", ascending=False).reset_index(drop=True)
             
+            # --- AQUÍ ESTABA EL ERROR: HEMOS QUITADO EL .style.map QUE PETA ---
             st.dataframe(df_res, 
-                         use_container_width=True, 
-                         height=500, 
-                         hide_index=True,
+                         use_container_width=True, height=500, hide_index=True,
                          column_config={
                             "RATING": st.column_config.ProgressColumn("Rating", help="Nota 0-100", min_value=0, max_value=100, format="%d"),
-                            "🎯 ESTRATEGIA": st.column_config.TextColumn("Estrategia", help="✨ ORO: Tendencia histórica.\n⏳ PRE-ORO: Anticipación al cruce.\n⚡ MOMENTUM: Explosión hoy.\n🔥 FÉNIX: Rebote suelo."),
-                            "RSI": st.column_config.TextColumn("RSI", help="Ideal entre 55-68."),
-                            "VOL. x": st.column_config.TextColumn("Vol. x", help="Volumen hoy vs media mensual."),
-                            "STOP LOSS": st.column_config.TextColumn("Escudo Venta", help="Precio de salida automático en tu broker."),
-                            "ANÁLISIS": st.column_config.TextColumn("Contexto Algorítmico", width="large")
+                            "🎯 ESTRATEGIA": st.column_config.TextColumn("Estrategia", help="✨ ORO: Confirmado.\n⏳ PRE-ORO: A punto de cruzar.\n⚡ MOMENTUM: Subida salvaje.\n🔥 FÉNIX: Rebote suelo."),
+                            "ANÁLISIS": st.column_config.TextColumn("Contexto", width="large"),
+                            "STOP LOSS": st.column_config.TextColumn("Escudo Venta", help="Precio para salir si cae.")
                          })
 
 # ------------------------------------------
