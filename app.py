@@ -775,6 +775,9 @@ with tab3:
                 # ==========================================
                 # MOTOR DE PUNTUACIÓN (100% DINÁMICO Y ORGÁNICO)
                 # ==========================================
+# ==========================================
+                # MOTOR DE PUNTUACIÓN (100% DINÁMICO Y ORGÁNICO)
+                # ==========================================
                 p = 0
                 status_t = "Alcista" if c_hoy > sma50 else "Bajista"
                 analisis_parts = []
@@ -794,13 +797,13 @@ with tab3:
                     p += 15
                     analisis_parts.append(f"🤫 VCP Real: Rango hiper-estrecho ({rango_14d:.1f}%) con 'secado de volumen'. Los vendedores se han agotado.")
                 
-                # Cohete Dinámico (Puntos escalables basados en la fuerza real del movimiento)
+                # Cohete Dinámico
                 if es_cohete: 
-                    puntos_cohete = 15 + min(15, int(pct_h)) # Si sube 4% gana 19pts, si sube 10% gana 25pts.
+                    puntos_cohete = 15 + min(15, int(pct_h)) 
                     p += puntos_cohete
                     analisis_parts.append(f"🚀 Ruptura de Momentum (+{pct_h:.1f}% hoy).")
                 
-                # Proximidad a Máximos Dinámico
+                # Proximidad a Máximos Dinámico (El Fénix se salta esta penalización)
                 if dist_max >= -15.0:
                     puntos_max = 5 + int((15 - abs(dist_max)) / 1.5)
                     p += puntos_max
@@ -824,8 +827,8 @@ with tab3:
                     p += 10
                     analisis_parts.append(f"RSI óptimo ({rsi:.1f}).")
                 elif rsi > 70:
-                    if es_cohete: 
-                        analisis_parts.append(f"RSI alto ({rsi:.1f}) justificado por pura fuerza motriz.")
+                    if es_cohete or isF: # Si es cohete o fénix, el RSI alto es fuerza, no peligro
+                        analisis_parts.append(f"RSI alto ({rsi:.1f}) justificado por el violento impulso comprador.")
                     else: 
                         p -= 15
                         analisis_parts.append(f"⚠️ Precaución: Posible sobrecompra (RSI {rsi:.1f}).")
@@ -836,14 +839,31 @@ with tab3:
                     p += puntos_vol
                     analisis_parts.append(f"🐋 Inyección de volumen institucional ({(vol_h/vol_m):.1f}x).")
 
-                # Fénix Dinámico
+                # 🔥 FÉNIX ARREGLADO: Inyección de Puntos de Resurrección
                 if isF: 
-                    puntos_fenix = 20 + min(15, int(abs(dist_max) / 4))
+                    # Como le faltan puntos de estructura, le damos un bonus potente para que pueda llegar a 90+
+                    puntos_fenix = 35 + min(15, int(abs(dist_max) / 2))
                     p += puntos_fenix
-                    analisis_parts.append("🔥 Intentando rebote técnico tras castigo severo.")
+                    analisis_parts.append("🔥 Activado patrón Fénix: Intento de rebote violento tras un castigo severo. Gran oportunidad de entrada en suelo.")
 
                 # Limitamos a 99 el máximo para que la nota siempre refleje variabilidad.
                 pts = max(0, min(99, int(p)))
+                analisis_final_texto = " ".join(analisis_parts)
+
+                # --- ASIGNACIÓN DE ESTRATEGIA (CON PRIORIDADES CORREGIDAS) ---
+                est = "⚪ IGNORAR"
+                if pts >= 88:
+                    if isF: est = "🔥 FÉNIX (Rebote)" # Le damos prioridad al Fénix para que no se pise con el Cohete
+                    elif cruce_reciente: est = "✨ ORO (Élite)"
+                    elif proximidad_oro: est = "⏳ PRE-ORO (Anticipar)"
+                    elif es_cohete: est = "⚡ MOMENTUM (Cohete)"
+                    elif es_compresion: est = "🤫 ACECHO (Muelle)"
+                    else: est = "💎 ALFA (Fuerte)"
+                elif pts >= 78: 
+                    if es_cohete: est = "⚡ MOMENTUM (Fase 1)"
+                    elif es_compresion: est = "🤫 ACECHO (Vigilancia)"
+                    else: est = "🟢 ACUMULAR"
+                elif pts >= 70: est = "🟡 VIGILAR"
                 analisis_final_texto = " ".join(analisis_parts)
 
                 # --- ASIGNACIÓN DE ESTRATEGIA SIN FORZAR PUNTOS ---
