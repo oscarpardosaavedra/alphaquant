@@ -805,7 +805,7 @@ with tab3:
         st.dataframe(df_res.style.map(color_pct, subset=["% HOY", "% 1 MES", "% 6 MESES", "% 1 AÑO", "MAX (52s)"]), use_container_width=True, hide_index=True)
 
 # ------------------------------------------
-# PESTAÑA 4: SALA DE TROFEOS (AUDITORÍA CON MONEDA Y VELOCIDAD)
+# PESTAÑA 4: SALA DE TROFEOS (AUDITORÍA COMPACTA)
 # ------------------------------------------
 with tab4:
     st.markdown("### 🏆 Sala de Trofeos")
@@ -829,7 +829,7 @@ with tab4:
                             st.rerun()
 
             if st.button("🔄 Auditar Rendimiento Actual", use_container_width=True):
-                with st.spinner("Calculando métricas con divisas..."):
+                with st.spinner("Calculando métricas..."):
                     exitos, cuarentena, fracasos, pendiente = [], [], [], []
                     ahora = datetime.datetime.now()
 
@@ -837,7 +837,7 @@ with tab4:
                         try:
                             ticker = d['Ticker']
                             tk_y = a_yahoo(ticker)
-                            simbolo_moneda = obtener_simbolo_moneda(ticker) # Llamada a tu función de moneda
+                            simbolo_moneda = obtener_simbolo_moneda(ticker)
                             
                             hist = yf.download(tk_y, period="5d", progress=False)
                             if isinstance(hist.columns, pd.MultiIndex): hist.columns = hist.columns.get_level_values(0)
@@ -846,25 +846,18 @@ with tab4:
                             p_in = float(str(d['Precio_Aviso']).replace(',', '.'))
                             rent = ((p_hoy / p_in) - 1) * 100
                             
-                            # Lógica de tiempo
                             fecha_entrada = datetime.datetime.strptime(d['Fecha'], "%Y-%m-%d %H:%M")
                             dias_transcurridos = (ahora - fecha_entrada).days
                             
                             kpi_velocidad = ""
                             if rent >= 5.0:
-                                kpi_velocidad = f"🚀 +5% en ~{max(1, dias_transcurridos)}d"
+                                kpi_velocidad = f"🚀 +5% en {max(1, dias_transcurridos)}d"
                             elif rent > 0:
-                                kpi_velocidad = f"⏳ En curso ({dias_transcurridos}d)"
+                                kpi_velocidad = f"⏳ {dias_transcurridos}d"
 
                             obj = {
-                                "T": ticker, 
-                                "N": d['Empresa'], 
-                                "E": p_in, 
-                                "A": p_hoy, 
-                                "R": rent, 
-                                "F": d['Fecha'], 
-                                "KPI": kpi_velocidad,
-                                "M": simbolo_moneda
+                                "T": ticker, "N": d['Empresa'], "E": p_in, "A": p_hoy, 
+                                "R": rent, "F": d['Fecha'], "KPI": kpi_velocidad, "M": simbolo_moneda
                             }
                             
                             if abs(rent) < 0.1: pendiente.append(obj)
@@ -873,7 +866,6 @@ with tab4:
                             else: fracasos.append(obj)
                         except: continue
 
-                    # Métricas de cabecera
                     tot_val = len(exitos) + len(cuarentena) + len(fracasos)
                     w_rate = (len(exitos) / tot_val * 100) if tot_val > 0 else 0
                     c1, c2 = st.columns(2)
@@ -890,17 +882,17 @@ with tab4:
                         with cols[i]:
                             st.markdown(f"#### {titulos[i]}")
                             for item in l:
+                                # DISEÑO HORIZONTAL: In y Hoy en la misma línea
                                 st.markdown(f"""
-                                <div style="border-top:3px solid {colores[i]}; background:white; padding:12px; border-radius:8px; margin-bottom:12px; box-shadow:0 2px 5px rgba(0,0,0,0.1);">
+                                <div style="border-top:3px solid {colores[i]}; background:white; padding:10px; border-radius:8px; margin-bottom:10px; box-shadow:0 2px 5px rgba(0,0,0,0.05);">
                                     <div style="display:flex; justify-content:space-between; align-items:center;">
-                                        <b style="font-size:16px;">{item['T']}</b> 
-                                        <b style="color:{colores[i]}; font-size:16px;">{item['R']:+.2f}%</b>
+                                        <b style="font-size:15px;">{item['T']}</b> 
+                                        <b style="color:{colores[i]}; font-size:15px;">{item['R']:+.2f}%</b>
                                     </div>
-                                    <div style="font-size:11px; color:#888; margin-bottom:5px;">📅 {item['F']}</div>
-                                    <div style="font-size:12px; color:#444;">
-                                        In: <b>{item['E']:.2f} {item['M']}</b><br>
-                                        Hoy: <b>{item['A']:.2f} {item['M']}</b>
+                                    <div style="font-size:10px; color:#888; margin-bottom:4px;">{item['F']}</div>
+                                    <div style="font-size:11px; color:#444;">
+                                        In: <b>{item['E']:.2f}{item['M']}</b> | Hoy: <b>{item['A']:.2f}{item['M']}</b>
                                     </div>
-                                    <div style="font-size:11px; margin-top:8px; color:#1E90FF; font-weight:bold;">{item['KPI']}</div>
+                                    <div style="font-size:10px; margin-top:6px; color:#1E90FF; font-weight:bold;">{item['KPI']}</div>
                                 </div>
                                 """, unsafe_allow_html=True)
