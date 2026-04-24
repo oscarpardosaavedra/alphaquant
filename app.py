@@ -882,7 +882,7 @@ with tab4:
                         with cols[i]:
                             st.markdown(f"#### {titulos[i]}")
                             for item in l:
-                                # DISEÑO HORIZONTAL: In y Hoy en la misma línea
+                                # DISEÑO HORIZONTAL: In y Actual en la misma línea
                                 st.markdown(f"""
                                 <div style="border-top:3px solid {colores[i]}; background:white; padding:10px; border-radius:8px; margin-bottom:10px; box-shadow:0 2px 5px rgba(0,0,0,0.05);">
                                     <div style="display:flex; justify-content:space-between; align-items:center;">
@@ -891,7 +891,7 @@ with tab4:
                                     </div>
                                     <div style="font-size:10px; color:#888; margin-bottom:4px;">{item['F']}</div>
                                     <div style="font-size:11px; color:#444;">
-                                        In: <b>{item['E']:.2f}{item['M']}</b> | Hoy: <b>{item['A']:.2f}{item['M']}</b>
+                                        In: <b>{item['E']:.2f}{item['M']}</b> | Actual: <b>{item['A']:.2f}{item['M']}</b>
                                     </div>
                                     <div style="font-size:10px; margin-top:6px; color:#1E90FF; font-weight:bold;">{item['KPI']}</div>
                                 </div>
