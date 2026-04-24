@@ -755,7 +755,7 @@ with tab3:
                     ws.append_row([ticker, tickers_nombres[ticker], datetime.datetime.now().strftime("%Y-%m-%d %H:%M"), float(c_hoy), int(pts)])
                     existentes_en_db.append(ticker)
 
-reco = "⚪ ESPERAR"
+                reco = "⚪ ESPERAR"
                 if pts >= 90: reco = "💎 COMPRA FUERTE (ALFA)" if not isF else "🔥 COMPRA (FÉNIX)"
                 elif pts >= 80: reco = "🟢 ACUMULAR"
                 elif pts >= 70: reco = "🟡 VIGILAR"
