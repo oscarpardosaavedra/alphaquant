@@ -704,6 +704,18 @@ with tab3:
                 df = data[['Close', 'High', 'Low', 'Volume']].dropna()
                 if len(df) < 55: continue 
                 
+                # --- HACK INTRADÍA: FORZAR EL PRECIO DE AHORA MISMO ---
+                try:
+                    data_ahora = yf.download(sym_y, period="1d", interval="1m", progress=False)
+                    if not data_ahora.empty:
+                        if isinstance(data_ahora.columns, pd.MultiIndex): data_ahora.columns = data_ahora.columns.get_level_values(0)
+                        # Sobrescribimos el último precio diario con el último precio de este minuto
+                        df.iloc[-1, df.columns.get_loc('Close')] = float(data_ahora['Close'].iloc[-1])
+                        df.iloc[-1, df.columns.get_loc('Volume')] = float(data_ahora['Volume'].sum()) # Sumamos el volumen del día
+                        df.iloc[-1, df.columns.get_loc('High')] = float(max(df.iloc[-1]['High'], data_ahora['High'].max()))
+                except: pass
+                # -----------------------------------------------------
+
                 c_hoy = float(df['Close'].iloc[-1])
                 c_ayer = float(df['Close'].iloc[-2])
                 pct_h = ((c_hoy / c_ayer) - 1) * 100
