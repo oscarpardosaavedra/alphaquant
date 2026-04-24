@@ -664,7 +664,6 @@ with tab3:
     if mercado_objetivo:
         st.session_state.resultados_radar = None
         
-        # Avisos de mercado cerrado
         if mercado_objetivo == "EEUU" and "Cerrado" in us["estado"]: st.warning("⚠️ **Aviso:** Wall Street está cerrado. Datos del último cierre.")
         elif mercado_objetivo == "Europa" and "Cerrado" in eu["estado"]: st.warning("⚠️ **Aviso:** Mercado europeo cerrado.")
         elif mercado_objetivo == "Asia" and "Cerrado" in asia["estado"]: st.warning("⚠️ **Aviso:** Mercado asiático cerrado.")
@@ -677,6 +676,15 @@ with tab3:
         barra_progreso = st.progress(0, text="Analizando ADN financiero de las empresas...")
         resultados_temporales = []
         
+        # 1. Calibración Benchmark
+        alphaSPY_1m = 0
+        try:
+            spy_data = yf.download("SPY", period="1y", progress=False)
+            if isinstance(spy_data.columns, pd.MultiIndex): spy_data.columns = spy_data.columns.get_level_values(0)
+            spy_cierres = spy_data['Close'].dropna()
+            alphaSPY_1m = ((float(spy_cierres.iloc[-1]) / float(spy_cierres.iloc[-21])) - 1) * 100
+        except: pass
+
         ws = conectar_db()
         existentes_en_db = []
         if ws:
@@ -706,7 +714,6 @@ with tab3:
                 df = data[['Close', 'High', 'Low', 'Volume']].dropna()
                 if len(df) < 200: continue 
 
-                # Hack Intradía (Precios en tiempo real)
                 try:
                     data_ahora = yf.download(sym_y, period="1d", interval="1m", progress=False)
                     if not data_ahora.empty:
@@ -716,31 +723,31 @@ with tab3:
                         df.iloc[-1, df.columns.get_loc('High')] = float(max(df.iloc[-1]['High'], data_ahora['High'].max()))
                 except: pass
 
-                # Datos básicos
                 c_hoy = float(df['Close'].iloc[-1])
                 c_ayer = float(df['Close'].iloc[-2])
                 pct_h = ((c_hoy / c_ayer) - 1) * 100
                 vol_h = float(df['Volume'].iloc[-1])
                 vol_m = float(df['Volume'].iloc[-20:].mean())
                 
-                # Medias Móviles
                 sma50_serie = df['Close'].rolling(window=50).mean()
                 sma200_serie = df['Close'].rolling(window=200).mean()
                 sma50, sma200 = float(sma50_serie.iloc[-1]), float(sma200_serie.iloc[-1])
                 sma50_prev = float(sma50_serie.iloc[-6])
                 
-                # Indicadores Técnicos
                 delta = df['Close'].diff()
                 gain = delta.where(delta > 0, 0).rolling(14).mean()
                 loss = -delta.where(delta < 0, 0).rolling(14).mean()
                 rsi = float(100 - (100 / (1 + (gain / loss))).iloc[-1])
+                
+                def ret_d(d): return ((c_hoy / float(df['Close'].iloc[-(d+1)])) - 1) * 100 if len(df) > d else 0
+                r1m, r6m, r1y, r5y = ret_d(21), ret_d(126), ret_d(252), ret_d(1260)
                 
                 exp1 = df['Close'].ewm(span=12, adjust=False).mean()
                 exp2 = df['Close'].ewm(span=26, adjust=False).mean()
                 macd_h = (exp1 - exp2).iloc[-1]
                 signal_h = (exp1 - exp2).ewm(span=9, adjust=False).mean().iloc[-1]
 
-                # --- 1. MÓDULO ORO (Cruce y Pre-Cruce) ---
+                # --- DETECTORES DE PATRONES ---
                 cruce_reciente = False
                 proximidad_oro = False
                 if sma200:
@@ -750,96 +757,115 @@ with tab3:
                     elif sma50 < sma200 and distancia_m > -1.8 and sma50 > sma50_prev:
                         proximidad_oro = True
 
-                # --- 2. MÓDULO COMPRESIÓN (El Muelle) ---
                 max_14 = float(df['High'].iloc[-14:].max())
                 min_14 = float(df['Low'].iloc[-14:].min())
                 rango_14d = ((max_14 / min_14) - 1) * 100
-                es_compresion = (rango_14d < 6.0 and c_hoy > sma50 and rsi > 50)
+                vol_5d = float(df['Volume'].iloc[-5:].mean())
+                secado_volumen = (vol_5d < (vol_m * 0.8)) 
+                es_compresion = (rango_14d < 6.0 and c_hoy > sma50 and rsi > 50 and secado_volumen)
 
-                # --- 3. MÓDULO MOMENTUM (Cohete) ---
                 es_cohete = (pct_h >= 4.0 and c_hoy > sma50)
+                max_52 = float(df['High'].iloc[-252:].max())
+                dist_max = ((c_hoy / max_52) - 1) * 100
+                isF = (dist_max <= -20 and c_hoy > sma50 and pct_h > 2.0)
+                
+                b_1m = alphaSPY_1m if obtener_region(ticker) == "EEUU" else 0
+                outperformance = r1m - b_1m
 
-                # --- MOTOR DE PUNTUACIÓN Y ANÁLISIS ELABORADO ---
+                # ==========================================
+                # MOTOR DE PUNTUACIÓN (100% DINÁMICO Y ORGÁNICO)
+                # ==========================================
                 p = 0
                 status_t = "Alcista" if c_hoy > sma50 else "Bajista"
-                
-                # Generador de Reporte Analítico (Lenguaje Natural)
                 analisis_parts = []
-                analisis_parts.append(f"La acción mantiene una estructura {status_t.lower()} primaria.")
+                analisis_parts.append(f"Estructura {status_t.lower()} primaria.")
 
                 if c_hoy > sma50: p += 10
                 if sma200 and c_hoy > sma200: p += 10
                 
-                # Suma de Patrones
                 if cruce_reciente: 
-                    p += 25
-                    analisis_parts.append("Acaba de confirmar un 'Cruce de Oro' técnico, lo cual representa una fuerte señal institucional de ciclo alcista a largo plazo.")
+                    p += 20
+                    analisis_parts.append("✨ 'Cruce de Oro' confirmado (fuerte señal institucional).")
                 elif proximidad_oro: 
-                    p += 15
-                    analisis_parts.append("Detectada alta probabilidad de 'Cruce de Oro' inminente; las medias de corto y largo plazo están convergiendo.")
+                    p += 12
+                    analisis_parts.append("🎯 Pre-Oro: Medias convergiendo para posible cruce alcista.")
                 
                 if es_compresion: 
-                    p += 25
-                    analisis_parts.append(f"Muestra un Patrón de Compresión de Volatilidad (VCP): el precio apenas se ha movido un {rango_14d:.1f}% en 2 semanas, indicando una acumulación silenciosa antes de una posible ruptura explosiva.")
-                
-                if es_cohete: 
-                    p += 30
-                    analisis_parts.append(f"Hoy registra una ruptura agresiva con un avance intradiario del {pct_h:.1f}%, activando la alerta de fuerte momentum direccional.")
-                
-                if macd_h > signal_h: 
                     p += 15
-                    analisis_parts.append("El flujo direccional positivo es respaldado por el indicador MACD.")
+                    analisis_parts.append(f"🤫 VCP Real: Rango hiper-estrecho ({rango_14d:.1f}%) con 'secado de volumen'. Los vendedores se han agotado.")
+                
+                # Cohete Dinámico (Puntos escalables basados en la fuerza real del movimiento)
+                if es_cohete: 
+                    puntos_cohete = 15 + min(15, int(pct_h)) # Si sube 4% gana 19pts, si sube 10% gana 25pts.
+                    p += puntos_cohete
+                    analisis_parts.append(f"🚀 Ruptura de Momentum (+{pct_h:.1f}% hoy).")
+                
+                # Proximidad a Máximos Dinámico
+                if dist_max >= -15.0:
+                    puntos_max = 5 + int((15 - abs(dist_max)) / 1.5)
+                    p += puntos_max
+                    analisis_parts.append(f"🏆 Cotiza a solo un {abs(dist_max):.1f}% de sus máximos anuales.")
+                elif dist_max < -40.0 and not isF:
+                    p -= 15
+                    analisis_parts.append("⚠️ Acción hundida. Peligro de resistencia vendedora estructural.")
+
+                # Fuerza Relativa Dinámica
+                if outperformance > 5.0:
+                    puntos_rs = 10 + min(10, int(outperformance / 2))
+                    p += puntos_rs
+                    analisis_parts.append(f"💪 Fuerza Relativa extrema: Rinde un {outperformance:.1f}% MÁS que el mercado general este mes.")
+
+                if macd_h > signal_h: 
+                    p += 10
+                    analisis_parts.append("📈 MACD acompañando al alza.")
 
                 # RSI Inteligente
                 if 50 <= rsi <= 70: 
-                    p += 15
-                    analisis_parts.append(f"Su indicador de fuerza (RSI en {rsi:.1f}) se encuentra en zona de control óptima, con margen para seguir subiendo sin sobrecalentarse.")
+                    p += 10
+                    analisis_parts.append(f"RSI óptimo ({rsi:.1f}).")
                 elif rsi > 70:
                     if es_cohete: 
-                        analisis_parts.append(f"Aunque el RSI está elevado ({rsi:.1f}), en este contexto técnico confirma pura fuerza motriz en lugar de un simple riesgo de sobrecompra.")
+                        analisis_parts.append(f"RSI alto ({rsi:.1f}) justificado por pura fuerza motriz.")
                     else: 
                         p -= 15
-                        analisis_parts.append(f"Se advierte precaución técnica a muy corto plazo debido a lecturas de sobrecompra (RSI en {rsi:.1f}).")
+                        analisis_parts.append(f"⚠️ Precaución: Posible sobrecompra (RSI {rsi:.1f}).")
 
-                # Volumen Inteligente (1.2x para cazar entradas a media sesión)
+                # Volumen Inteligente Dinámico
                 if vol_h > (vol_m * 1.2): 
-                    p += 20
-                    analisis_parts.append(f"Todo este movimiento técnico viene inyectado con volumen institucional notable ({(vol_h/vol_m):.1f}x veces superior a su media habitual).")
+                    puntos_vol = 10 + min(10, int((vol_h / vol_m) * 2))
+                    p += puntos_vol
+                    analisis_parts.append(f"🐋 Inyección de volumen institucional ({(vol_h/vol_m):.1f}x).")
 
-                # Fénix (Rebote desde el fondo)
-                max_52 = float(df['High'].iloc[-252:].max())
-                dist_max = ((c_hoy / max_52) - 1) * 100
-                isF = (dist_max <= -20 and c_hoy > sma50 and pct_h > 2.0)
+                # Fénix Dinámico
                 if isF: 
-                    p = max(p, 92)
-                    analisis_parts.append("El activo está intentando un rebote técnico importante tras una corrección prolongada previa.")
+                    puntos_fenix = 20 + min(15, int(abs(dist_max) / 4))
+                    p += puntos_fenix
+                    analisis_parts.append("🔥 Intentando rebote técnico tras castigo severo.")
 
-                pts = max(0, min(100, int(p)))
+                # Limitamos a 99 el máximo para que la nota siempre refleje variabilidad.
+                pts = max(0, min(99, int(p)))
                 analisis_final_texto = " ".join(analisis_parts)
 
-                # --- FUSIÓN ÚNICA: LA ESTRATEGIA ---
-                if pct_h >= 5.0 and vol_h > (vol_m * 1.0) and c_hoy > sma50:
-                    pts = max(pts, 95)
-                    est = "⚡ MOMENTUM (Cohete)"
-                elif pts >= 90:
+                # --- ASIGNACIÓN DE ESTRATEGIA SIN FORZAR PUNTOS ---
+                est = "⚪ IGNORAR"
+                if pts >= 88: # Bajamos el umbral a 88 ya que ahora los puntos no se regalan
                     if cruce_reciente: est = "✨ ORO (Élite)"
                     elif proximidad_oro: est = "⏳ PRE-ORO (Anticipar)"
+                    elif es_cohete: est = "⚡ MOMENTUM (Cohete)"
                     elif es_compresion: est = "🤫 ACECHO (Muelle)"
                     elif isF: est = "🔥 FÉNIX (Rebote)"
                     else: est = "💎 ALFA (Fuerte)"
-                elif pts >= 80: est = "🟢 ACUMULAR"
+                elif pts >= 78: 
+                    if es_cohete: est = "⚡ MOMENTUM (Fase 1)"
+                    elif es_compresion: est = "🤫 ACECHO (Vigilancia)"
+                    else: est = "🟢 ACUMULAR"
                 elif pts >= 70: est = "🟡 VIGILAR"
-                else: est = "⚪ IGNORAR"
 
-                # Guardado en Base de Datos
-                if pts >= 90 and ticker not in existentes_en_db and ws:
+                # Guardado en Base de Datos (Si supera 88 entra en la zona noble)
+                if pts >= 88 and ticker not in existentes_en_db and ws:
                     ws.append_row([ticker, tickers_nombres[ticker], datetime.datetime.now().strftime("%Y-%m-%d %H:%M"), float(c_hoy), int(pts)])
                     existentes_en_db.append(ticker)
 
-                # Rentabilidades y Formateo
-                def ret_d(d): return ((c_hoy / float(df['Close'].iloc[-(d+1)])) - 1) * 100 if len(df) > d else 0
-                r1m, r6m, r1y, r5y = ret_d(21), ret_d(126), ret_d(252), ret_d(1260)
-                
                 mon = obtener_simbolo_moneda(ticker)
                 tr_vals = pd.concat([df['High']-df['Low'], np.abs(df['High']-df['Close'].shift()), np.abs(df['Low']-df['Close'].shift())], axis=1).max(axis=1)
                 atr_v = float(tr_vals.rolling(14).mean().iloc[-1])
@@ -851,7 +877,6 @@ with tab3:
                     t_p = f" (≈ {(c_hoy * f):.2f} $)"
                     t_s = f" (≈ {(stop_v * f):.2f} $)"
 
-                # AQUÍ ELIMINAMOS LAS CLAVES "SEÑAL" Y "TENDENCIA"
                 resultados_temporales.append({
                     "TICKER": ticker,
                     "NOMBRE": tickers_nombres[ticker],
@@ -893,8 +918,8 @@ with tab3:
                          column_config={
                             "TICKER": st.column_config.TextColumn(help="Símbolo oficial de la empresa en la bolsa."),
                             "NOMBRE": st.column_config.TextColumn(help="Nombre comercial."),
-                            "PUNTOS": st.column_config.ProgressColumn("Puntuación", help="Nota global (0-100). >90 es recomendación clara de compra.", min_value=0, max_value=100, format="%d"),
-                            "🎯 SETUP": st.column_config.TextColumn("🎯 Estrategia", help="🤫 ACECHO: Lleva días en compresión (muelle). Ideal para acumular antes del despegue.\n⚡ MOMENTUM: Ya está explotando al alza hoy. \n✨ ORO: La media de 50 cruzó la de 200 (Señal histórica alcista a largo plazo).\n⏳ PRE-ORO: A punto de ocurrir un Cruce de Oro.\n🔥 FÉNIX: Rebote desde un suelo profundo.\n💎 ALFA: Compra Fuerte.\n🟢 ACUMULAR: Acción fuerte en tendencia sana, ideal para comprar poco a poco."),
+                            "PUNTOS": st.column_config.ProgressColumn("Rating IA", help="Nota global (0-100). >88 es recomendación clara de compra.", min_value=0, max_value=100, format="%d"),
+                            "🎯 SETUP": st.column_config.TextColumn("🎯 ESTRATEGIA", help="🤫 ACECHO: Lleva días en compresión (muelle). Ideal para acumular antes del despegue.\n⚡ MOMENTUM: Ya está explotando al alza hoy. \n✨ ORO: La media de 50 cruzó la de 200 (Señal histórica alcista a largo plazo).\n⏳ PRE-ORO: A punto de ocurrir un Cruce de Oro.\n🔥 FÉNIX: Rebote desde un suelo profundo.\n💎 ALFA: Compra Fuerte.\n🟢 ACUMULAR: Acción fuerte en tendencia sana. Ideal para comprar poco a poco."),
                             "RSI": st.column_config.TextColumn("RSI", help="Termómetro de fuerza relativa. Entre 55 y 68 es la zona dorada de crecimiento."),
                             "VOL. x": st.column_config.TextColumn("Volumen x", help="Volumen hoy vs la media del último mes. Si es mayor a 1.2x, el mercado está respaldando la subida."),
                             "PRECIO": st.column_config.TextColumn("Precio Actual", help="Cotización y conversión estimada a USD."),
