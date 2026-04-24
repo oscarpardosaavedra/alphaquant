@@ -305,13 +305,13 @@ tab1, tab2, tab3, tab4 = st.tabs(["🔬 Análisis Individual", "⚔️ Análisis
 with tab1:
     st.markdown("### 🔍 Selector de Activos")
     
-    col_buscador, col_logo, col_espacio = st.columns([1.5, 0.5, 2])
+    # ---> CORRECCIÓN 1: DESPLEGABLE CORTO (0.8, 0.4, 2.8) <---
+    col_buscador, col_logo, col_espacio = st.columns([0.8, 0.4, 2.8])
     with col_buscador:
         ticker_elegido = st.selectbox("Elige la empresa que quieres revisar:", opciones_desplegable)
     with col_logo:
         espacio_logo = st.empty() # Hueco para el logo
         
-    # Inicializamos los espacios globalmente para evitar el NameError
     espacio_descripcion = st.empty() 
     espacio_sector = st.empty()
     
@@ -320,39 +320,34 @@ with tab1:
         simbolo_yahoo = a_yahoo(simbolo_real)
         st.markdown("---")
         
-        # 1. RESERVAMOS EL SITIO ARRIBA PARA LAS CAJAS
         contenedor_cajas = st.container()
         
-        # 2. PONEMOS LOS BOTONES DE TIEMPO AQUÍ ABAJO (Justo encima del gráfico)
-        st.markdown("<br>", unsafe_allow_html=True) # Un poco de aire
+        st.markdown("<br>", unsafe_allow_html=True) 
         
         col_tiempo, col_tendencia = st.columns([3, 1])
         with col_tiempo:
             periodo = st.radio("⏱️ Rango de tiempo del gráfico:", ["1 Mes", "3 Meses", "6 Meses", "1 Año", "5 Años", "10 Años", "Máximo"], index=1, horizontal=True)
-            mapa_tiempo = {"1 Mes": "1mo", "3 Meses": "3mo", "6 Meses": "6mo", "1 Año": "1y", "5 Años": "5y", "10 Años": "10y", "Máximo": "max"}
-        
+            
         with col_tendencia:
-            st.markdown("<br>", unsafe_allow_html=True) # Para alinear con los botones
-            # ---> AQUÍ ESTÁ EL TEXTO DE AYUDA (TOOLTIP) <---
+            st.markdown("<br>", unsafe_allow_html=True) 
             mostrar_tendencia = st.toggle("📈 Mostrar Tendencia (SMA 50)", help="Dibuja una Media Móvil Simple de 50 sesiones. Actúa como una línea de tendencia suavizada: si el precio está por encima, la tendencia es alcista; si está por debajo, es bajista.")
             
         with st.spinner(f"Cargando datos de {simbolo_real} y rastreando Wall Street..."):
             try:
-                # 1. Datos Yahoo (Precio Histórico)
-                datos = yf.download(simbolo_yahoo, period=mapa_tiempo[periodo], progress=False)
-                if isinstance(datos.columns, pd.MultiIndex): datos.columns = datos.columns.get_level_values(0)
+                # ---> CORRECCIÓN 2: DESCARGAMOS EL MÁXIMO PARA QUE LA TENDENCIA FUNCIONE SIEMPRE <---
+                datos_brutos = yf.download(simbolo_yahoo, period="max", progress=False)
+                if isinstance(datos_brutos.columns, pd.MultiIndex): datos_brutos.columns = datos_brutos.columns.get_level_values(0)
 
-                if not datos.empty and 'Close' in datos.columns:
+                if not datos_brutos.empty and 'Close' in datos_brutos.columns:
                     
                     recom, precio_obj_str, fecha_earnings, sector, insider_trend = "Sin noticias", "Sin noticias", "Sin noticias", "Sin noticias", "Sin noticias"
                     desc_corta = ""
                     logo_url = ""
                     
-                    # 2. MOTOR DE EXTRACCIÓN (Yahoo + Finnhub)
+                    # MOTOR DE EXTRACCIÓN (Yahoo + Finnhub)
                     API_FINNHUB = "d7c2s5hr01quh9fcasf0d7c2s5hr01quh9fcasfg"
                     import requests
                     
-                    # --- REINTENTOS NATIVOS DE YAHOO (Sin romper la sesión) ---
                     info = {}
                     ticker_obj = None
                     for _ in range(3):
@@ -361,9 +356,9 @@ with tab1:
                             temp_info = ticker_obj.info
                             if isinstance(temp_info, dict) and len(temp_info) > 5:
                                 info = temp_info
-                                break  # Si hay datos, rompemos el bucle y avanzamos
+                                break  
                         except: pass
-                        time.sleep(0.5) # Espera medio segundo si falla antes de reintentar
+                        time.sleep(0.5) 
                     
                     try:
                         if info:
@@ -372,13 +367,11 @@ with tab1:
                             recom_raw = info.get('recommendationKey')
                             p_obj = info.get('targetMeanPrice')
                             
-                            # Descripción
                             if descripcion_completa != 'Sin descripción disponible.' and descripcion_completa:
                                 fragmentos = descripcion_completa.split('. ')
                                 desc_corta = '. '.join(fragmentos[:2]) + '.' if len(fragmentos) > 1 else descripcion_completa
                                 if len(desc_corta) > 300: desc_corta = desc_corta[:297] + "..."
                             
-                            # Consenso
                             if recom_raw:
                                 traducciones = {
                                     "strong_buy": "COMPRA FUERTE 🟢", "buy": "COMPRAR ↗️",
@@ -386,11 +379,9 @@ with tab1:
                                 }
                                 recom = traducciones.get(recom_raw.lower(), str(recom_raw).replace('_', ' ').upper())
                             
-                            # Precio objetivo
                             if p_obj and p_obj > 0: 
                                 precio_obj_str = str(p_obj)
                             
-                        # Calendario Yahoo
                         try:
                             if ticker_obj:
                                 cal = ticker_obj.calendar
@@ -399,26 +390,20 @@ with tab1:
                                     if isinstance(fechas, list) and len(fechas) > 0 and pd.notnull(fechas[0]):
                                         fecha_earnings = fechas[0].strftime("%d/%m/%Y")
                         except: pass
-                            
-                    except Exception:
-                        pass
+                    except: pass
                         
-                    # Extracción de Finnhub (LOGO e Insiders - Y Rescate)
                     try:
                         hoy = datetime.datetime.today().strftime('%Y-%m-%d')
                         pasado = (datetime.datetime.today() - datetime.timedelta(days=180)).strftime('%Y-%m-%d')
                         sym_finnhub = simbolo_yahoo if "." in simbolo_yahoo else simbolo_real
                         
-                        # Logo
                         try:
                             r_prof = requests.get(f"https://finnhub.io/api/v1/stock/profile2?symbol={sym_finnhub}&token={API_FINNHUB}", timeout=3).json()
                             if isinstance(r_prof, dict) and r_prof.get('logo'):
                                 url_temp = r_prof['logo']
-                                if url_temp.startswith("http"): 
-                                    logo_url = url_temp
+                                if url_temp.startswith("http"): logo_url = url_temp
                         except: pass
                         
-                        # Rescate de Consenso Finnhub (Si Yahoo falló)
                         if recom == "Sin noticias":
                             try:
                                 r_rec = requests.get(f"https://finnhub.io/api/v1/stock/recommendation?symbol={sym_finnhub}&token={API_FINNHUB}", timeout=3).json()
@@ -429,7 +414,6 @@ with tab1:
                                     if votos[ganador] > 0: recom = ganador
                             except: pass
                             
-                        # Rescate de Precio Objetivo Finnhub (Si Yahoo falló)
                         if precio_obj_str == "Sin noticias":
                             try:
                                 r_pt = requests.get(f"https://finnhub.io/api/v1/stock/price-target?symbol={sym_finnhub}&token={API_FINNHUB}", timeout=3).json()
@@ -437,7 +421,6 @@ with tab1:
                                     precio_obj_str = str(r_pt['targetMean'])
                             except: pass
 
-                        # Insiders
                         try:
                             r_ins = requests.get(f"https://finnhub.io/api/v1/stock/insider-sentiment?symbol={sym_finnhub}&from={pasado}&to={hoy}&token={API_FINNHUB}").json()
                             if isinstance(r_ins, dict) and 'data' in r_ins and len(r_ins['data']) > 0:
@@ -449,7 +432,6 @@ with tab1:
                                 else: insider_trend = "NEUTRAL ⚪"
                         except: pass
                             
-                        # Calendario Finnhub
                         if fecha_earnings == "Sin noticias":
                             try:
                                 futuro = (datetime.datetime.today() + datetime.timedelta(days=90)).strftime('%Y-%m-%d')
@@ -461,7 +443,6 @@ with tab1:
                             except: pass
                     except: pass 
 
-                    # --- PLASMAMOS EN LOS HUECOS ---
                     if desc_corta:
                         espacio_descripcion.markdown(f"<div style='font-size: 14px; color: #666; margin-top: 5px; margin-bottom: 5px;'><i>{desc_corta}</i></div>", unsafe_allow_html=True)
                     
@@ -473,9 +454,20 @@ with tab1:
                     else:
                         espacio_logo.empty()
 
-                    # 3. Formateo de Precios
-                    datos_limpios = datos.dropna(subset=['Close'])
-                    precio_actual = float(datos_limpios['Close'].iloc[-1])
+                    # CÁLCULOS DEL PRECIO Y TENDENCIA (AHORA SÍ, PERFECTOS)
+                    datos_limpios_completos = datos_brutos.dropna(subset=['Close'])
+                    precio_actual = float(datos_limpios_completos['Close'].iloc[-1])
+                    
+                    # Calculamos la SMA 50 globalmente con todos los años para no perder el rastro
+                    sma_50_completa = datos_limpios_completos['Close'].rolling(window=50).mean()
+                    
+                    # Cortamos la tabla de datos según lo que haya elegido el usuario en los botones
+                    dias_mapa = {"1 Mes": 21, "3 Meses": 63, "6 Meses": 126, "1 Año": 252, "5 Años": 1260, "10 Años": 2520, "Máximo": len(datos_limpios_completos)}
+                    dias_mostrar = dias_mapa.get(periodo, len(datos_limpios_completos))
+                    
+                    datos_limpios = datos_limpios_completos.iloc[-dias_mostrar:]
+                    sma_50 = sma_50_completa.iloc[-dias_mostrar:]
+                    
                     s_moneda_visual = obtener_simbolo_moneda(simbolo_real)
                     
                     if precio_obj_str != "Sin noticias":
@@ -501,7 +493,6 @@ with tab1:
 
                     t_conv = f'<span style="font-size:18px;color:#7f8c8d;font-weight:400;margin-left:10px;">(≈ {precio_usd:,.2f} $)</span>' if precio_usd else ""
                     
-                    # ---> 3. MANDAMOS LAS CAJAS AL HUECO RESERVADO ARRIBA <---
                     with contenedor_cajas:
                         st.markdown(f"""
                         <div style="background-color:#f8f9fa;padding:15px;border-radius:10px;box-shadow:0 4px 6px rgba(0,0,0,0.05);margin-bottom:20px;">
@@ -531,22 +522,16 @@ with tab1:
 
                     # --- GRÁFICA CON OPCIÓN DE TENDENCIA ---
                     fig = go.Figure()
-                    # Línea del precio normal (verde)
                     fig.add_trace(go.Scatter(x=datos_limpios.index, y=datos_limpios['Close'], mode='lines', name='Precio', line=dict(color='#228B22', width=2)))
                     
-                    # Si el usuario activa el toggle, dibujamos la SMA 50
                     if mostrar_tendencia:
-                        if len(datos_limpios) >= 50:
-                            sma_50 = datos_limpios['Close'].rolling(window=50).mean()
-                            fig.add_trace(go.Scatter(
-                                x=datos_limpios.index, 
-                                y=sma_50, 
-                                mode='lines', 
-                                name='Tendencia (SMA 50)', 
-                                line=dict(color='rgba(255, 255, 255, 0.6)', width=1.5, dash='dash')
-                            ))
-                        else:
-                            st.info("No hay suficientes datos históricos para calcular la tendencia de 50 días en este rango de tiempo.")
+                        fig.add_trace(go.Scatter(
+                            x=datos_limpios.index, 
+                            y=sma_50, 
+                            mode='lines', 
+                            name='Tendencia (SMA 50)', 
+                            line=dict(color='rgba(255, 255, 255, 0.7)', width=1.5, dash='dash')
+                        ))
 
                     fig.update_layout(
                         title=f"Histórico: {ticker_elegido}", 
