@@ -243,7 +243,7 @@ tickers_nombres = {
     "FLS": "Fluor", "ATI": "ATI Inc", "MOG.A": "Moog", "KAMN": "Kaman",
     "CW": "Curtiss", "AJRD": "Aerojet", "AXON": "Axon", "VMI": "Valmont",
     "TNC": "Tennant", "LII": "Lennox", "AOS": "AO Smith", "PKI": "PerkinElmer",
-    "BIO": "BioRad", "MTD": "Mettler", "TECH": "BioTechne", "CTLT": "Catalent"
+    "BIO": "BioRad", "MTD": "Mettler", "TECH": "BioTechne", "CTLT": "Catalent", "ZPTA": "Zapata"
 }
 
 opciones_desplegable = [f"{ticker} ({nombre})" for ticker, nombre in tickers_nombres.items()]
@@ -837,9 +837,11 @@ with tab3:
                 time.sleep(0.01)
             except: continue
             
-        barra_progreso.progress(100, text="✅ Caza Finalizada")
+        barra_progreso.empty()
+        mensaje_estado.empty()
+        
         st.session_state.resultados_radar = resultados_temporales
-        st.session_state.mercado_cazado = mercado_objetivo # Memorizamos qué hemos cazado
+        st.session_state.mercado_cazado = mercado_objetivo
 
     # --- ZONA DE DIBUJADO DE RESULTADOS ---
     if st.session_state.resultados_radar is not None:
