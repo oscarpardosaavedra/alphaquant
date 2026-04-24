@@ -826,7 +826,7 @@ with tab3:
         barra_progreso.progress(100, text="✅ Escaneo Finalizado")
         st.session_state.resultados_radar = resultados_radar
 
-    if st.session_state.resultados_radar:
+  if st.session_state.resultados_radar:
         df_res = pd.DataFrame(st.session_state.resultados_radar)
         df_res = df_res.sort_values(by="PUNTOS", ascending=False).reset_index(drop=True)
         
@@ -842,8 +842,8 @@ with tab3:
             hide_index=True,
             column_config={
                 "PUNTOS": st.column_config.NumberColumn(help="Probabilidad de éxito (0-100). Empezando desde 0, penaliza sobrecompra y exige volumen extremo."),
-                "RECOMENDACIÓN": st.column_config.TextColumn(help="Sugerencia operativa (90+ = Diamante, 80+ = Acumular, 70+ = Vigilar)."),
-                "TENDENCIA": st.column_config.TextColumn(help="'Alcista Estructural' significa precio sobre medias de 50 y 200 días."),
+                "RECOMENDACIÓN": st.column_config.TextColumn(help="💎 ALFA: Cohete en vuelo estable batiendo al mercado. \n🔥 FÉNIX: Giro radical alcista tras una caída severa del >20%."),
+                "TENDENCIA": st.column_config.TextColumn(help="Estructural: Precio > SMA50 > SMA200. \nFénix: Ruptura violenta desde el fondo."),
                 "RSI": st.column_config.TextColumn(help="55-68 es el punto de equilibrio perfecto. Penaliza si pasa de 72."),
                 "VOL. vs MEDIA": st.column_config.TextColumn(help="Cuántas veces supera el volumen actual a la media mensual."),
                 "MAX (52s)": st.column_config.TextColumn(help="Distancia al precio máximo del último año."),
