@@ -662,6 +662,7 @@ with tab3:
     elif btn_asia: mercado_objetivo = "Asia"
 
     if mercado_objetivo:
+        st.session_state.resultados_radar = None
         # Semáforos de mercado
         if mercado_objetivo == "EEUU" and "Cerrado" in us["estado"]:
             st.warning("⚠️ **Aviso:** Wall Street está cerrado. Los datos son del último cierre.")
@@ -786,19 +787,25 @@ with tab3:
             
         barra_progreso.progress(100, text="✅ Caza Finalizada")
         st.session_state.resultados_radar = resultados_temporales
-        
-        # Sobrescribimos el mensaje de "Ejecutando" por el de "Terminado"
-        mensaje_estado.success(f"🎯 Caza terminada para: **{mercado_objetivo}**.")
+        st.session_state.mercado_cazado = mercado_objetivo # Memorizamos qué hemos cazado
 
+    # --- ZONA DE DIBUJADO DE RESULTADOS ---
     if st.session_state.resultados_radar is not None:
-        df_res = pd.DataFrame(st.session_state.resultados_radar)
-        df_res = df_res.sort_values(by="PUNTOS", ascending=False).reset_index(drop=True)
-        st.dataframe(df_res.style.map(color_pct, subset=["% HOY", "% 1 MES", "% 6 MESES", "% 1 AÑO", "% 5 AÑOS"]), 
-                     use_container_width=True, hide_index=True,
-                     column_config={"PUNTOS": st.column_config.NumberColumn(help="Nota 0-100."),
-                                    "RECOMENDACIÓN": st.column_config.TextColumn(help="💎 ALFA: Cohete estable.\n🔥 FÉNIX: Rebote suelo."),
-                                    "STOP LOSS": st.column_config.TextColumn(help="Precio de salida ATR."),
-                                    "ANÁLISIS": st.column_config.TextColumn(width="large")})
+        # Ponemos el mensaje verde de éxito AQUÍ para que solo salga al terminar
+        merc_txt = st.session_state.get('mercado_cazado', 'Todos')
+        st.success(f"🎯 Caza terminada para: **{merc_txt}**")
+        
+        if len(st.session_state.resultados_radar) == 0:
+            st.info("🕵️‍♂️ **Escaneo completado:** Ningún activo de este mercado ha alcanzado hoy la excelencia (90+ puntos).")
+        else:
+            df_res = pd.DataFrame(st.session_state.resultados_radar)
+            df_res = df_res.sort_values(by="PUNTOS", ascending=False).reset_index(drop=True)
+            st.dataframe(df_res.style.map(color_pct, subset=["% HOY", "% 1 MES", "% 6 MESES", "% 1 AÑO", "% 5 AÑOS"]), 
+                         use_container_width=True, hide_index=True,
+                         column_config={"PUNTOS": st.column_config.NumberColumn(help="Nota 0-100."),
+                                        "RECOMENDACIÓN": st.column_config.TextColumn(help="💎 ALFA: Cohete estable.\n🔥 FÉNIX: Rebote suelo."),
+                                        "STOP LOSS": st.column_config.TextColumn(help="Precio de salida ATR en tu broker."),
+                                        "ANÁLISIS": st.column_config.TextColumn(width="large")})
 
 # ------------------------------------------
 # PESTAÑA 4: SALA DE TROFEOS (PERSISTENTE)
