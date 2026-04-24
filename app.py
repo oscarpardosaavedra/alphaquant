@@ -15,9 +15,9 @@ import requests
 # ==========================================
 st.set_page_config(page_title="Alphaquant", page_icon="📈", layout="wide")
 
-# ---> MEMORIA PERSISTENTE PARA QUE NO SE BORRE EL RADAR <---
-if 'resultados_radar' not in st.session_state:
-    st.session_state.resultados_radar = None
+# ---> MEMORIA PERSISTENTE PARA QUE NO SE BORRE EL RADAR NI AUDITORÍA <---
+if 'resultados_radar' not in st.session_state: st.session_state.resultados_radar = None
+if 'resultados_auditoria' not in st.session_state: st.session_state.resultados_auditoria = None
 
 def conectar_db():
     try:
@@ -249,7 +249,7 @@ tickers_nombres = {
 opciones_desplegable = [f"{ticker} ({nombre})" for ticker, nombre in tickers_nombres.items()]
 opciones_desplegable.sort()
 
-# --- FUNCIÓN INFALIBLE PARA OBTENER EL SÍMBOLO DE LA MONEDA SIN YAHOO ---
+# --- FUNCIONES AUXILIARES GLOBALES ---
 def obtener_simbolo_moneda(ticker):
     ticker_upper = ticker.upper()
     if ticker_upper.startswith("BME:") or ticker_upper.endswith((".MC", ".DE", ".PA", ".MI", ".AS")):
@@ -263,7 +263,7 @@ def obtener_simbolo_moneda(ticker):
     elif ticker_upper.endswith(".NS"):
         return "₹"
     else:
-        return "$" # Por defecto USD para EE.UU. y ADRs asiáticos
+        return "$"
 
 def obtener_region(ticker):
     if "BME:" in ticker or ticker.endswith((".DE", ".PA", ".MI", ".L", ".AS", ".ST")): return "Europa"
@@ -299,6 +299,13 @@ def obtener_estado_mercados():
         else: est_as = "🔴 Cerrado"
     
     return {"estado": est_us, "horario": horario_us}, {"estado": est_eu, "horario": horario_eu}, {"estado": est_as, "horario": horario_as}
+
+# ---> FUNCIÓN DE COLOR MOVIDA A ZONA GLOBAL <---
+def color_pct(val):
+    if isinstance(val, str) and '%' in val:
+        if val.startswith('+'): return 'color: #228B22;' 
+        elif val.startswith('-'): return 'color: #FF3333;' 
+    return ''
 
 # ==========================================
 # 4. CABECERA Y SEMÁFOROS
@@ -336,13 +343,11 @@ with tab1:
         
         st.markdown("<br>", unsafe_allow_html=True) 
         
-        # --- AGRUPAMOS LOS INTERRUPTORES EN UNA SOLA COLUMNA PARA QUE SE APILEN ---
         col_tiempo, col_tendencias = st.columns([3, 1.5])
         with col_tiempo:
             periodo = st.radio("⏱️ Rango de tiempo:", ["1 Mes", "3 Meses", "6 Meses", "1 Año", "5 Años", "10 Años", "Máximo"], index=1, horizontal=True)
             
         with col_tendencias:
-            # Al ponerlos seguidos en la misma columna, se apilan verticalmente
             mostrar_tendencia = st.toggle("📈 SMA 50 (Medio)", help="Media Móvil de 50 días. Mide el pulso a medio plazo.")
             mostrar_tendencia_200 = st.toggle("🚀 SMA 200 (Largo)", help="Media de 200 días. Si la SMA 50 cruza por encima de esta línea, se produce un 'Cruce de Oro' (Señal alcista muy fuerte).")
             
@@ -358,7 +363,6 @@ with tab1:
                     logo_url = ""
                     
                     API_FINNHUB = "d7c2s5hr01quh9fcasf0d7c2s5hr01quh9fcasfg"
-                    import requests
                     
                     info = {}
                     ticker_obj = None
@@ -462,15 +466,12 @@ with tab1:
                     else:
                         espacio_logo.empty()
 
-                    # CÁLCULOS DEL PRECIO Y AMBAS TENDENCIAS 
                     datos_limpios_completos = datos_brutos.dropna(subset=['Close'])
                     precio_actual = float(datos_limpios_completos['Close'].iloc[-1])
                     
-                    # Calculamos ambas SMAs globalmente
                     sma_50_completa = datos_limpios_completos['Close'].rolling(window=50).mean()
                     sma_200_completa = datos_limpios_completos['Close'].rolling(window=200).mean()
                     
-                    # Cortamos la tabla de datos
                     dias_mapa = {"1 Mes": 21, "3 Meses": 63, "6 Meses": 126, "1 Año": 252, "5 Años": 1260, "10 Años": 2520, "Máximo": len(datos_limpios_completos)}
                     dias_mostrar = dias_mapa.get(periodo, len(datos_limpios_completos))
                     
@@ -551,7 +552,7 @@ with tab1:
                                 y=sma_200, 
                                 mode='lines', 
                                 name='SMA 200 (Largo)', 
-                                line=dict(color='#9b59b6', width=2.5, dash='dot') # Color Morado y punteado
+                                line=dict(color='#9b59b6', width=2.5, dash='dot')
                             ))
                         else:
                             st.info("La empresa es muy reciente y no tiene 200 días de historia para calcular la tendencia a largo plazo.")
@@ -639,12 +640,6 @@ with tab2:
                 )
                 
                 st.plotly_chart(fig_comp, use_container_width=True)
-
-# ------------------------------------------
-# INICIALIZACIÓN DE MEMORIA (Pon esto al principio de tu script, tras los imports)
-# ------------------------------------------
-if 'resultados_radar' not in st.session_state: st.session_state.resultados_radar = None
-if 'resultados_auditoria' not in st.session_state: st.session_state.resultados_auditoria = None
 
 # ------------------------------------------
 # PESTAÑA 3: RADAR DE CAZA (MOTOR "OPPENHEIMER" V2.0 - ANTI-BORRADO)
