@@ -66,24 +66,6 @@ st.markdown("""
         background-color: transparent !important;
         font-weight: 900 !important;
     }
-    /* --- FORZAR BARRAS DE DESPLAZAMIENTO VISIBLES --- */
-    ::-webkit-scrollbar {
-        width: 12px !important;
-        height: 12px !important;
-        background-color: #f5f5f5 !important;
-    }
-    ::-webkit-scrollbar-track {
-        border-radius: 10px !important;
-        background: #e0e0e0 !important;
-    }
-    ::-webkit-scrollbar-thumb {
-        border-radius: 10px !important;
-        background: #073763 !important; 
-        border: 2px solid #e0e0e0 !important;
-    }
-    ::-webkit-scrollbar-thumb:hover {
-        background: #1E90FF !important; 
-    }
 </style>
 """, unsafe_allow_html=True)
 
