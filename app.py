@@ -641,7 +641,7 @@ with tab2:
                 st.plotly_chart(fig_comp, use_container_width=True)
 
 # ------------------------------------------
-# PESTAÑA 3: RADAR DE CAZA (MOTOR ULTRA-INTELIGENTE + TOOLTIPS)
+# PESTAÑA 3: RADAR DE CAZA (MOTOR EXCELENCIA + ANÁLISIS)
 # ------------------------------------------
 with tab3:
     st.markdown("### 🎯 Selecciona tu Objetivo")
@@ -678,7 +678,7 @@ with tab3:
         barra_progreso = st.progress(0, text="Sincronizando con satélites financieros...")
         resultados_radar = []
         
-        # 1. CALIBRACIÓN BENCHMARK (Exigencia +2%)
+        # 1. CALIBRACIÓN BENCHMARK (Exigencia Máxima)
         alphaSPY_1m, alphaSPY_6m = 0, 0
         try:
             spy_data = yf.download("SPY", period="1y", progress=False)
@@ -704,7 +704,9 @@ with tab3:
                 data = yf.download(sym_y, period="2y", progress=False)
                 if isinstance(data.columns, pd.MultiIndex): data.columns = data.columns.get_level_values(0)
                 df = data[['Close', 'High', 'Low', 'Volume']].dropna()
-                if len(df) < 55: continue # Necesitamos 50 + margen para la pendiente
+                
+                # Necesitamos al menos 55 días para que la pendiente funcione bien
+                if len(df) < 55: continue 
                 
                 # --- CÁLCULOS TÉCNICOS ---
                 c_hoy = float(df['Close'].iloc[-1])
@@ -716,7 +718,7 @@ with tab3:
                 # Medias y Pendiente (Slope)
                 sma50_serie = df['Close'].rolling(window=50).mean()
                 sma50 = float(sma50_serie.iloc[-1])
-                sma50_prev = float(sma50_serie.iloc[-6]) # Hace una semana
+                sma50_prev = float(sma50_serie.iloc[-6]) # Media de hace una semana
                 sma200 = float(df['Close'].rolling(window=200).mean().iloc[-1]) if len(df) >= 200 else None
                 
                 # RSI 14 Precision
@@ -732,39 +734,72 @@ with tab3:
                 max_52 = float(df['High'].iloc[-252:].max())
                 dist_max = ((c_hoy / max_52) - 1) * 100
                 
-                # --- MOTOR DE PUNTUACIÓN ULTRA (Base 0) ---
+                # --- MOTOR DE PUNTUACIÓN ULTRA (Empieza en 0) ---
                 p = 0
-                status_t = "Neutral"
+                status_t = "Lateral/Bajista"
+                texto_analisis = [] # Aquí iremos metiendo las frases del análisis
                 
                 # A) TENDENCIA (Máx 40)
-                if c_hoy > sma50: p += 10; status_t = "Alcista"
+                if c_hoy > sma50: 
+                    p += 10
+                    status_t = "Alcista Corto"
                 if sma200 and c_hoy > sma200: p += 10
-                if sma200 and sma50 > sma200: p += 10; status_t = "Alcista Fuerte (Oro)"
-                if sma50 > sma50_prev: p += 10 # Media subiendo (momentum real)
+                if sma200 and sma50 > sma200: 
+                    p += 10
+                    status_t = "Alcista Estructural"
+                if sma50 > sma50_prev: p += 10 # Media apuntando hacia arriba
                 
                 # B) MOMENTUM RSI (Máx 20)
-                if 55 <= rsi <= 68: p += 20 # El punto perfecto
-                elif 50 <= rsi < 55: p += 10 # Cogiendo fuerza
-                elif rsi > 72: p -= 15 # CASTIGO: Sobrecompra, riesgo de caída
-                elif rsi < 40: p -= 15 # CASTIGO: Debilidad extrema
+                if 55 <= rsi <= 68: 
+                    p += 20
+                    texto_analisis.append("RSI óptimo.")
+                elif 50 <= rsi < 55: 
+                    p += 10
+                elif rsi > 72: 
+                    p -= 15 # CASTIGO
+                    texto_analisis.append("Riesgo de sobrecompra.")
+                elif rsi < 40: 
+                    p -= 15 # CASTIGO
+                    texto_analisis.append("Excesiva debilidad.")
                 
                 # C) SMART MONEY (Máx 20)
-                if vol_h > (vol_m * 2.0) and pct_h > 0: p += 20 # Explosión institucional
-                elif vol_h > (vol_m * 1.5) and pct_h > 0: p += 10 
+                if vol_h > (vol_m * 2.0) and pct_h > 0: 
+                    p += 20
+                    texto_analisis.append("Ballenas comprando (Vol 2x).")
+                elif vol_h > (vol_m * 1.5) and pct_h > 0: 
+                    p += 10 
+                    texto_analisis.append("Volumen institucional activo.")
                 
                 # D) FUERZA RELATIVA ALPHA (Máx 20)
                 reg = obtener_region(ticker)
                 b_1m = alphaSPY_1m if reg == "EEUU" else 0
-                if r1m > (b_1m + 2.0): p += 10 # Bate al mercado por más de un 2%
-                if r6m > (alphaSPY_6m + 5.0): p += 10 # Bate a largo por más de un 5%
-                if r6m < 0: p -= 20 # Si a 6 meses pierde dinero, no la queremos
+                b_6m = alphaSPY_6m if reg == "EEUU" else 0
+                
+                if r1m > (b_1m + 2.0): 
+                    p += 10
+                    texto_analisis.append("Bate al mercado a 1 Mes.")
+                if r6m > (b_6m + 5.0): 
+                    p += 10
+                    texto_analisis.append("Supera al mercado a 6 Meses.")
+                if r6m < 0: p -= 20 
 
-                # Override Fénix / Breakout
+                # Override Fénix
                 isF = False
                 if dist_max <= -20 and c_hoy > sma50 and vol_h > (vol_m * 1.8) and pct_h > 1.5:
-                    p = max(p, 92); isF = True; status_t = "Giro Fénix 🔥"
+                    p = max(p, 92)
+                    isF = True
+                    status_t = "Giro Fénix 🔥"
+                    texto_analisis = ["Suelo roto con volumen extremo tras caída severa."]
                 
                 pts = max(0, min(100, int(p)))
+                
+                # Redactamos el análisis final para la columna
+                if not texto_analisis:
+                    analisis_final = "Sin catalizadores claros." if pts < 50 else "Evolución estándar, falta volumen."
+                else:
+                    analisis_final = " ".join(texto_analisis)
+                    if status_t == "Alcista Estructural" and "Ballenas" in analisis_final:
+                        analisis_final = "Setup Perfecto: Tendencia alcista estructural + Fuerte entrada de volumen."
 
                 # Guardado automático (Solo la excelencia: 90+)
                 if pts >= 90 and ticker not in existentes_en_db and ws is not None:
@@ -772,17 +807,18 @@ with tab3:
                     ws.append_row([ticker, tickers_nombres[ticker], fecha_h, float(c_hoy), int(pts)])
                     existentes_en_db.append(ticker)
 
-                reco = "❌ Esperar"
-                if pts >= 88: reco = "💎 DIAMANTE"
-                elif pts >= 75: reco = "🚀 COMPRA FUERTE"
-                elif pts >= 65: reco = "👀 VIGILAR"
+                # ESCALA DE RECOMENDACIONES CLARA
+                reco = "⚪ ESPERAR"
+                if pts >= 90: reco = "💎 COMPRA FUERTE (ALFA)" if not isF else "🔥 COMPRA (FÉNIX)"
+                elif pts >= 80: reco = "🟢 ACUMULAR"
+                elif pts >= 70: reco = "🟡 VIGILAR"
 
                 resultados_radar.append({
                     "TICKER": ticker, "NOMBRE": tickers_nombres[ticker], "PUNTOS": pts, "RECOMENDACIÓN": reco,
                     "TENDENCIA": status_t, "RSI": f"{rsi:.1f}", "VOL. vs MEDIA": f"{(vol_h/vol_m):.1f}x",
                     "PRECIO": f"{c_hoy:.2f} {obtener_simbolo_moneda(ticker)}", "% HOY": f"{pct_h:+.2f}%",
                     "% 1 MES": f"{r1m:+.2f}%", "% 6 MESES": f"{r6m:+.2f}%", "% 1 AÑO": f"{r1y:+.2f}%",
-                    "MAX (52s)": f"{dist_max:+.2f}%"
+                    "MAX (52s)": f"{dist_max:+.2f}%", "ANÁLISIS": analisis_final
                 })
                 time.sleep(0.05)
             except: continue
@@ -805,12 +841,13 @@ with tab3:
             use_container_width=True, 
             hide_index=True,
             column_config={
-                "PUNTOS": st.column_config.NumberColumn(help="Probabilidad matemática de éxito. 90+ indica alineación perfecta de Tendencia, RSI y Volumen."),
-                "RECOMENDACIÓN": st.column_config.TextColumn(help="Sugerencia del sistema. 'Diamante' son las joyas del mercado actual."),
-                "TENDENCIA": st.column_config.TextColumn(help="Estado de las medias móviles. 'Oro' indica que la acción está en subida libre estructural."),
-                "RSI": st.column_config.TextColumn(help="Fuerza del movimiento. 55-68 es el punto dulce. >72 indica que llegas tarde."),
-                "VOL. vs MEDIA": st.column_config.TextColumn(help="Rastro institucional. >2.0x indica que las ballenas están comprando agresivamente."),
-                "MAX (52s)": st.column_config.TextColumn(help="Distancia al máximo anual. Si rompe el máximo con volumen, es un cohete.")
+                "PUNTOS": st.column_config.NumberColumn(help="Probabilidad de éxito (0-100). Empezando desde 0, penaliza sobrecompra y exige volumen extremo."),
+                "RECOMENDACIÓN": st.column_config.TextColumn(help="Sugerencia operativa (90+ = Diamante, 80+ = Acumular, 70+ = Vigilar)."),
+                "TENDENCIA": st.column_config.TextColumn(help="'Alcista Estructural' significa precio sobre medias de 50 y 200 días."),
+                "RSI": st.column_config.TextColumn(help="55-68 es el punto de equilibrio perfecto. Penaliza si pasa de 72."),
+                "VOL. vs MEDIA": st.column_config.TextColumn(help="Cuántas veces supera el volumen actual a la media mensual."),
+                "MAX (52s)": st.column_config.TextColumn(help="Distancia al precio máximo del último año."),
+                "ANÁLISIS": st.column_config.TextColumn(help="Análisis sintético generado por el motor evaluando catalizadores.", width="large")
             }
         )
 
