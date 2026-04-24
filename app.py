@@ -805,11 +805,11 @@ with tab3:
         st.dataframe(df_res.style.map(color_pct, subset=["% HOY", "% 1 MES", "% 6 MESES", "% 1 AÑO", "MAX (52s)"]), use_container_width=True, hide_index=True)
 
 # ------------------------------------------
-# PESTAÑA 4: SALA DE TROFEOS (AUDITORÍA CON KPI DE VELOCIDAD)
+# PESTAÑA 4: SALA DE TROFEOS (AUDITORÍA CON MONEDA Y VELOCIDAD)
 # ------------------------------------------
 with tab4:
     st.markdown("### 🏆 Sala de Trofeos")
-    st.write("Auditoría de señales Oppenheimer con KPI de velocidad de beneficio.")
+    st.write("Auditoría de señales Oppenheimer con divisa y KPI de velocidad.")
     
     ws = conectar_db()
     if ws is not None:
@@ -829,13 +829,16 @@ with tab4:
                             st.rerun()
 
             if st.button("🔄 Auditar Rendimiento Actual", use_container_width=True):
-                with st.spinner("Calculando métricas de velocidad..."):
+                with st.spinner("Calculando métricas con divisas..."):
                     exitos, cuarentena, fracasos, pendiente = [], [], [], []
                     ahora = datetime.datetime.now()
 
                     for d in data_sheet:
                         try:
-                            tk_y = a_yahoo(d['Ticker'])
+                            ticker = d['Ticker']
+                            tk_y = a_yahoo(ticker)
+                            simbolo_moneda = obtener_simbolo_moneda(ticker) # Llamada a tu función de moneda
+                            
                             hist = yf.download(tk_y, period="5d", progress=False)
                             if isinstance(hist.columns, pd.MultiIndex): hist.columns = hist.columns.get_level_values(0)
                             
@@ -843,25 +846,25 @@ with tab4:
                             p_in = float(str(d['Precio_Aviso']).replace(',', '.'))
                             rent = ((p_hoy / p_in) - 1) * 100
                             
-                            # Lógica de tiempo y KPI +5%
+                            # Lógica de tiempo
                             fecha_entrada = datetime.datetime.strptime(d['Fecha'], "%Y-%m-%d %H:%M")
                             dias_transcurridos = (ahora - fecha_entrada).days
                             
                             kpi_velocidad = ""
                             if rent >= 5.0:
-                                # Si ya superó el 5%, marcamos el hito
-                                kpi_velocidad = f"⏱️ +5% en ~{max(1, dias_transcurridos)}d"
+                                kpi_velocidad = f"🚀 +5% en ~{max(1, dias_transcurridos)}d"
                             elif rent > 0:
-                                kpi_velocidad = f"⏳ En camino ({dias_transcurridos}d)"
+                                kpi_velocidad = f"⏳ En curso ({dias_transcurridos}d)"
 
                             obj = {
-                                "T": d['Ticker'], 
+                                "T": ticker, 
                                 "N": d['Empresa'], 
                                 "E": p_in, 
                                 "A": p_hoy, 
                                 "R": rent, 
                                 "F": d['Fecha'], 
-                                "KPI": kpi_velocidad
+                                "KPI": kpi_velocidad,
+                                "M": simbolo_moneda
                             }
                             
                             if abs(rent) < 0.1: pendiente.append(obj)
@@ -875,7 +878,7 @@ with tab4:
                     w_rate = (len(exitos) / tot_val * 100) if tot_val > 0 else 0
                     c1, c2 = st.columns(2)
                     c1.metric("🎯 Win Rate Global", f"{w_rate:.1f}%")
-                    c2.metric("🚀 Cohetes (+5%)", len([x for x in exitos if "+5%" in x['KPI']]))
+                    c2.metric("🔥 Cohetes (+5%)", len([x for x in exitos if "+5%" in x['KPI']]))
                     
                     st.markdown("---")
                     cols = st.columns(4)
@@ -887,15 +890,17 @@ with tab4:
                         with cols[i]:
                             st.markdown(f"#### {titulos[i]}")
                             for item in l:
-                                # Renderizado de tarjeta con FECHA y KPI
                                 st.markdown(f"""
                                 <div style="border-top:3px solid {colores[i]}; background:white; padding:12px; border-radius:8px; margin-bottom:12px; box-shadow:0 2px 5px rgba(0,0,0,0.1);">
                                     <div style="display:flex; justify-content:space-between; align-items:center;">
                                         <b style="font-size:16px;">{item['T']}</b> 
                                         <b style="color:{colores[i]}; font-size:16px;">{item['R']:+.2f}%</b>
                                     </div>
-                                    <div style="font-size:11px; color:#888; margin-bottom:5px;">📅 Entrada: {item['F']}</div>
-                                    <div style="font-size:12px; color:#444;">In: <b>{item['E']:.2f}</b> &rarr; Hoy: <b>{item['A']:.2f}</b></div>
+                                    <div style="font-size:11px; color:#888; margin-bottom:5px;">📅 {item['F']}</div>
+                                    <div style="font-size:12px; color:#444;">
+                                        In: <b>{item['E']:.2f} {item['M']}</b><br>
+                                        Hoy: <b>{item['A']:.2f} {item['M']}</b>
+                                    </div>
                                     <div style="font-size:11px; margin-top:8px; color:#1E90FF; font-weight:bold;">{item['KPI']}</div>
                                 </div>
                                 """, unsafe_allow_html=True)
