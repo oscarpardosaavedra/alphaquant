@@ -312,101 +312,6 @@ st.markdown("---")
 
 tab1, tab2, tab3, tab4 = st.tabs(["🔬 Análisis Individual", "⚔️ Análisis Colectivo", "🎯 Cazar Alpha (Radar)", "🏆 Sala de Trofeos"])
 
-
-import threading
-from streamlit.runtime.scriptrunner import add_script_run_ctx
-
-# Inicializamos el estado del radar si no existe
-if 'radar_hilo' not in st.session_state: st.session_state.radar_hilo = None
-if 'radar_progreso' not in st.session_state: st.session_state.radar_progreso = 0
-if 'radar_mensaje' not in st.session_state: st.session_state.radar_mensaje = ""
-if 'radar_resultados' not in st.session_state: st.session_state.radar_resultados = []
-if 'radar_corriendo' not in st.session_state: st.session_state.radar_corriendo = False
-
-def ejecutor_radar_background(tickers_lista, mercado_nombre, alpha1m, alpha6m):
-    """Esta función corre en una 'habitación' separada y no se para nunca"""
-    st.session_state.radar_corriendo = True
-    st.session_state.radar_resultados = []
-    total = len(tickers_lista)
-    
-    ws_local = conectar_db() # Conexión fresca para el hilo
-    existentes = []
-    if ws_local:
-        try: existentes = ws_local.col_values(1)
-        except: pass
-
-    for i, ticker in enumerate(tickers_lista):
-        if not st.session_state.radar_corriendo: break # Por si queremos pararlo
-        
-        st.session_state.radar_progreso = int(((i + 1) / total) * 100)
-        st.session_state.radar_mensaje = f"Cazando: {ticker}"
-        
-        try:
-            sym_y = a_yahoo(ticker)
-            data = yf.download(sym_y, period="2y", progress=False)
-            if isinstance(data.columns, pd.MultiIndex): data.columns = data.columns.get_level_values(0)
-            df = data[['Close', 'High', 'Low', 'Volume']].dropna()
-            
-            if len(df) < 55: continue
-            
-            # --- MISMA LÓGICA ULTRA QUE TENÍAS (NO TOCAMOS NADA) ---
-            c_hoy = float(df['Close'].iloc[-1])
-            c_ayer = float(df['Close'].iloc[-2])
-            pct_h = ((c_hoy / c_ayer) - 1) * 100
-            vol_h = float(df['Volume'].iloc[-1])
-            vol_m = float(df['Volume'].iloc[-20:].mean())
-            sma50_serie = df['Close'].rolling(window=50).mean()
-            sma50 = float(sma50_serie.iloc[-1])
-            sma50_prev = float(sma50_serie.iloc[-6])
-            sma200 = float(df['Close'].rolling(window=200).mean().iloc[-1]) if len(df) >= 200 else None
-            delta = df['Close'].diff()
-            gain = delta.where(delta > 0, 0).rolling(window=14).mean()
-            loss = -delta.where(delta < 0, 0).rolling(window=14).mean()
-            rsi = float(100 - (100 / (1 + (gain / loss))).iloc[-1])
-            def ret_d(d): return ((c_hoy / float(df['Close'].iloc[-(d+1)])) - 1) * 100 if len(df) > d else 0
-            r1m, r6m, r1y = ret_d(21), ret_d(126), ret_d(252)
-            dist_max = ((c_hoy / float(df['High'].iloc[-252:].max())) - 1) * 100
-            
-            p = 0
-            if c_hoy > sma50: p += 10
-            if sma200 and c_hoy > sma200: p += 10
-            if sma200 and sma50 > sma200: p += 10
-            if sma50 > sma50_prev: p += 10 
-            if 55 <= rsi <= 68: p += 20
-            elif rsi > 72 or rsi < 40: p -= 15
-            if vol_h > (vol_m * 2.0) and pct_h > 0: p += 20
-            elif vol_h > (vol_m * 1.5) and pct_h > 0: p += 10
-            reg = obtener_region(ticker)
-            b_1m = alpha1m if reg == "EEUU" else 0
-            if r1m > (b_1m + 2.0): p += 10
-            if r6m > (alpha6m + 5.0): p += 10
-            if r6m < 0: p -= 20
-            isF = False
-            if dist_max <= -20 and c_hoy > sma50 and vol_h > (vol_m * 1.8) and pct_h > 1.5:
-                p = max(p, 92); isF = True
-            
-            pts = max(0, min(100, int(p)))
-
-            if pts >= 90 and ticker not in existentes and ws_local:
-                ws_local.append_row([ticker, tickers_nombres[ticker], datetime.datetime.now().strftime("%Y-%m-%d %H:%M"), float(c_hoy), int(pts)])
-                existentes.append(ticker)
-
-            reco = "❌ Esperar"
-            if pts >= 88: reco = "💎 DIAMANTE"
-            elif pts >= 75: reco = "🚀 COMPRA FUERTE"
-            elif pts >= 65: reco = "👀 VIGILAR"
-
-            st.session_state.radar_resultados.append({
-                "TICKER": ticker, "NOMBRE": tickers_nombres[ticker], "PUNTOS": pts, "RECOMENDACIÓN": reco,
-                "TENDENCIA": "Alcista" if c_hoy > sma50 else "Neutral", "RSI": f"{rsi:.1f}", "VOL. vs MEDIA": f"{(vol_h/vol_m):.1f}x",
-                "PRECIO": f"{c_hoy:.2f} {obtener_simbolo_moneda(ticker)}", "% HOY": f"{pct_h:+.2f}%",
-                "% 1 MES": f"{r1m:+.2f}%", "% 6 MESES": f"{r6m:+.2f}%", "MAX (52s)": f"{dist_max:+.2f}%"
-            })
-        except: continue
-    
-    st.session_state.radar_corriendo = False
-    st.session_state.radar_mensaje = "✅ Caza finalizada con éxito."
-
 # ------------------------------------------
 # PESTAÑA 1: VISOR DE GRÁFICOS (VERSIÓN DEFINITIVA Y ESTABLE)
 # ------------------------------------------
@@ -736,58 +641,157 @@ with tab2:
                 st.plotly_chart(fig_comp, use_container_width=True)
 
 # ------------------------------------------
-# PESTAÑA 3: RADAR DE CAZA (CON MOTOR DE SEGUNDO PLANO)
+# PESTAÑA 3: RADAR DE CAZA (MOTOR ULTRA-INTELIGENTE + TOOLTIPS)
 # ------------------------------------------
 with tab3:
-    st.markdown("### 🎯 Centro de Mando Oppenheimer")
+    st.markdown("### 🎯 Selecciona tu Objetivo")
     
-    c1, c2, c3, c4, c5 = st.columns([1,1,1,1,1])
-    # Botones para elegir mercado
-    merc_sel = None
-    if c1.button("🌍 Todos", use_container_width=True): merc_sel = "Todos"
-    if c2.button("🇺🇸 EEUU", use_container_width=True): merc_sel = "EEUU"
-    if c3.button("🇪🇺 Europa", use_container_width=True): merc_sel = "Europa"
-    if c4.button("🌏 Asia", use_container_width=True): merc_sel = "Asia"
+    c1, c2, c3, c4 = st.columns(4)
+    btn_todos = c1.button("Cazar Todos los Mercados", use_container_width=True)
+    btn_us = c2.button("Cazar Solo EE.UU.", use_container_width=True)
+    btn_eu = c3.button("Cazar Solo Europa", use_container_width=True)
+    btn_asia = c4.button("Cazar Solo Asia", use_container_width=True)
     
-    # Botón de emergencia para parar
-    if st.session_state.radar_corriendo:
-        if c5.button("🛑 PARAR MOTOR", use_container_width=True):
-            st.session_state.radar_corriendo = False
-            st.rerun()
-
     st.markdown("---")
 
-    # LANZAMIENTO DEL HILO
-    if merc_sel and not st.session_state.radar_corriendo:
-        # Calibración rápida de SPY antes de lanzar el hilo
-        a1m, a6m = 0, 0
-        try:
-            spy = yf.download("SPY", period="1y", progress=False)
-            if isinstance(spy.columns, pd.MultiIndex): spy.columns = spy.columns.get_level_values(0)
-            cierres = spy['Close'].dropna()
-            a1m = ((float(cierres.iloc[-1]) / float(cierres.iloc[-21])) - 1) * 100
-            a6m = ((float(cierres.iloc[-1]) / float(cierres.iloc[-126])) - 1) * 100
-        except: pass
+    mercado_objetivo = None
+    if btn_todos: mercado_objetivo = "Todos"
+    elif btn_us: mercado_objetivo = "EEUU"
+    elif btn_eu: mercado_objetivo = "Europa"
+    elif btn_asia: mercado_objetivo = "Asia"
 
-        t_escanear = [t for t in tickers_nombres.keys() if merc_sel == "Todos" or obtener_region(t) == merc_sel]
+    if mercado_objetivo:
+        st.session_state.resultados_radar = None
         
-        # CREACIÓN DEL HILO (Habitación separada)
-        hilo = threading.Thread(target=ejecutor_radar_background, args=(t_escanear, merc_sel, a1m, a6m))
-        add_script_run_ctx(hilo) # Esto vincula el hilo a tu sesión de Streamlit
-        hilo.start()
-        st.session_state.radar_hilo = hilo
-        st.rerun()
+        # Semáforos de mercado
+        if mercado_objetivo == "EEUU" and "Cerrado" in us["estado"]:
+            st.warning("⚠️ **Aviso:** Wall Street está cerrado. Los datos son del cierre.")
+        elif mercado_objetivo == "Europa" and "Cerrado" in eu["estado"]:
+            st.warning("⚠️ **Aviso:** Mercado europeo cerrado.")
+        elif mercado_objetivo == "Asia" and "Cerrado" in asia["estado"]:
+            st.warning("⚠️ **Aviso:** Mercado asiático cerrado.")
 
-    # VISUALIZACIÓN DEL PROGRESO (Siempre visible si está corriendo)
-    if st.session_state.radar_corriendo:
-        st.progress(st.session_state.radar_progreso / 100, text=f"**{st.session_state.radar_mensaje}** ({st.session_state.radar_progreso}%)")
-        st.info("💡 **El motor está trabajando en segundo plano.** Puedes ir a la Pestaña 1 o 2, la caza no se detendrá.")
-    elif st.session_state.radar_mensaje:
-        st.success(st.session_state.radar_mensaje)
+        tickers_a_escanear = [t for t in tickers_nombres.keys() if mercado_objetivo == "Todos" or obtener_region(t) == mercado_objetivo]
+        
+        st.info(f"🚀 Ejecutando Algoritmo Oppenheimer ULTRA para: **{mercado_objetivo}**...")
+        
+        barra_progreso = st.progress(0, text="Sincronizando con satélites financieros...")
+        resultados_radar = []
+        
+        # 1. CALIBRACIÓN BENCHMARK (Exigencia +2%)
+        alphaSPY_1m, alphaSPY_6m = 0, 0
+        try:
+            spy_data = yf.download("SPY", period="1y", progress=False)
+            if isinstance(spy_data.columns, pd.MultiIndex): spy_data.columns = spy_data.columns.get_level_values(0)
+            spy_cierres = spy_data['Close'].dropna()
+            alphaSPY_1m = ((float(spy_cierres.iloc[-1]) / float(spy_cierres.iloc[-21])) - 1) * 100
+            alphaSPY_6m = ((float(spy_cierres.iloc[-1]) / float(spy_cierres.iloc[-126])) - 1) * 100
+        except Exception: pass
 
-    # MOSTRAR RESULTADOS (Se van actualizando en tiempo real)
-    if st.session_state.radar_resultados:
-        df_res = pd.DataFrame(st.session_state.radar_resultados)
+        ws = conectar_db()
+        existentes_en_db = []
+        if ws:
+            try: existentes_en_db = ws.col_values(1)
+            except Exception: pass
+
+        # 2. BUCLE CUANTITATIVO REFORZADO
+        for i, ticker in enumerate(tickers_a_escanear):
+            porcentaje = int(((i + 1) / len(tickers_a_escanear)) * 100)
+            barra_progreso.progress((i + 1) / len(tickers_a_escanear), text=f"⏳ `Escaneando ADN de: {ticker.ljust(6)} | {porcentaje}%`")
+            
+            try:
+                sym_y = a_yahoo(ticker)
+                data = yf.download(sym_y, period="2y", progress=False)
+                if isinstance(data.columns, pd.MultiIndex): data.columns = data.columns.get_level_values(0)
+                df = data[['Close', 'High', 'Low', 'Volume']].dropna()
+                if len(df) < 55: continue # Necesitamos 50 + margen para la pendiente
+                
+                # --- CÁLCULOS TÉCNICOS ---
+                c_hoy = float(df['Close'].iloc[-1])
+                c_ayer = float(df['Close'].iloc[-2])
+                pct_h = ((c_hoy / c_ayer) - 1) * 100
+                vol_h = float(df['Volume'].iloc[-1])
+                vol_m = float(df['Volume'].iloc[-20:].mean())
+                
+                # Medias y Pendiente (Slope)
+                sma50_serie = df['Close'].rolling(window=50).mean()
+                sma50 = float(sma50_serie.iloc[-1])
+                sma50_prev = float(sma50_serie.iloc[-6]) # Hace una semana
+                sma200 = float(df['Close'].rolling(window=200).mean().iloc[-1]) if len(df) >= 200 else None
+                
+                # RSI 14 Precision
+                delta = df['Close'].diff()
+                gain = delta.where(delta > 0, 0).rolling(window=14).mean()
+                loss = -delta.where(delta < 0, 0).rolling(window=14).mean()
+                rs = gain / loss
+                rsi = float(100 - (100 / (1 + rs)).iloc[-1])
+                
+                # Rendimientos
+                def ret_d(d): return ((c_hoy / float(df['Close'].iloc[-(d+1)])) - 1) * 100 if len(df) > d else 0
+                r1m, r6m, r1y = ret_d(21), ret_d(126), ret_d(252)
+                max_52 = float(df['High'].iloc[-252:].max())
+                dist_max = ((c_hoy / max_52) - 1) * 100
+                
+                # --- MOTOR DE PUNTUACIÓN ULTRA (Base 0) ---
+                p = 0
+                status_t = "Neutral"
+                
+                # A) TENDENCIA (Máx 40)
+                if c_hoy > sma50: p += 10; status_t = "Alcista"
+                if sma200 and c_hoy > sma200: p += 10
+                if sma200 and sma50 > sma200: p += 10; status_t = "Alcista Fuerte (Oro)"
+                if sma50 > sma50_prev: p += 10 # Media subiendo (momentum real)
+                
+                # B) MOMENTUM RSI (Máx 20)
+                if 55 <= rsi <= 68: p += 20 # El punto perfecto
+                elif 50 <= rsi < 55: p += 10 # Cogiendo fuerza
+                elif rsi > 72: p -= 15 # CASTIGO: Sobrecompra, riesgo de caída
+                elif rsi < 40: p -= 15 # CASTIGO: Debilidad extrema
+                
+                # C) SMART MONEY (Máx 20)
+                if vol_h > (vol_m * 2.0) and pct_h > 0: p += 20 # Explosión institucional
+                elif vol_h > (vol_m * 1.5) and pct_h > 0: p += 10 
+                
+                # D) FUERZA RELATIVA ALPHA (Máx 20)
+                reg = obtener_region(ticker)
+                b_1m = alphaSPY_1m if reg == "EEUU" else 0
+                if r1m > (b_1m + 2.0): p += 10 # Bate al mercado por más de un 2%
+                if r6m > (alphaSPY_6m + 5.0): p += 10 # Bate a largo por más de un 5%
+                if r6m < 0: p -= 20 # Si a 6 meses pierde dinero, no la queremos
+
+                # Override Fénix / Breakout
+                isF = False
+                if dist_max <= -20 and c_hoy > sma50 and vol_h > (vol_m * 1.8) and pct_h > 1.5:
+                    p = max(p, 92); isF = True; status_t = "Giro Fénix 🔥"
+                
+                pts = max(0, min(100, int(p)))
+
+                # Guardado automático (Solo la excelencia: 90+)
+                if pts >= 90 and ticker not in existentes_en_db and ws is not None:
+                    fecha_h = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+                    ws.append_row([ticker, tickers_nombres[ticker], fecha_h, float(c_hoy), int(pts)])
+                    existentes_en_db.append(ticker)
+
+                reco = "❌ Esperar"
+                if pts >= 88: reco = "💎 DIAMANTE"
+                elif pts >= 75: reco = "🚀 COMPRA FUERTE"
+                elif pts >= 65: reco = "👀 VIGILAR"
+
+                resultados_radar.append({
+                    "TICKER": ticker, "NOMBRE": tickers_nombres[ticker], "PUNTOS": pts, "RECOMENDACIÓN": reco,
+                    "TENDENCIA": status_t, "RSI": f"{rsi:.1f}", "VOL. vs MEDIA": f"{(vol_h/vol_m):.1f}x",
+                    "PRECIO": f"{c_hoy:.2f} {obtener_simbolo_moneda(ticker)}", "% HOY": f"{pct_h:+.2f}%",
+                    "% 1 MES": f"{r1m:+.2f}%", "% 6 MESES": f"{r6m:+.2f}%", "% 1 AÑO": f"{r1y:+.2f}%",
+                    "MAX (52s)": f"{dist_max:+.2f}%"
+                })
+                time.sleep(0.05)
+            except: continue
+            
+        barra_progreso.progress(100, text="✅ Escaneo Finalizado")
+        st.session_state.resultados_radar = resultados_radar
+
+    if st.session_state.resultados_radar:
+        df_res = pd.DataFrame(st.session_state.resultados_radar)
         df_res = df_res.sort_values(by="PUNTOS", ascending=False).reset_index(drop=True)
         
         def color_pct(val):
@@ -797,14 +801,19 @@ with tab3:
             return ''
         
         st.dataframe(
-            df_res.style.map(color_pct, subset=["% HOY", "% 1 MES", "% 6 MESES", "MAX (52s)"]), 
-            use_container_width=True, hide_index=True,
+            df_res.style.map(color_pct, subset=["% HOY", "% 1 MES", "% 6 MESES", "% 1 AÑO", "MAX (52s)"]), 
+            use_container_width=True, 
+            hide_index=True,
             column_config={
-                "PUNTOS": st.column_config.NumberColumn(help="Probabilidad de éxito (0-100)."),
-                "RSI": st.column_config.TextColumn(help="Fuerza del activo. 55-68 es el punto dulce."),
-                "MAX (52s)": st.column_config.TextColumn(help="Distancia al máximo anual.")
+                "PUNTOS": st.column_config.NumberColumn(help="Probabilidad matemática de éxito. 90+ indica alineación perfecta de Tendencia, RSI y Volumen."),
+                "RECOMENDACIÓN": st.column_config.TextColumn(help="Sugerencia del sistema. 'Diamante' son las joyas del mercado actual."),
+                "TENDENCIA": st.column_config.TextColumn(help="Estado de las medias móviles. 'Oro' indica que la acción está en subida libre estructural."),
+                "RSI": st.column_config.TextColumn(help="Fuerza del movimiento. 55-68 es el punto dulce. >72 indica que llegas tarde."),
+                "VOL. vs MEDIA": st.column_config.TextColumn(help="Rastro institucional. >2.0x indica que las ballenas están comprando agresivamente."),
+                "MAX (52s)": st.column_config.TextColumn(help="Distancia al máximo anual. Si rompe el máximo con volumen, es un cohete.")
             }
         )
+
 # ------------------------------------------
 # PESTAÑA 4: SALA DE TROFEOS (DISEÑO SLIM + TOOLTIPS)
 # ------------------------------------------
