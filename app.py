@@ -755,6 +755,7 @@ with tab3:
                 atr = float(tr.rolling(14).mean().iloc[-1])
                 stop_l = c_hoy - (atr * 2.5)
                 
+# --- MOTOR DE PUNTUACIÓN ULTRA ---
                 p = 0
                 status_t = "Lateral/Bajista"
                 texto_a = []
@@ -762,9 +763,12 @@ with tab3:
                 if sma200 and c_hoy > sma200: p += 10
                 if sma200 and sma50 > sma200: p += 10; status_t = "Alcista Estructural"
                 if sma50 > sma50_prev: p += 10 
+                
+                # Penalizaciones y premios estándar
                 if 55 <= rsi <= 68: p += 20; texto_a.append("RSI óptimo.")
                 elif rsi > 72: p -= 15; texto_a.append("Riesgo sobrecompra.")
                 if vol_h > (vol_m * 1.8) and pct_h > 0: p += 20; texto_a.append("Smart Money.")
+                
                 if obv_hoy > obv_mes: p += 10
                 else: p -= 20; texto_a.append("⚠️ Divergencia OBV.")
                 
@@ -772,17 +776,28 @@ with tab3:
                 b_1m = alphaSPY_1m if reg == "EEUU" else 0
                 if r1m > (b_1m + 2.0): p += 10; texto_a.append("Bate al mercado.")
                 
+                # --- MÓDULOS DE ÉLITE (FUERZAN COMPRA) ---
                 isF = False
-                if dist_max <= -20 and c_hoy > sma50 and vol_h > (vol_m * 1.8) and pct_h > 1.5:
-                    p = max(p, 92); isF = True; status_t = "Giro Fénix 🔥"; texto_a = ["Giro explosivo."]
+                isM = False
                 
+                # 1. Módulo Fénix 🔥 (Rebotes desde el suelo)
+                if dist_max <= -20 and c_hoy > sma50 and vol_h > (vol_m * 1.8) and pct_h > 1.5:
+                    p = max(p, 92); isF = True; status_t = "Giro Fénix 🔥"; texto_a = ["Giro explosivo validado."]
+                
+                # 2. Módulo Momentum ⚡ (Misiles en pleno vuelo)
+                if pct_h >= 4.5 and vol_h >= (vol_m * 2.5) and c_hoy > sma50:
+                    p = max(p, 95); isM = True; status_t = "Ruptura Momentum ⚡"; texto_a = ["Caza Momentum: Explosión inusual de volumen y precio. Riesgo Alto."]
+
                 pts = max(0, min(100, int(p)))
                 if pts >= 90 and ticker not in existentes_en_db and ws is not None:
                     ws.append_row([ticker, tickers_nombres[ticker], datetime.datetime.now().strftime("%Y-%m-%d %H:%M"), float(c_hoy), int(pts)])
                     existentes_en_db.append(ticker)
 
                 reco = "⚪ ESPERAR"
-                if pts >= 90: reco = "💎 COMPRA FUERTE (ALFA)" if not isF else "🔥 COMPRA (FÉNIX)"
+                if pts >= 90:
+                    if isM: reco = "⚡ COMPRA (MOMENTUM)"
+                    elif isF: reco = "🔥 COMPRA (FÉNIX)"
+                    else: reco = "💎 COMPRA FUERTE (ALFA)"
                 elif pts >= 80: reco = "🟢 ACUMULAR"
                 elif pts >= 70: reco = "🟡 VIGILAR"
 
