@@ -300,7 +300,7 @@ st.markdown("---")
 tab1, tab2, tab3, tab4 = st.tabs(["🔬 Análisis Individual", "⚔️ Análisis Colectivo", "🎯 Cazar Alpha (Radar)", "🏆 Sala de Trofeos"])
 
 # ------------------------------------------
-# PESTAÑA 1: VISOR DE GRÁFICOS (VERSIÓN CORREGIDA Y DEFINITIVA)
+# PESTAÑA 1: VISOR DE GRÁFICOS (MOTOR HÍBRIDO BLINDADO)
 # ------------------------------------------
 with tab1:
     st.markdown("### 🔍 Selector de Activos")
@@ -330,125 +330,145 @@ with tab1:
         
         with st.spinner(f"Cargando datos de {simbolo_real} y rastreando Wall Street..."):
             try:
-                # 1. Datos Yahoo (Precio Histórico)
+                # Datos Yahoo (Precio Histórico)
                 datos = yf.download(simbolo_yahoo, period=mapa_tiempo[periodo], progress=False)
                 if isinstance(datos.columns, pd.MultiIndex): datos.columns = datos.columns.get_level_values(0)
 
                 if not datos.empty and 'Close' in datos.columns:
                     
-                    recom, precio_obj_str, fecha_earnings, sector, insider_trend = "Sin noticias", "Sin noticias", "Sin noticias", "Sin noticias", "Sin noticias"
+                    # --- VARIABLES INICIALES ---
+                    desc_corta = ""
+                    sector = "Sin noticias"
+                    recom = "Sin noticias"
+                    precio_obj_str = "Sin noticias"
+                    fecha_earnings = "Sin noticias"
+                    insider_trend = "Sin noticias"
+                    logo_url = ""
                     
-                    # 2. MOTOR DE EXTRACCIÓN (Yahoo + Finnhub)
                     API_FINNHUB = "d7c2s5hr01quh9fcasf0d7c2s5hr01quh9fcasfg"
                     
-                    # --- MECANISMO ANTI-FALLOS YAHOO FINANCE ---
-                    info = {}
-                    ticker_obj = None
-                    for _ in range(4): # Lo intentamos 4 veces
-                        try:
-                            # Truco: usar una sesión con User-Agent de navegador evita que Yahoo bloquee la IP
-                            sess = requests.Session()
-                            sess.headers.update({'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'})
-                            
-                            ticker_obj = yf.Ticker(simbolo_yahoo, session=sess)
-                            temp_info = ticker_obj.info
-                            
-                            # Comprobamos que traiga datos reales y no un diccionario vacío
-                            if isinstance(temp_info, dict) and len(temp_info) > 5:
-                                info = temp_info
-                                break
-                        except:
-                            pass
-                        time.sleep(0.5)
-                    # ---------------------------------------------
-                    
+                    # --- PLAN A: YAHOO FINANCE ---
                     try:
-                        if isinstance(info, dict) and info:
+                        info = {}
+                        ticker_obj = None
+                        for _ in range(3): # Bucle anti-bloqueo
+                            try:
+                                sess = requests.Session()
+                                sess.headers.update({'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'})
+                                ticker_obj = yf.Ticker(simbolo_yahoo, session=sess)
+                                temp_info = ticker_obj.info
+                                if isinstance(temp_info, dict) and len(temp_info) > 5:
+                                    info = temp_info
+                                    break
+                            except: pass
+                            time.sleep(0.3)
+                            
+                        if info:
                             sector = info.get('sector', 'Sin noticias')
-                            descripcion_completa = info.get('longBusinessSummary', 'Sin descripción disponible.')
-                            recom_raw = info.get('recommendationKey')
-                            p_obj = info.get('targetMeanPrice')
                             
-                            # Descripción (Cortada a 2 frases)
-                            if descripcion_completa != 'Sin descripción disponible.' and descripcion_completa:
-                                fragmentos = descripcion_completa.split('. ')
-                                desc_corta = '. '.join(fragmentos[:2]) + '.' if len(fragmentos) > 1 else descripcion_completa
+                            desc_raw = info.get('longBusinessSummary', '')
+                            if desc_raw:
+                                fragmentos = desc_raw.split('. ')
+                                desc_corta = '. '.join(fragmentos[:2]) + '.' if len(fragmentos) > 1 else desc_raw
                                 if len(desc_corta) > 300: desc_corta = desc_corta[:297] + "..."
-                                espacio_descripcion.markdown(f"<div style='font-size: 14px; color: #666; margin-top: 5px; margin-bottom: 5px;'><i>{desc_corta}</i></div>", unsafe_allow_html=True)
                             
-                            # Sector (Corregido con <b> en lugar de **)
-                            if sector != "Sin noticias":
-                                espacio_sector.markdown(f"<div style='font-size: 14px; margin-bottom: 10px;'>🏢 <b>Sector:</b> {sector}</div>", unsafe_allow_html=True)
-                            
-                            # Consenso
+                            recom_raw = info.get('recommendationKey')
                             if recom_raw:
                                 traducciones = {
-                                    "strong_buy": "COMPRA FUERTE 🟢",
-                                    "buy": "COMPRAR ↗️",
-                                    "hold": "MANTENER 🟡",
-                                    "sell": "VENTA ↘️",
-                                    "strong_sell": "VENTA MASIVA 🔴"
+                                    "strong_buy": "COMPRA FUERTE 🟢", "buy": "COMPRAR ↗️",
+                                    "hold": "MANTENER 🟡", "sell": "VENTA ↘️", "strong_sell": "VENTA MASIVA 🔴"
                                 }
                                 recom = traducciones.get(recom_raw.lower(), str(recom_raw).replace('_', ' ').upper())
                             
-                            # Precio objetivo
-                            if p_obj and p_obj > 0: 
-                                precio_obj_str = str(p_obj)
+                            p_obj = info.get('targetMeanPrice')
+                            if p_obj and p_obj > 0: precio_obj_str = str(p_obj)
                             
-                        # Calendario Yahoo
-                        try:
-                            if ticker_obj is not None:
+                            if ticker_obj:
                                 cal = ticker_obj.calendar
                                 if isinstance(cal, dict) and 'Earnings Date' in cal:
                                     fechas = cal['Earnings Date']
                                     if isinstance(fechas, list) and len(fechas) > 0 and pd.notnull(fechas[0]):
                                         fecha_earnings = fechas[0].strftime("%d/%m/%Y")
-                        except: pass
-                            
-                    except Exception:
-                        pass
+                    except: pass
                         
-                    # Extracción de Finnhub (LOGO e Insiders)
+                    # --- PLAN B: FINNHUB (Rescate de datos) ---
                     try:
                         hoy = datetime.datetime.today().strftime('%Y-%m-%d')
                         pasado = (datetime.datetime.today() - datetime.timedelta(days=180)).strftime('%Y-%m-%d')
-                        sym_finnhub = simbolo_yahoo if "." in simbolo_yahoo else simbolo_real
+                        sym_fh = simbolo_yahoo if "." in simbolo_yahoo else simbolo_real
                         
-                        logo_url = ""
+                        # Logo y Sector (Plan B)
                         try:
-                            r_prof = requests.get(f"https://finnhub.io/api/v1/stock/profile2?symbol={sym_finnhub}&token={API_FINNHUB}", timeout=3).json()
-                            if isinstance(r_prof, dict) and r_prof.get('logo'):
-                                url_temp = r_prof['logo']
-                                if url_temp.startswith("http"): 
-                                    logo_url = url_temp
+                            r_prof = requests.get(f"https://finnhub.io/api/v1/stock/profile2?symbol={sym_fh}&token={API_FINNHUB}", timeout=3).json()
+                            if isinstance(r_prof, dict):
+                                if r_prof.get('logo') and r_prof['logo'].startswith("http"): 
+                                    logo_url = r_prof['logo']
+                                if sector == "Sin noticias" and r_prof.get('finnhubIndustry'):
+                                    sector = r_prof['finnhubIndustry']
                         except: pass
 
-                        if logo_url:
-                            espacio_logo.markdown(f"<img src='{logo_url}' style='height: 40px; max-width: 100px; object-fit: contain; margin-top: 25px;'/>", unsafe_allow_html=True)
-                        else:
-                            espacio_logo.empty()
+                        # Consenso de Wall Street (Plan B)
+                        if recom == "Sin noticias":
+                            try:
+                                r_rec = requests.get(f"https://finnhub.io/api/v1/stock/recommendation?symbol={sym_fh}&token={API_FINNHUB}", timeout=3).json()
+                                if isinstance(r_rec, list) and len(r_rec) > 0:
+                                    latest = r_rec[0]
+                                    votos = {
+                                        "COMPRA FUERTE 🟢": latest.get('strongBuy', 0),
+                                        "COMPRAR ↗️": latest.get('buy', 0),
+                                        "MANTENER 🟡": latest.get('hold', 0),
+                                        "VENTA ↘️": latest.get('sell', 0),
+                                        "VENTA MASIVA 🔴": latest.get('strongSell', 0)
+                                    }
+                                    ganador = max(votos, key=votos.get)
+                                    if votos[ganador] > 0: recom = ganador
+                            except: pass
+                            
+                        # Precio Objetivo (Plan B)
+                        if precio_obj_str == "Sin noticias":
+                            try:
+                                r_pt = requests.get(f"https://finnhub.io/api/v1/stock/price-target?symbol={sym_fh}&token={API_FINNHUB}", timeout=3).json()
+                                if isinstance(r_pt, dict) and r_pt.get('targetMean'):
+                                    if float(r_pt['targetMean']) > 0: precio_obj_str = str(r_pt['targetMean'])
+                            except: pass
                         
                         # Insiders
-                        r_ins = requests.get(f"https://finnhub.io/api/v1/stock/insider-sentiment?symbol={sym_finnhub}&from={pasado}&to={hoy}&token={API_FINNHUB}").json()
-                        if isinstance(r_ins, dict) and 'data' in r_ins and len(r_ins['data']) > 0:
-                            mspr = r_ins['data'][-1].get('mspr', 0)
-                            if mspr > 5: insider_trend = "COMPRA MASIVA 🟢"
-                            elif mspr > 0: insider_trend = "COMPRANDO ↗️"
-                            elif mspr < -5: insider_trend = "VENTA MASIVA 🔴"
-                            elif mspr < 0: insider_trend = "VENDIENDO ↘️"
-                            else: insider_trend = "NEUTRAL ⚪"
+                        try:
+                            r_ins = requests.get(f"https://finnhub.io/api/v1/stock/insider-sentiment?symbol={sym_fh}&from={pasado}&to={hoy}&token={API_FINNHUB}").json()
+                            if isinstance(r_ins, dict) and 'data' in r_ins and len(r_ins['data']) > 0:
+                                mspr = r_ins['data'][-1].get('mspr', 0)
+                                if mspr > 5: insider_trend = "COMPRA MASIVA 🟢"
+                                elif mspr > 0: insider_trend = "COMPRANDO ↗️"
+                                elif mspr < -5: insider_trend = "VENTA MASIVA 🔴"
+                                elif mspr < 0: insider_trend = "VENDIENDO ↘️"
+                                else: insider_trend = "NEUTRAL ⚪"
+                        except: pass
                             
-                        # Calendario Finnhub
+                        # Calendario Earnings
                         if fecha_earnings == "Sin noticias":
-                            futuro = (datetime.datetime.today() + datetime.timedelta(days=90)).strftime('%Y-%m-%d')
-                            r_earn = requests.get(f"https://finnhub.io/api/v1/calendar/earnings?from={hoy}&to={futuro}&symbol={sym_finnhub}&token={API_FINNHUB}").json()
-                            if isinstance(r_earn, dict) and 'earningsCalendar' in r_earn and len(r_earn['earningsCalendar']) > 0:
-                                fecha_raw = r_earn['earningsCalendar'][0].get('date', 'Sin noticias')
-                                if fecha_raw != 'Sin noticias':
-                                    fecha_earnings = datetime.datetime.strptime(fecha_raw, "%Y-%m-%d").strftime("%d/%m/%Y")
+                            try:
+                                futuro = (datetime.datetime.today() + datetime.timedelta(days=90)).strftime('%Y-%m-%d')
+                                r_earn = requests.get(f"https://finnhub.io/api/v1/calendar/earnings?from={hoy}&to={futuro}&symbol={sym_fh}&token={API_FINNHUB}").json()
+                                if isinstance(r_earn, dict) and 'earningsCalendar' in r_earn and len(r_earn['earningsCalendar']) > 0:
+                                    fecha_raw = r_earn['earningsCalendar'][0].get('date', 'Sin noticias')
+                                    if fecha_raw != 'Sin noticias':
+                                        fecha_earnings = datetime.datetime.strptime(fecha_raw, "%Y-%m-%d").strftime("%d/%m/%Y")
+                            except: pass
                     except: pass 
 
-                    # 3. Formateo de Precios
+                    # --- ENVIAMOS DATOS A PANTALLA ---
+                    if desc_corta:
+                        espacio_descripcion.markdown(f"<div style='font-size: 14px; color: #666; margin-top: 5px; margin-bottom: 5px;'><i>{desc_corta}</i></div>", unsafe_allow_html=True)
+                    
+                    if sector != "Sin noticias":
+                        espacio_sector.markdown(f"<div style='font-size: 14px; margin-bottom: 10px;'>🏢 <b>Sector:</b> {sector}</div>", unsafe_allow_html=True)
+                        
+                    if logo_url:
+                        espacio_logo.markdown(f"<img src='{logo_url}' style='height: 40px; max-width: 100px; object-fit: contain; margin-top: 25px;'/>", unsafe_allow_html=True)
+                    else:
+                        espacio_logo.empty()
+
+                    # Formateo de Precios
                     datos_limpios = datos.dropna(subset=['Close'])
                     precio_actual = float(datos_limpios['Close'].iloc[-1])
                     s_moneda_visual = obtener_simbolo_moneda(simbolo_real)
@@ -476,7 +496,7 @@ with tab1:
 
                     t_conv = f'<span style="font-size:18px;color:#7f8c8d;font-weight:400;margin-left:10px;">(≈ {precio_usd:,.2f} $)</span>' if precio_usd else ""
                     
-                    # ---> 3. MANDAMOS LAS CAJAS AL HUECO RESERVADO ARRIBA <---
+                    # MANDAMOS LAS CAJAS AL HUECO RESERVADO ARRIBA
                     with contenedor_cajas:
                         st.markdown(f"""
                         <div style="background-color:#f8f9fa;padding:15px;border-radius:10px;box-shadow:0 4px 6px rgba(0,0,0,0.05);margin-bottom:20px;">
@@ -504,14 +524,13 @@ with tab1:
                         </div>
                         """, unsafe_allow_html=True)
 
-                    # 5. Gráfica
+                    # Gráfica
                     fig = go.Figure()
                     fig.add_trace(go.Scatter(x=datos_limpios.index, y=datos_limpios['Close'], mode='lines', name='Precio', line=dict(color='#228B22', width=2)))
                     fig.update_layout(title=f"Histórico: {ticker_elegido}", template='plotly_dark', margin=dict(l=0, r=0, t=40, b=0), hovermode="x unified")
                     st.plotly_chart(fig, use_container_width=True)
                 else: st.warning("⚠️ Sin datos disponibles.")
             except Exception as e: st.error(f"⚠️ Error técnico: {e}")
-
 # ------------------------------------------
 # PESTAÑA 2: BATALLA DE ALPHA (COMPARATIVA)
 # ------------------------------------------
