@@ -853,11 +853,24 @@ with tab3:
             df_res = pd.DataFrame(st.session_state.resultados_radar)
             df_res = df_res.sort_values(by="PUNTOS", ascending=False).reset_index(drop=True)
             st.dataframe(df_res.style.map(color_pct, subset=["% HOY", "% 1 MES", "% 6 MESES", "% 1 AÑO", "% 5 AÑOS"]), 
-                         use_container_width=True, hide_index=True,
-                         column_config={"PUNTOS": st.column_config.NumberColumn(help="Nota 0-100."),
-                                        "RECOMENDACIÓN": st.column_config.TextColumn(help="💎 ALFA: Cohete estable.\n🔥 FÉNIX: Rebote suelo."),
-                                        "STOP LOSS": st.column_config.TextColumn(help="Precio de salida ATR en tu broker."),
-                                        "ANÁLISIS": st.column_config.TextColumn(width="large")})
+                         use_container_width=False, height=600, hide_index=True,
+                         column_config={
+                            "TICKER": st.column_config.TextColumn(help="Símbolo en bolsa de la empresa."),
+                            "NOMBRE": st.column_config.TextColumn(help="Nombre de la compañía."),
+                            "PUNTOS": st.column_config.NumberColumn(help="Nota 0-100 calculada por el radar Oppenheimer. Solo de 90 para arriba es compra."),
+                            "RECOMENDACIÓN": st.column_config.TextColumn(help="💎 ALFA: Tendencia segura.\n🔥 FÉNIX: Rebote tras gran caída.\n⚡ MOMENTUM: Subida salvaje hoy con volumen extremo."),
+                            "TENDENCIA": st.column_config.TextColumn(help="Estructura según las medias móviles. 'Alcista Estructural' es lo mejor."),
+                            "RSI": st.column_config.TextColumn(help="Mide si está barata o cara. Entre 55 y 68 es ideal. Más de 70 = ¡Peligro, puede caer!"),
+                            "VOL. vs MEDIA": st.column_config.TextColumn(help="¿Entra dinero institucional hoy? Si es más de 1.0x, significa que se negocia más fuerte que un día normal."),
+                            "PRECIO HOY": st.column_config.TextColumn(help="Precio actual (con conversión aproximada a dólares)."),
+                            "STOP LOSS": st.column_config.TextColumn(help="Tu paracaídas. Pon este precio en tu broker para que venda automático si las cosas salen mal."),
+                            "% HOY": st.column_config.TextColumn(help="Rendimiento de hoy."),
+                            "% 1 MES": st.column_config.TextColumn(help="Rendimiento del último mes."),
+                            "% 6 MESES": st.column_config.TextColumn(help="Rendimiento de los últimos 6 meses."),
+                            "% 1 AÑO": st.column_config.TextColumn(help="Rendimiento anualizado."),
+                            "% 5 AÑOS": st.column_config.TextColumn(help="Comportamiento a largo plazo."),
+                            "ANÁLISIS": st.column_config.TextColumn(width="large", help="Traducción directa de lo que el algoritmo ve en el gráfico de esta acción.")
+                         })
 
 # ------------------------------------------
 # PESTAÑA 4: SALA DE TROFEOS (PERSISTENTE)
