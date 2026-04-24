@@ -323,17 +323,14 @@ with tab1:
         
         st.markdown("<br>", unsafe_allow_html=True) 
         
-        # --- AHORA HAY ESPACIO PARA 2 INTERRUPTORES ---
-        col_tiempo, col_t1, col_t2 = st.columns([2.5, 1, 1])
+        # --- AGRUPAMOS LOS INTERRUPTORES EN UNA SOLA COLUMNA PARA QUE SE APILEN ---
+        col_tiempo, col_tendencias = st.columns([3, 1.5])
         with col_tiempo:
             periodo = st.radio("⏱️ Rango de tiempo:", ["1 Mes", "3 Meses", "6 Meses", "1 Año", "5 Años", "10 Años", "Máximo"], index=1, horizontal=True)
             
-        with col_t1:
-            st.markdown("<br>", unsafe_allow_html=True) 
+        with col_tendencias:
+            # Al ponerlos seguidos en la misma columna, se apilan verticalmente
             mostrar_tendencia = st.toggle("📈 SMA 50 (Medio)", help="Media Móvil de 50 días. Mide el pulso a medio plazo.")
-            
-        with col_t2:
-            st.markdown("<br>", unsafe_allow_html=True) 
             mostrar_tendencia_200 = st.toggle("🚀 SMA 200 (Largo)", help="Media de 200 días. Si la SMA 50 cruza por encima de esta línea, se produce un 'Cruce de Oro' (Señal alcista muy fuerte).")
             
         with st.spinner(f"Cargando datos de {simbolo_real} y rastreando Wall Street..."):
@@ -557,7 +554,6 @@ with tab1:
                     
                 else: st.warning("⚠️ Sin datos disponibles.")
             except Exception as e: st.error(f"⚠️ Error técnico: {e}")
-
 # ------------------------------------------
 # PESTAÑA 2: BATALLA DE ALPHA (COMPARATIVA)
 # ------------------------------------------
