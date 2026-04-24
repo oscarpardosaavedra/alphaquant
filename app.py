@@ -760,34 +760,14 @@ with tab3:
                 elif pts >= 80: reco = "🟢 ACUMULAR"
                 elif pts >= 70: reco = "🟡 VIGILAR"
 
-                # --- CONVERSIÓN DE DIVISA (BLINDADA PARA NO ROMPER LA LISTA) ---
-                mon = obtener_simbolo_moneda(ticker)
-                txt_stop = f"{stop_loss:.2f} {mon} ({dist_stop:+.1f}%)"
-                
-                if mon != "$":
-                    mapa_divisas = { "€": "EURUSD=X", "¥": "JPYUSD=X", "GBp": "GBPUSD=X", "kr": "SEKUSD=X", "₹": "INRUSD=X" }
-                    t_div = mapa_divisas.get(mon)
-                    if t_div:
-                        try:
-                            # TRY separado: Si esto falla, no perdemos la acción
-                            d_div = yf.download(t_div, period="1d", progress=False)
-                            if not d_div.empty:
-                                if isinstance(d_div.columns, pd.MultiIndex): d_div.columns = d_div.columns.get_level_values(0)
-                                tasa = float(d_div['Close'].dropna().iloc[-1])
-                                factor = tasa / 100 if mon == "GBp" else tasa
-                                txt_stop = f"{stop_loss:.2f} {mon} (≈ {(stop_loss * factor):.2f} $) ({dist_stop:+.1f}%)"
-                        except Exception: 
-                            pass # Si Yahoo falla, mostramos el Stop en euros y punto
-
-                # GUARDAMOS LA ACCIÓN SIEMPRE, TENGA LOS PUNTOS QUE TENGA
                 resultados_temporales.append({
                     "TICKER": ticker, "NOMBRE": tickers_nombres[ticker], "PUNTOS": pts, "RECOMENDACIÓN": reco,
-                    "TENDENCIA": status_t, "RSI": f"{rsi:.1f}", "VOL. vs MEDIA": f"{(vol_h/vol_m):.1f}x",
-                    "PRECIO": f"{c_hoy:.2f} {mon}", "STOP LOSS": txt_stop, 
-                    "% HOY": f"{pct_h:+.2f}%", "% 1 MES": f"{r1m:+.2f}%", "% 6 MESES": f"{r6m:+.2f}%", 
-                    "% 1 AÑO": f"{r1y:+.2f}%", "% 5 AÑOS": f"{r5y:+.2f}%", "MAX (52s)": f"{dist_max:+.2f}%", "ANÁLISIS": analisis_final
+                    "TENDENCIA": status_t, "PRECIO HOY": f"{c_hoy:.2f} {obtener_simbolo_moneda(ticker)}",
+                    "STOP LOSS": f"{stop_l:.2f} ({((stop_l/c_hoy)-1):+.1f}%)", "% HOY": f"{pct_h:+.2f}%", 
+                    "% 1 MES": f"{r1m:+.2f}%", "% 6 MESES": f"{r6m:+.2f}%", "% 1 AÑO": f"{r1y:+.2f}%", 
+                    "% 5 AÑOS": f"{r5y:+.2f}%", "ANÁLISIS": " ".join(texto_a) if texto_a else "Estable."
                 })
-                time.sleep(0.05) 
+                time.sleep(0.01)
             except: continue
             
         barra_progreso.progress(100, text="✅ Caza Finalizada")
