@@ -461,7 +461,7 @@ with tab1:
                         espacio_sector.markdown(f"<div style='font-size: 14px; margin-bottom: 10px;'>🏢 <b>Sector:</b> {sector}</div>", unsafe_allow_html=True)
                         
                     if logo_url:
-                        espacio_logo.markdown(f"<img src='{logo_url}' style='height: 40px; max-width: 100px; object-fit: contain; margin-top: 25px;'/>", unsafe_allow_html=True)
+                        espacio_logo.markdown(f"<img src='{logo_url}' style='height: 70px; max-width: 140px; object-fit: contain; margin-top: 10px;'/>", unsafe_allow_html=True)
                     else:
                         espacio_logo.empty()
 
