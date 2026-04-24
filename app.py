@@ -641,7 +641,7 @@ with tab2:
                 st.plotly_chart(fig_comp, use_container_width=True)
 
 # ------------------------------------------
-# PESTAÑA 3: RADAR DE CAZA (MOTOR "OPPENHEIMER" V2.0 + TOOLTIPS)
+# PESTAÑA 3: RADAR DE CAZA (MOTOR "OPPENHEIMER" V2.0 + NOTAS DE AYUDA)
 # ------------------------------------------
 with tab3:
     st.markdown("### 🎯 Selecciona tu Objetivo")
@@ -663,7 +663,6 @@ with tab3:
     if mercado_objetivo:
         st.session_state.resultados_radar = None
         
-        # Semáforos de mercado
         if mercado_objetivo == "EEUU" and "Cerrado" in us["estado"]:
             st.warning("⚠️ **Aviso:** Wall Street está cerrado. Los datos son del último cierre.")
         elif mercado_objetivo == "Europa" and "Cerrado" in eu["estado"]:
@@ -679,8 +678,7 @@ with tab3:
         resultados_radar = []
         
         # 1. CALIBRACIÓN BENCHMARK
-        alphaSPY_1m = 0
-        alphaSPY_6m = 0
+        alphaSPY_1m, alphaSPY_6m = 0, 0
         try:
             spy_data = yf.download("SPY", period="1y", progress=False)
             if isinstance(spy_data.columns, pd.MultiIndex): spy_data.columns = spy_data.columns.get_level_values(0)
@@ -705,20 +703,19 @@ with tab3:
             try:
                 sym_y = a_yahoo(ticker)
                 data = yf.download(sym_y, period="2y", progress=False)
-                
                 if isinstance(data.columns, pd.MultiIndex): data.columns = data.columns.get_level_values(0)
                 df = data[['Close', 'High', 'Low', 'Volume']].dropna()
-                
                 if len(df) < 50: continue
                 
-                # --- CÁLCULOS ---
                 c_hoy = float(df['Close'].iloc[-1])
                 c_ayer = float(df['Close'].iloc[-2])
                 pct_h = ((c_hoy / c_ayer) - 1) * 100
                 vol_h = float(df['Volume'].iloc[-1])
                 vol_m = float(df['Volume'].iloc[-20:].mean())
+                
                 sma50 = float(df['Close'].rolling(window=50).mean().iloc[-1])
                 sma200 = float(df['Close'].rolling(window=200).mean().iloc[-1]) if len(df) >= 200 else None
+                
                 delta = df['Close'].diff()
                 gain = delta.where(delta > 0, 0).rolling(window=14).mean()
                 loss = -delta.where(delta < 0, 0).rolling(window=14).mean()
@@ -727,27 +724,31 @@ with tab3:
                 
                 def ret_d(d): return ((c_hoy / float(df['Close'].iloc[-(d+1)])) - 1) * 100 if len(df) > d else 0
                 r1m, r6m, r1y = ret_d(21), ret_d(126), ret_d(252)
+                
                 max_52 = float(df['High'].iloc[-252:].max())
                 dist_max = ((c_hoy / max_52) - 1) * 100
                 
-                # --- PUNTUACIÓN ---
                 p = 30
                 status_t = "Neutral"
                 if c_hoy > sma50: p += 15; status_t = "Alcista Corto"
                 if sma200 and c_hoy > sma200: p += 10
                 if sma200 and sma50 > sma200: p += 10; status_t = "Alcista Fuerte (Oro)"
+                
                 if 55 <= rsi <= 72: p += 15
-                elif rsi > 75: p -= 10
-                elif rsi < 35: p -= 10
+                elif rsi > 75 or rsi < 35: p -= 10
+                
                 if vol_h > (vol_m * 1.5) and pct_h > 0: p += 15
+                
                 reg = obtener_region(ticker)
                 if r1m > (alphaSPY_1m if reg == "EEUU" else 0): p += 10
                 if r6m < 0: p -= 15
+
                 isF = False
                 if dist_max <= -20 and c_hoy > sma50 and vol_h > (vol_m * 1.3) and pct_h > 1.5:
                     p = max(p, 92); isF = True; status_t = "Giro Fénix 🔥"
                 
                 pts = max(0, min(100, int(p)))
+
                 if pts >= 90 and ticker not in existentes_en_db and ws is not None:
                     fecha_h = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
                     ws.append_row([ticker, tickers_nombres[ticker], fecha_h, float(c_hoy), int(pts)])
@@ -781,23 +782,23 @@ with tab3:
                 elif val.startswith('-'): return 'color: #FF3333;' 
             return ''
         
-        # CONFIGURACIÓN DE COLUMNAS CON TOOLTIPS
+        # CONFIGURACIÓN DE COLUMNAS CON TOOLTIPS (AÑADIDOS)
         st.dataframe(
             df_res.style.map(color_pct, subset=["% HOY", "% 1 MES", "% 6 MESES", "% 1 AÑO", "MAX (52s)"]), 
             use_container_width=True, 
             hide_index=True,
             column_config={
-                "PUNTOS": st.column_config.NumberColumn(help="Probabilidad matemática de éxito (0-100) basada en Tendencia, RSI, Volumen y Fuerza Relativa."),
-                "RECOMENDACIÓN": st.column_config.TextColumn(help="Sugerencia operativa basada en la puntuación actual."),
-                "TENDENCIA": st.column_config.TextColumn(help="Estado de las medias móviles de 50 y 200 días. 'Oro' es tendencia alcista estructural."),
-                "RSI": st.column_config.TextColumn(help="Fuerza del movimiento. 55-72 es la zona ideal. >75 indica agotamiento."),
-                "VOL. vs MEDIA": st.column_config.TextColumn(help="Volumen de hoy frente a su media mensual. >1.5x indica entrada de ballenas."),
-                "MAX (52s)": st.column_config.TextColumn(help="Distancia al máximo anual. Si es menor a -20% y sube con volumen, activa señal Fénix.")
+                "PUNTOS": st.column_config.NumberColumn(help="Probabilidad de éxito (0-100) calculada por el motor Oppenheimer."),
+                "RECOMENDACIÓN": st.column_config.TextColumn(help="Sugerencia del sistema según la puntuación."),
+                "TENDENCIA": st.column_config.TextColumn(help="Estado de las medias móviles. 'Oro' indica tendencia alcista de largo plazo."),
+                "RSI": st.column_config.TextColumn(help="Fuerza del activo. 55-72 es el punto dulce de compra."),
+                "VOL. vs MEDIA": st.column_config.TextColumn(help="Indica si hay volumen institucional. >1.5x es señal de ballenas."),
+                "MAX (52s)": st.column_config.TextColumn(help="Distancia al máximo anual. Si es menor a -20% se activa el modo Fénix.")
             }
         )
 
 # ------------------------------------------
-# PESTAÑA 4: SALA DE TROFEOS (CON TOOLTIPS EN TÍTULOS)
+# PESTAÑA 4: SALA DE TROFEOS (DISEÑO SLIM + "ENTRADA:")
 # ------------------------------------------
 with tab4:
     st.markdown("### 🏆 Sala de Trofeos")
@@ -821,7 +822,7 @@ with tab4:
                             st.rerun()
 
             if st.button("🔄 Auditar Rendimiento Actual", use_container_width=True):
-                with st.spinner("Calculando métricas..."):
+                with st.spinner("Calculando métricas reales..."):
                     exitos, cuarentena, fracasos, pendiente = [], [], [], []
                     ahora = datetime.datetime.now()
 
@@ -860,11 +861,11 @@ with tab4:
                     cols = st.columns(4)
                     
                     # CONFIGURACIÓN DE TÍTULOS CON TOOLTIP HTML
-                    titulos_info = [
-                        ("⏸️ Pendiente", "Activos sin cambio. Mercado cerrado o recién cazados."),
-                        ("🏆 Éxitos", "Activos en verde. El algoritmo ha acertado la dirección."),
-                        ("⏳ Cuarentena", "Pérdida leve (<3%). Ruido normal de mercado o consolidación."),
-                        ("🪦 Fracasos", "Caída superior al 3%. Posible fallo de señal o giro de tendencia.")
+                    titulos_config = [
+                        ("⏸️ Pendiente", "Activos sin cambio. Mercado cerrado o recién añadidos."),
+                        ("🏆 Éxitos", "Activos en ganancias (>0%). El algoritmo ha acertado."),
+                        ("⏳ Cuarentena", "Pérdida leve (<3%). Ruido normal o consolidación."),
+                        ("🪦 Fracasos", "Caída superior al 3%. Posible fallo de señal.")
                     ]
                     
                     listas = [pendiente, exitos, cuarentena, fracasos]
@@ -872,16 +873,16 @@ with tab4:
                     
                     for i, l in enumerate(listas):
                         with cols[i]:
-                            # Título con tooltip al pasar el ratón
-                            st.markdown(f'<h4 title="{titulos_info[i][1]}" style="cursor:help;">{titulos_info[i][0]}</h4>', unsafe_allow_html=True)
+                            st.markdown(f'<h4 title="{titulos_config[i][1]}" style="cursor:help;">{titulos_config[i][0]}</h4>', unsafe_allow_html=True)
                             for item in l:
+                                # DISEÑO SLIM CON "ENTRADA:" DELANTE DE LA FECHA
                                 st.markdown(f"""
                                 <div style="border-top:3px solid {colores[i]}; background:white; padding:10px; border-radius:8px; margin-bottom:10px; box-shadow:0 2px 5px rgba(0,0,0,0.05);">
                                     <div style="display:flex; justify-content:space-between; align-items:center;">
                                         <b style="font-size:15px;">{item['T']}</b> 
                                         <b style="color:{colores[i]}; font-size:15px;">{item['R']:+.2f}%</b>
                                     </div>
-                                    <div style="font-size:10px; color:#888; margin-bottom:4px;">{item['F']}</div>
+                                    <div style="font-size:10px; color:#888; margin-bottom:4px;">Entrada: {item['F']}</div>
                                     <div style="font-size:11px; color:#444;">
                                         In: <b>{item['E']:.2f}{item['M']}</b> | Actual: <b>{item['A']:.2f}{item['M']}</b>
                                     </div>
