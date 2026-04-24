@@ -641,7 +641,7 @@ with tab2:
                 st.plotly_chart(fig_comp, use_container_width=True)
 
 # ------------------------------------------
-# PESTAÑA 3: RADAR DE CAZA CON AUTO-GUARDADO
+# PESTAÑA 3: RADAR DE CAZA (MOTOR "OPPENHEIMER" V2.0 - COLUMNAS QUANT)
 # ------------------------------------------
 with tab3:
     st.markdown("### 🎯 Selecciona tu Objetivo")
@@ -663,406 +663,209 @@ with tab3:
     if mercado_objetivo:
         st.session_state.resultados_radar = None
         
+        # Semáforos de mercado
         if mercado_objetivo == "EEUU" and "Cerrado" in us["estado"]:
-            st.warning("⚠️ **Aviso:** Wall Street está cerrado ahora mismo. Los datos corresponden al último cierre.")
+            st.warning("⚠️ **Aviso:** Wall Street está cerrado. Los datos son del último cierre.")
         elif mercado_objetivo == "Europa" and "Cerrado" in eu["estado"]:
-            st.warning("⚠️ **Aviso:** El mercado europeo está cerrado. Los datos corresponden al último cierre.")
+            st.warning("⚠️ **Aviso:** Mercado europeo cerrado.")
         elif mercado_objetivo == "Asia" and "Cerrado" in asia["estado"]:
-            st.warning("⚠️ **Aviso:** El mercado asiático está cerrado. Los datos corresponden al último cierre.")
-        elif mercado_objetivo == "Todos" and "Cerrado" in us["estado"] and "Cerrado" in eu["estado"] and "Cerrado" in asia["estado"]:
-            st.warning("⚠️ **Aviso:** Todos los mercados globales están cerrados en este momento.")
+            st.warning("⚠️ **Aviso:** Mercado asiático cerrado.")
 
         tickers_a_escanear = [t for t in tickers_nombres.keys() if mercado_objetivo == "Todos" or obtener_region(t) == mercado_objetivo]
         
-        st.info(f"Iniciando escaneo del algoritmo para: **{mercado_objetivo}** ({len(tickers_a_escanear)} activos)...")
+        st.info(f"🚀 Ejecutando Algoritmo Oppenheimer para: **{mercado_objetivo}** ({len(tickers_a_escanear)} activos)...")
         
-        barra_progreso = st.progress(0, text="Conectando con Wall Street y calculando benchmark (SPY)...")
+        barra_progreso = st.progress(0, text="Calibrando línea base del mercado global (SPY)...")
         resultados_radar = []
         
-        alphaSPY = 0
+        # 1. CALIBRACIÓN BENCHMARK
+        alphaSPY_1m = 0
+        alphaSPY_6m = 0
         try:
-            spy_data = yf.download("SPY", period="1mo", progress=False)
+            spy_data = yf.download("SPY", period="1y", progress=False)
             if isinstance(spy_data.columns, pd.MultiIndex): spy_data.columns = spy_data.columns.get_level_values(0)
             if 'Close' in spy_data.columns:
-                spy_cierres = spy_data['Close'].squeeze() if isinstance(spy_data['Close'], pd.DataFrame) else spy_data['Close']
-                if len(spy_cierres) >= 21:
-                    alphaSPY = ((float(spy_cierres.iloc[-1]) / float(spy_cierres.iloc[-21])) - 1) * 100
+                spy_cierres = spy_data['Close'].dropna()
+                if len(spy_cierres) >= 126:
+                    alphaSPY_1m = ((float(spy_cierres.iloc[-1]) / float(spy_cierres.iloc[-21])) - 1) * 100
+                    alphaSPY_6m = ((float(spy_cierres.iloc[-1]) / float(spy_cierres.iloc[-126])) - 1) * 100
         except Exception: pass
 
         ws = conectar_db()
         existentes_en_db = []
         if ws:
-            try:
-                existentes_en_db = ws.col_values(1)
-            except Exception:
-                pass
+            try: existentes_en_db = ws.col_values(1)
+            except Exception: pass
 
+        # 2. BUCLE CUANTITATIVO
         for i, ticker in enumerate(tickers_a_escanear):
             porcentaje = int(((i + 1) / len(tickers_a_escanear)) * 100)
+            barra_progreso.progress((i + 1) / len(tickers_a_escanear), text=f"⏳ `Analizando: {ticker.ljust(6)} | {porcentaje}%`")
             
-            t_fijo = ticker.ljust(10).replace(" ", " ")
-            p_fijo = str(porcentaje).rjust(3)
-            
-            barra_progreso.progress((i + 1) / len(tickers_a_escanear), 
-                                   text=f"⏳ `Evaluando: {t_fijo} | {p_fijo}%`")
             try:
-                sym_yahoo = a_yahoo(ticker)
+                sym_y = a_yahoo(ticker)
+                # Bajamos 2 años para tener datos de la SMA 200
+                data = yf.download(sym_y, period="2y", progress=False)
                 
-                data_stock = yf.download(sym_yahoo, period="max", progress=False)
+                if isinstance(data.columns, pd.MultiIndex): data.columns = data.columns.get_level_values(0)
+                df = data[['Close', 'High', 'Low', 'Volume']].dropna()
                 
-                if isinstance(data_stock.columns, pd.MultiIndex): data_stock.columns = data_stock.columns.get_level_values(0)
-                if data_stock.empty or 'Close' not in data_stock.columns or 'Volume' not in data_stock.columns: 
-                    time.sleep(0.15)
-                    continue
-                    
-                data_stock = data_stock.dropna(subset=['Close'])
-                if len(data_stock) < 2: 
-                    time.sleep(0.15)
-                    continue
+                if len(df) < 50: continue
                 
-                cierres = data_stock['Close'].squeeze() if isinstance(data_stock['Close'], pd.DataFrame) else data_stock['Close']
-                volumen = data_stock['Volume'].squeeze() if isinstance(data_stock['Volume'], pd.DataFrame) else data_stock['Volume']
+                # --- CÁLCULOS QUANT ---
+                c_hoy = float(df['Close'].iloc[-1])
+                c_ayer = float(df['Close'].iloc[-2])
+                pct_h = ((c_hoy / c_ayer) - 1) * 100
+                vol_h = float(df['Volume'].iloc[-1])
+                vol_m = float(df['Volume'].iloc[-20:].mean())
                 
-                array_cierres = cierres.values.flatten()
-                array_vol = volumen.values.flatten()
+                # Medias (Tendencia)
+                sma50 = float(df['Close'].rolling(window=50).mean().iloc[-1])
+                sma200 = float(df['Close'].rolling(window=200).mean().iloc[-1]) if len(df) >= 200 else None
                 
-                precio_actual = float(array_cierres[-1])
-                precio_ayer = float(array_cierres[-2])
-                pct_hoy = ((precio_actual / precio_ayer) - 1) * 100 if precio_ayer > 0 else 0
+                # RSI 14 (Momentum)
+                delta = df['Close'].diff()
+                gain = delta.where(delta > 0, 0).rolling(window=14).mean()
+                loss = -delta.where(delta < 0, 0).rolling(window=14).mean()
+                rs = gain / loss
+                rsi = float(100 - (100 / (1 + rs)).iloc[-1])
                 
-                hist_1y = data_stock.iloc[-252:] if len(data_stock) >= 252 else data_stock
-                max_alta = hist_1y['High'].squeeze() if isinstance(hist_1y['High'], pd.DataFrame) else hist_1y['High']
-                min_baja = hist_1y['Low'].squeeze() if isinstance(hist_1y['Low'], pd.DataFrame) else hist_1y['Low']
+                # Rendimientos
+                def ret_d(d): return ((c_hoy / float(df['Close'].iloc[-(d+1)])) - 1) * 100 if len(df) > d else 0
+                r1m, r6m, r1y = ret_d(21), ret_d(126), ret_d(252)
                 
-                max_52 = float(max_alta.max())
-                min_52 = float(min_baja.min())
+                max_52 = float(df['High'].iloc[-252:].max())
+                dist_max = ((c_hoy / max_52) - 1) * 100
                 
-                dist_suelo = ((precio_actual / min_52) - 1) * 100 if min_52 > 0 else 0
-                dist_max = ((precio_actual / max_52) - 1) * 100 if max_52 > 0 else 0
+                # --- SISTEMA DE PUNTUACIÓN (Máx 100) ---
+                p = 30
+                status_t = "Neutral"
                 
-                def get_ret(days):
-                    if len(array_cierres) >= days and array_cierres[-days] > 0:
-                        return ((precio_actual / float(array_cierres[-days])) - 1) * 100
-                    return None
-
-                r1m = get_ret(21)
-                r6m = get_ret(126)
-                r1y = get_ret(252)
-                r5y = get_ret(1260)
-                r10y = get_ret(2520)
-                r20y = get_ret(5040)
+                if c_hoy > sma50: 
+                    p += 15
+                    status_t = "Alcista Corto"
+                if sma200 and c_hoy > sma200: p += 10
+                if sma200 and sma50 > sma200: 
+                    p += 10
+                    status_t = "Alcista Fuerte (Oro)"
                 
-                start_price = float(array_cierres[0])
-                ret_max = ((precio_actual / start_price) - 1) * 100 if start_price > 0 else 0
+                if 55 <= rsi <= 72: p += 15 # RSI Punto Dulce
+                elif rsi > 75: p -= 10 # Sobrecompra
+                elif rsi < 35: p -= 10 # Debilidad
                 
-                try:
-                    session_yf_radar = requests.Session()
-                    session_yf_radar.headers.update({'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'})
-                    tk_obj = yf.Ticker(sym_yahoo, session=session_yf_radar)
-                    info_tk = tk_obj.info
-                    if isinstance(info_tk, dict) and len(info_tk) > 5:
-                        per = info_tk.get('trailingPE', 999)
-                        if per is None: per = 999 
-                        sector = info_tk.get('sector', 'N/A')
-                    else:
-                        per = 999
-                        sector = "N/A"
-                except:
-                    per = 999
-                    sector = "N/A"
+                if vol_h > (vol_m * 1.5) and pct_h > 0: p += 15 # Smart Money
                 
-                vol_hoy = float(array_vol[-1])
-                vol_medio = float(np.mean(array_vol[-20:])) if len(array_vol) >= 20 else float(np.mean(array_vol))
-                
-                ptsBase = 40
-                v_1m = r1m if r1m is not None else 0
-                v_6m = r6m if r6m is not None else 0
                 reg = obtener_region(ticker)
-                
-                if v_1m > 0 and v_6m > 0: ptsBase += 15
-                elif v_1m > 0 and v_6m < -15: ptsBase -= 20
-                elif v_6m <= 0: ptsBase -= 15
-                else: ptsBase += 5
-                
-                myAlpha = v_1m - (alphaSPY if reg == "EEUU" else 0)
-                if myAlpha > 5: ptsBase += 10
-                elif myAlpha < -5: ptsBase -= 10
-                
-                isHyperGrowth = (myAlpha > 10 and vol_medio > 1000000)
-                
-                if reg == "EEUU":
-                    if 0 < per <= 45: ptsBase += 15
-                    elif 45 < per <= 120 and isHyperGrowth: ptsBase += 15
-                    elif per > 120 or per < 0: ptsBase -= 15
-                elif reg == "Europa":
-                    if 0 < per <= 15: ptsBase += 15
-                    elif 15 < per <= 35 and isHyperGrowth: ptsBase += 15
-                    elif per > 35 or per < 0: ptsBase -= 15
-                elif reg == "Asia":
-                    if 0 < per <= 30: ptsBase += 15
-                    elif 30 < per <= 80 and isHyperGrowth: ptsBase += 15
-                    elif per > 80 or per < 0: ptsBase -= 15
-                
-                if abs(pct_hoy) > 4 and vol_hoy < vol_medio: ptsBase -= 15 
-                
-                if reg == "EEUU" or reg == "Europa":
-                    if abs(pct_hoy) <= 1.5 and vol_hoy >= (vol_medio * 1.5): ptsBase += 20
-                    elif dist_max > -5 and vol_hoy >= (vol_medio * 2.0) and pct_hoy > 2: ptsBase += 25
-                    elif dist_max > -2 and vol_hoy > (vol_medio * 1.5) and pct_hoy > 0: ptsBase += 15
-                    elif pct_hoy < -3 and vol_hoy > (vol_medio * 1.5): ptsBase -= 20
-                elif reg == "Asia":
-                    if abs(pct_hoy) <= 2.0 and vol_hoy >= (vol_medio * 2.0): ptsBase += 20
-                    elif dist_max > -10 and vol_hoy >= (vol_medio * 2.5) and pct_hoy > 3: ptsBase += 25
-                    elif dist_max > -5 and vol_hoy > (vol_medio * 1.8) and pct_hoy > 0: ptsBase += 15
-                
-                isFenix = False
-                if dist_max <= -20 and per > 0 and vol_medio > 400000 and v_1m > 2 and pct_hoy > 1.5:
-                    fuerzaGiro = (15 if v_1m > 8 else 5) + (15 if vol_hoy > vol_medio * 1.2 else 0) + (10 if pct_hoy > 2 else 5)
-                    scoreFenix = 65 + fuerzaGiro
-                    if scoreFenix > ptsBase: 
-                        ptsBase = scoreFenix
-                        isFenix = True
-                
-                pts = max(0, min(100, int(ptsBase)))
+                if r1m > (alphaSPY_1m if reg == "EEUU" else 0): p += 10
+                if r6m < 0: p -= 15
 
+                # Sistema Fénix (Detector de giros en el suelo)
+                isF = False
+                if dist_max <= -20 and c_hoy > sma50 and vol_h > (vol_m * 1.3) and pct_h > 1.5:
+                    p = max(p, 92)
+                    isF = True
+                    status_t = "Giro Fénix 🔥"
+                
+                pts = max(0, min(100, int(p)))
+
+                # Guardado automático en DB si es excelente
                 if pts >= 90 and ticker not in existentes_en_db and ws is not None:
-                    fecha_hoy = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
-                    nombre_empresa = tickers_nombres[ticker]
-                    ws.append_row([ticker, nombre_empresa, fecha_hoy, float(precio_actual), int(pts)])
+                    fecha_h = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+                    ws.append_row([ticker, tickers_nombres[ticker], fecha_h, float(c_hoy), int(pts)])
                     existentes_en_db.append(ticker)
 
-                recomendacion = "❌ Esperar"
+                reco = "❌ Esperar"
                 if pts >= 65:
-                    if pts >= 85: recomendacion = "🔥 COMPRA (FÉNIX ORO)" if isFenix else "🚀 COMPRA INSTITUCIONAL"
-                    elif pts >= 70: recomendacion = "👀 VIGILAR (FÉNIX)" if isFenix else "💎 VIGILAR (BREAKOUT/WHALE)"
-                
-                s_mon = obtener_simbolo_moneda(ticker)
-
-                def fmt_pct(val): return f"{val:+.2f}%" if val is not None else "N/A"
+                    if pts >= 85: reco = "🔥 COMPRA (FÉNIX)" if isF else "🚀 COMPRA INST."
+                    elif pts >= 70: reco = "👀 VIGILAR"
 
                 resultados_radar.append({
-                    "TICKER": ticker, "NOMBRE": tickers_nombres[ticker], "PUNTOS": pts, "RECOMENDACIÓN": recomendacion,
-                    "PRECIO": f"{precio_actual:.2f} {s_mon}", "% HOY": fmt_pct(pct_hoy), "% 1 MES": fmt_pct(r1m),
-                    "% 6 MESES": fmt_pct(r6m), "% 1 AÑO": fmt_pct(r1y), "% 5 AÑOS": fmt_pct(r5y),
-                    "% 10 AÑOS": fmt_pct(r10y), "% 20 AÑOS": fmt_pct(r20y), "% MÁX": fmt_pct(ret_max),
-                    "PER": f"{per:.1f}" if per != 999 else "N/A", "SECTOR": sector,
-                    "VOLUMEN": f"{vol_hoy:,.0f}", "VOL. MEDIO": f"{vol_medio:,.0f}",
-                    "SUELO (52s)": fmt_pct(dist_suelo), "MAX (52s)": fmt_pct(dist_max)
+                    "TICKER": ticker, "NOMBRE": tickers_nombres[ticker], "PUNTOS": pts, "RECOMENDACIÓN": reco,
+                    "TENDENCIA": status_t, "RSI": f"{rsi:.1f}", "VOL. vs MEDIA": f"{(vol_h/vol_m):.1f}x",
+                    "PRECIO": f"{c_hoy:.2f} {obtener_simbolo_moneda(ticker)}", "% HOY": f"{pct_h:+.2f}%",
+                    "% 1 MES": f"{r1m:+.2f}%", "% 6 MESES": f"{r6m:+.2f}%", "% 1 AÑO": f"{r1y:+.2f}%",
+                    "MAX (52s)": f"{dist_max:+.2f}%"
                 })
-                
-                time.sleep(0.20)
-                
-            except Exception as e: 
-                time.sleep(0.20)
-                continue
+                time.sleep(0.05) # Súper rápido
+            except: continue
             
-        barra_progreso.progress(100, text="✅ 100% Completado")
-        
+        barra_progreso.progress(100, text="✅ Escaneo Finalizado")
         st.session_state.resultados_radar = resultados_radar
-        st.success("Caza terminada. Las empresas con 90 puntos o más se han guardado automáticamente en la base de datos.")
 
     if st.session_state.resultados_radar:
-        df = pd.DataFrame(st.session_state.resultados_radar)
-        df = df.sort_values(by="PUNTOS", ascending=False).reset_index(drop=True)
+        df_res = pd.DataFrame(st.session_state.resultados_radar)
+        df_res = df_res.sort_values(by="PUNTOS", ascending=False).reset_index(drop=True)
         
-        def color_porcentajes(val):
+        def color_pct(val):
             if isinstance(val, str) and '%' in val:
                 if val.startswith('+'): return 'color: #228B22;' 
                 elif val.startswith('-'): return 'color: #FF3333;' 
             return ''
-
-        def resaltar_azul(row):
-            estilo = [''] * len(row)
-            if row['PUNTOS'] > 80:
-                idx = row.index.get_loc('TICKER')
-                estilo[idx] = 'color: #1E90FF; font-weight: bold;'
-            return estilo
-
-        columnas_pct = ["% HOY", "% 1 MES", "% 6 MESES", "% 1 AÑO", "% 5 AÑOS", "% 10 AÑOS", "% 20 AÑOS", "% MÁX", "SUELO (52s)", "MAX (52s)"]
         
-        try:
-            styled_df = df.style.apply(resaltar_azul, axis=1).map(color_porcentajes, subset=columnas_pct)
-        except AttributeError:
-            styled_df = df.style.apply(resaltar_azul, axis=1).applymap(color_porcentajes, subset=columnas_pct)
-        
-        st.dataframe(
-            styled_df, 
-            use_container_width=True, 
-            hide_index=True,
-            column_config={
-                "PUNTOS": st.column_config.NumberColumn(help="Puntuación del algoritmo: Evalúa Alpha relativo, fundamentales y volumen según la región."),
-                "RECOMENDACIÓN": st.column_config.TextColumn(help="Requiere mínimo de 65 puntos para dar señal."),
-                "% HOY": st.column_config.TextColumn(help="Variación en la sesión actual."),
-                "% 1 MES": st.column_config.TextColumn(help="Rendimiento en 21 días laborables."),
-                "% 6 MESES": st.column_config.TextColumn(help="Rendimiento en 126 días laborables."),
-                "% 1 AÑO": st.column_config.TextColumn(help="Rendimiento en 252 sesiones."),
-                "% 5 AÑOS": st.column_config.TextColumn(help="Rendimiento a medio plazo (1260 sesiones)."),
-                "% 10 AÑOS": st.column_config.TextColumn(help="Rendimiento a largo plazo (2520 sesiones)."),
-                "% 20 AÑOS": st.column_config.TextColumn(help="Rendimiento a súper largo plazo (5040 sesiones)."),
-                "% MÁX": st.column_config.TextColumn(help="Rendimiento histórico total."),
-                "PER": st.column_config.TextColumn(help="Price-to-Earnings. El algoritmo pondera los PER altos si hay hipercrecimiento, ajustado por mercado."),
-                "SECTOR": st.column_config.TextColumn(help="Sector económico."),
-                "VOLUMEN": st.column_config.TextColumn(help="Volumen de la última sesión."),
-                "VOL. MEDIO": st.column_config.TextColumn(help="Media diaria de acciones negociadas (20d)."),
-                "SUELO (52s)": st.column_config.TextColumn(help="Distancia al precio MÍNIMO del último año."),
-                "MAX (52s)": st.column_config.TextColumn(help="Distancia al precio MÁXIMO del último año.")
-            }
-        )
+        st.dataframe(df_res.style.map(color_pct, subset=["% HOY", "% 1 MES", "% 6 MESES", "% 1 AÑO", "MAX (52s)"]), use_container_width=True, hide_index=True)
 
 # ------------------------------------------
-# PESTAÑA 4: SALA DE TROFEOS
+# PESTAÑA 4: SALA DE TROFEOS (AUDITORÍA)
 # ------------------------------------------
 with tab4:
     st.markdown("### 🏆 Sala de Trofeos")
-    st.write("Verifica en tiempo real el porcentaje de acierto. Las acciones que alcanzan o superan los 90 puntos en el Radar se guardan aquí de forma permanente.")
+    st.write("Verifica el porcentaje de acierto de las señales Oppenheimer guardadas.")
     
     ws = conectar_db()
-    
     if ws is not None:
         data_sheet = ws.get_all_records()
-        
         if not data_sheet:
-            st.info("Tu base de datos está vacía. Ve a la pestaña de Radar y haz un escaneo para cazar nuevas acciones.")
+            st.info("Base de datos vacía.")
         else:
-            with st.expander("🗑️ Gestionar Base de Datos (Eliminar Tickers)"):
-                st.write("Si alguna acción ya no te interesa, puedes borrarla desde aquí:")
-                with st.form("form_del"):
-                    tk_borrar = st.selectbox("Selecciona el Ticker a eliminar:", [d['Ticker'] for d in data_sheet])
-                    
-                    if st.form_submit_button("Borrar permanentemente"):
-                        cell = ws.find(tk_borrar, in_column=1)
-                        if cell:
+            with st.expander("🗑️ Gestionar Base de Datos"):
+                with st.form("del_form"):
+                    tk_del = st.selectbox("Ticker a eliminar:", [d['Ticker'] for d in data_sheet])
+                    if st.form_submit_button("Borrar"):
+                        cell = ws.find(tk_del, in_column=1)
+                        if cell: 
                             ws.delete_rows(cell.row)
-                            st.success(f"✅ El ticker {tk_borrar} se ha eliminado de la base de datos.")
-                            time.sleep(1.5) 
-                            st.rerun() 
-                        else:
-                            st.error("No se ha encontrado el ticker en la base de datos.")
+                            st.success(f"{tk_del} eliminado.")
+                            time.sleep(1)
+                            st.rerun()
 
             if st.button("🔄 Auditar Rendimiento Actual", use_container_width=True):
-                with st.spinner("Sincronizando Wall Street y calculando métricas avanzadas..."):
-                    pendiente = []
-                    exitos = []
-                    cuarentena = []
-                    fracasos = []
-                    alpha_total = 0
-                    
+                with st.spinner("Calculando rentabilidades..."):
+                    exitos, cuarentena, fracasos, pendiente = [], [], [], []
                     for d in data_sheet:
                         try:
                             tk_y = a_yahoo(d['Ticker'])
-                            
-                            hist = yf.download(tk_y, period="1y", progress=False)
+                            # Usamos el último precio disponible
+                            hist = yf.download(tk_y, period="5d", progress=False)
                             if isinstance(hist.columns, pd.MultiIndex): hist.columns = hist.columns.get_level_values(0)
-                            if hist.empty or 'Close' not in hist.columns: continue
+                            p_hoy = float(hist['Close'].iloc[-1])
+                            p_in = float(str(d['Precio_Aviso']).replace(',', '.'))
+                            rent = ((p_hoy / p_in) - 1) * 100
                             
-                            hist = hist.dropna(subset=['Close'])
-                            if hist.empty: continue
+                            obj = {"T": d['Ticker'], "N": d['Empresa'], "E": p_in, "A": p_hoy, "R": rent, "F": d['Fecha']}
                             
-                            cierres = hist['Close'].squeeze() if isinstance(hist['Close'], pd.DataFrame) else hist['Close']
-                            array_cierres = cierres.values.flatten()
-                            
-                            p_hoy = float(array_cierres[-1])
-                            p_entrada = float(str(d['Precio_Aviso']).replace(',', '.'))
-                            fecha_str = str(d['Fecha'])
-                            
-                            rent = ((p_hoy / p_entrada) - 1) * 100
-                            
-                            rent_max = rent
-                            ignicion = "N/A"
-                            try:
-                                fecha_compra_date = pd.to_datetime(fecha_str).tz_localize(None).date()
-                                hist_index_tz_naive = hist.index.tz_localize(None)
-                                mask = hist_index_tz_naive.date >= fecha_compra_date
-                                hist_post = hist[mask]
-                            except:
-                                hist_post = hist
-                                
-                            if not hist_post.empty:
-                                high_data = hist_post['High'].squeeze() if isinstance(hist_post['High'], pd.DataFrame) else hist_post['High']
-                                max_p_real = float(high_data.max())
-                                rent_max = ((max_p_real / p_entrada) - 1) * 100
-                                
-                                hit_5 = hist_post[high_data >= p_entrada * 1.05]
-                                if not hit_5.empty:
-                                    dias_ign = (hit_5.index[0].date() - hist_post.index[0].date()).days
-                                    ignicion = f"{dias_ign}d"
-                            
-                            s_mon = obtener_simbolo_moneda(d['Ticker'])
-                            reg = obtener_region(d['Ticker'])
-                            bandera = "🇺🇸" if reg == "EEUU" else ("🇪🇺" if reg == "Europa" else "⛩️")
-
-                            if abs(rent) < 0.01: motivo = "A la espera de apertura o movimiento de mercado."
-                            elif rent > 0: motivo = "Tendencia confirmada con entrada de capital institucional."
-                            elif rent >= -3.0: motivo = "Ruido normal de mercado. Consolidando el soporte."
-                            else: motivo = "Ruptura de soporte. Caída severa fuera de control."
-
-                            obj = {
-                                "T": d['Ticker'], "N": d['Empresa'], "E": p_entrada, 
-                                "A": p_hoy, "R": rent, "F": fecha_str, "S_MON": s_mon,
-                                "RMAX": rent_max, "IGN": ignicion, "B": bandera, "M": motivo
-                            }
-                            
-                            alpha_total += rent
-                            
-                            if abs(rent) < 0.01: pendiente.append(obj)
+                            if abs(rent) < 0.1: pendiente.append(obj)
                             elif rent > 0: exitos.append(obj)
                             elif rent >= -3.0: cuarentena.append(obj)
                             else: fracasos.append(obj)
-                                
-                        except Exception as e: 
-                            continue
+                        except: continue
+
+                    tot_val = len(exitos) + len(cuarentena) + len(fracasos)
+                    w_rate = (len(exitos) / tot_val * 100) if tot_val > 0 else 0
+                    c1, c2, c3 = st.columns(3)
+                    c1.metric("🎯 Win Rate", f"{w_rate:.1f}%")
+                    c2.metric("⏱️ Activos Auditados", len(data_sheet))
                     
-                    tot = len(pendiente) + len(exitos) + len(cuarentena) + len(fracasos)
+                    st.markdown("---")
+                    cols = st.columns(4)
+                    titulos = ["⏸️ Pendiente", "🏆 Éxitos", "⏳ Cuarentena", "🪦 Fracasos"]
+                    listas = [pendiente, exitos, cuarentena, fracasos]
+                    colores = ["#bdc3c7", "#228B22", "#f39c12", "#FF3333"]
                     
-                    if tot > 0:
-                        tot_abiertas = tot - len(pendiente)
-                        win_rate = (len(exitos) / tot_abiertas) * 100 if tot_abiertas > 0 else 0
-                        alpha_medio = alpha_total / tot
-                        
-                        st.markdown("---")
-                        m1, m2, m3 = st.columns(3)
-                        m1.metric(label="🎯 Precisión (Win Rate)", value=f"{win_rate:.1f}%")
-                        m2.metric(label="⚔️ Alpha Medio", value=f"{alpha_medio:+.2f}%", delta=f"{alpha_medio:+.2f}%")
-                        m3.metric(label="⏱️ Base de Datos", value=f"{tot} Activos")
-                        st.markdown("---")
-                        
-                        c_p, c_w, c_q, c_l = st.columns(4)
-                        
-                        def pintar_tarjeta(item, color_borde, color_texto):
-                            ign_html = f'<span class="stat-badge" title="Días hasta tocar un +5% (Ignición)">Ign: {item["IGN"]}</span>' if item['IGN'] != "N/A" else ""
-                            return f"""<div style="background: white; border-radius: 6px; padding: 10px; margin-bottom: 8px; border-top: 3px solid {color_borde}; box-shadow: 0 2px 4px rgba(0,0,0,0.08);"><div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;"><div style="display: flex; align-items: baseline; gap: 6px;"><span title="{item['N']}" style="font-weight: 900; color: #073763; font-size: 14px;">{item['B']} {item['T']}</span><span style="color: #95a5a6; font-size: 10px;">Fecha: {item['F']}</span></div><div style="font-weight: 900; font-size: 14px; color: {color_texto};">{item['R']:+.2f}%</div></div><div style="font-size: 11px; color: #555; margin-bottom: 5px;">In: <b>{item['E']:.2f}{item['S_MON']}</b> &rarr; Hoy: <b>{item['A']:.2f}{item['S_MON']}</b></div><div style="display: flex; gap: 5px; margin-bottom: 6px;"><span class="stat-badge" title="Rentabilidad Máxima Histórica">Max: {item['RMAX']:+.1f}%</span>{ign_html}</div><div style="font-size: 10px; color: #7f8c8d; font-style: italic; background: #f9fbfd; padding: 4px; border-radius: 4px;">Nota: {item['M']}</div></div>"""
-
-                        with c_p:
-                            st.markdown('<h4 style="margin-bottom:15px; font-size: 16px; color:#34495e;" title="Acciones a 0.00%. Acaban de ser escaneadas o su mercado está cerrado.">⏸️ Pendiente</h4>', unsafe_allow_html=True)
-                            if pendiente:
-                                for p in sorted(pendiente, key=lambda x: x["T"]):
-                                    st.markdown(pintar_tarjeta(p, "#bdc3c7", "#7f8c8d"), unsafe_allow_html=True)
-                            else:
-                                st.info("Nada pendiente.")
-
-                        with c_w:
-                            st.markdown('<h4 style="margin-bottom:15px; font-size: 16px; color:#228B22;" title="Activos en ganancias (> 0%). El algoritmo ha acertado.">🏆 Éxitos</h4>', unsafe_allow_html=True)
-                            if exitos:
-                                for e in sorted(exitos, key=lambda x: x["R"], reverse=True):
-                                    st.markdown(pintar_tarjeta(e, "#228B22", "#228B22"), unsafe_allow_html=True)
-                            else:
-                                st.info("Aún no hay éxitos.")
-                                
-                        with c_q:
-                            st.markdown('<h4 style="margin-bottom:15px; font-size: 16px; color:#f39c12;" title="Pérdida menor al 3%. Se considera ruido normal de mercado o coste del spread.">⏳ Cuarentena</h4>', unsafe_allow_html=True)
-                            if cuarentena:
-                                for q in sorted(cuarentena, key=lambda x: x["R"], reverse=True):
-                                    st.markdown(pintar_tarjeta(q, "#f39c12", "#f39c12"), unsafe_allow_html=True)
-                            else:
-                                st.info("Sin activos consolidando.")
-                                
-                        with c_l:
-                            st.markdown('<h4 style="margin-bottom:15px; font-size: 16px; color:#FF3333;" title="Caída superior al 3%. Ruptura de soporte, posible fallo de señal.">🪦 Cementerio</h4>', unsafe_allow_html=True)
-                            if fracasos:
-                                for f in sorted(fracasos, key=lambda x: x["R"]):
-                                    st.markdown(pintar_tarjeta(f, "#FF3333", "#FF3333"), unsafe_allow_html=True)
-                            else:
-                                st.info("No hay fallos registrados.")
-
-                    else:
-                        st.warning("⚠️ No se han podido auditar los datos de rendimiento.")
+                    for i, l in enumerate(listas):
+                        with cols[i]:
+                            st.markdown(f"#### {titulos[i]}")
+                            for item in l:
+                                st.markdown(f"""<div style="border-top:3px solid {colores[i]}; background:white; padding:10px; border-radius:6px; margin-bottom:10px; box-shadow:0 2px 4px rgba(0,0,0,0.05);">
+                                <div style="display:flex; justify-content:space-between;"><b>{item['T']}</b> <b style="color:{colores[i]}">{item['R']:+.2f}%</b></div>
+                                <div style="font-size:11px; color:#666;">In: {item['E']:.2f} &rarr; Hoy: {item['A']:.2f}</div>
+                                </div>""", unsafe_allow_html=True)
