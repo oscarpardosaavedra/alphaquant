@@ -28,7 +28,6 @@ def conectar_db():
         sheet = client.open("Alphaquant_DB").worksheet("Trofeos")
         return sheet
     except Exception as e:
-        st.error(f"⚠️ Error de conexión con la base de datos. Revisa tus Secrets. Detalle: {e}")
         return None
 
 # ==========================================
@@ -54,7 +53,6 @@ st.markdown("""
     }
     .stat-badge:hover { background: #e1e8ed; }
     
-    /* ---> TEXTO "EVALUANDO" MÁS GRANDE Y VISIBLE (SIN TOCAR LA BARRA) <--- */
     [data-testid="stProgress"] p {
         font-size: 18px !important;
         font-weight: bold !important;
@@ -77,7 +75,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 3. BASE DE DATOS DE TICKERS (DICCIONARIO COMPLETO)
+# 3. BASE DE DATOS DE TICKERS
 # ==========================================
 tickers_nombres = {
     "AGH": "Powerus", "XTND": "Xtend", "UMAC": "Unusual Mac", "RCAT": "Red Cat",
@@ -300,7 +298,6 @@ def obtener_estado_mercados():
     
     return {"estado": est_us, "horario": horario_us}, {"estado": est_eu, "horario": horario_eu}, {"estado": est_as, "horario": horario_as}
 
-# ---> FUNCIÓN DE COLOR MOVIDA A ZONA GLOBAL <---
 def color_pct(val):
     if isinstance(val, str) and '%' in val:
         if val.startswith('+'): return 'color: #228B22;' 
@@ -320,11 +317,10 @@ st.markdown("---")
 tab1, tab2, tab3, tab4 = st.tabs(["🔬 Análisis Individual", "⚔️ Análisis Colectivo", "🎯 Cazar Alpha (Radar)", "🏆 Sala de Trofeos"])
 
 # ------------------------------------------
-# PESTAÑA 1: VISOR DE GRÁFICOS (VERSIÓN DEFINITIVA Y ESTABLE)
+# PESTAÑA 1: VISOR DE GRÁFICOS
 # ------------------------------------------
 with tab1:
     st.markdown("### 🔍 Selector de Activos")
-    
     col_buscador, col_logo, col_espacio = st.columns([0.8, 0.4, 2.8])
     with col_buscador:
         ticker_elegido = st.selectbox("Elige la empresa que quieres revisar:", opciones_desplegable)
@@ -340,7 +336,6 @@ with tab1:
         st.markdown("---")
         
         contenedor_cajas = st.container()
-        
         st.markdown("<br>", unsafe_allow_html=True) 
         
         col_tiempo, col_tendencias = st.columns([3, 1.5])
@@ -357,11 +352,9 @@ with tab1:
                 if isinstance(datos_brutos.columns, pd.MultiIndex): datos_brutos.columns = datos_brutos.columns.get_level_values(0)
 
                 if not datos_brutos.empty and 'Close' in datos_brutos.columns:
-                    
                     recom, precio_obj_str, fecha_earnings, sector, insider_trend = "Sin noticias", "Sin noticias", "Sin noticias", "Sin noticias", "Sin noticias"
                     desc_corta = ""
                     logo_url = ""
-                    
                     API_FINNHUB = "d7c2s5hr01quh9fcasf0d7c2s5hr01quh9fcasfg"
                     
                     info = {}
@@ -402,7 +395,7 @@ with tab1:
                                     if isinstance(fechas, list) and len(fechas) > 0 and pd.notnull(fechas[0]):
                                         fecha_earnings = fechas[0].strftime("%d/%m/%Y")
                         except: pass
-                    except: pass
+                    except: pass 
                         
                     try:
                         hoy = datetime.datetime.today().strftime('%Y-%m-%d')
@@ -531,7 +524,6 @@ with tab1:
                         </div>
                         """, unsafe_allow_html=True)
 
-                    # --- GRÁFICA CON DOS TENDENCIAS ---
                     fig = go.Figure()
                     fig.add_trace(go.Scatter(x=datos_limpios.index, y=datos_limpios['Close'], mode='lines', name='Precio', line=dict(color='#228B22', width=2)))
                     
@@ -568,19 +560,20 @@ with tab1:
                     
                 else: st.warning("⚠️ Sin datos disponibles.")
             except Exception as e: st.error(f"⚠️ Error técnico: {e}")
+
 # ------------------------------------------
 # PESTAÑA 2: BATALLA DE ALPHA (COMPARATIVA)
 # ------------------------------------------
 with tab2:
     st.markdown("### ⚔️ Comparativa Múltiple")
-    st.write("Selecciona varios activos para ver cuál está rindiendo mejor en un mismo periodo de tiempo. Todos empezarán en Base 0 (0% de rendimiento) para una comparación justa.")
+    st.write("Selecciona varios activos para ver cuál está rindiendo mejor en un mismo periodo de tiempo. Todos empezarán en Base 0 (0% de rendimiento).")
     
     col_comp1, col_comp2 = st.columns([3, 1])
     
     with col_comp1:
         opciones_comp = ["SPY (S&P 500)", "QQQ (Nasdaq 100)"] + opciones_desplegable
         seleccionados = st.multiselect(
-            "Elige los activos a enfrentar (Puedes elegir todos los que quieras):", 
+            "Elige los activos a enfrentar:", 
             opciones_comp, 
             default=["SPY (S&P 500)"]
         )
@@ -638,11 +631,10 @@ with tab2:
                     hovermode="x unified",
                     margin=dict(l=0, r=0, t=40, b=0)
                 )
-                
                 st.plotly_chart(fig_comp, use_container_width=True)
 
 # ------------------------------------------
-# PESTAÑA 3: RADAR DE CAZA (MOTOR "OPPENHEIMER" V2.0 - CAZADOR DE ÉLITE)
+# PESTAÑA 3: RADAR DE CAZA (MOTOR "OPPENHEIMER" V3.0 - CAZADOR DE ÉLITE)
 # ------------------------------------------
 with tab3:
     st.markdown("### 🎯 Centro de Caza Oppenheimer")
@@ -664,7 +656,7 @@ with tab3:
     if mercado_objetivo:
         st.session_state.resultados_radar = None
         
-        if mercado_objetivo == "EEUU" and "Cerrado" in us["estado"]: st.warning("⚠️ **Aviso:** Wall Street está cerrado. Datos del último cierre.")
+        if mercado_objetivo == "EEUU" and "Cerrado" in us["estado"]: st.warning("⚠️ **Aviso:** Wall Street está cerrado.")
         elif mercado_objetivo == "Europa" and "Cerrado" in eu["estado"]: st.warning("⚠️ **Aviso:** Mercado europeo cerrado.")
         elif mercado_objetivo == "Asia" and "Cerrado" in asia["estado"]: st.warning("⚠️ **Aviso:** Mercado asiático cerrado.")
 
@@ -676,13 +668,23 @@ with tab3:
         barra_progreso = st.progress(0, text="Analizando ADN financiero de las empresas...")
         resultados_temporales = []
         
-        # 1. Calibración Benchmark
-        alphaSPY_1m = 0
+        # 1. Calibración Benchmark Global
+        alphaSPY_1m, alphaEU_1m, alphaASIA_1m = 0, 0, 0
         try:
             spy_data = yf.download("SPY", period="1y", progress=False)
             if isinstance(spy_data.columns, pd.MultiIndex): spy_data.columns = spy_data.columns.get_level_values(0)
-            spy_cierres = spy_data['Close'].dropna()
-            alphaSPY_1m = ((float(spy_cierres.iloc[-1]) / float(spy_cierres.iloc[-21])) - 1) * 100
+            spy_c = spy_data['Close'].dropna()
+            alphaSPY_1m = ((float(spy_c.iloc[-1]) / float(spy_c.iloc[-21])) - 1) * 100
+            
+            eu_data = yf.download("^STOXX", period="1y", progress=False)
+            if isinstance(eu_data.columns, pd.MultiIndex): eu_data.columns = eu_data.columns.get_level_values(0)
+            eu_c = eu_data['Close'].dropna()
+            alphaEU_1m = ((float(eu_c.iloc[-1]) / float(eu_c.iloc[-21])) - 1) * 100
+            
+            asia_data = yf.download("^N225", period="1y", progress=False)
+            if isinstance(asia_data.columns, pd.MultiIndex): asia_data.columns = asia_data.columns.get_level_values(0)
+            asia_c = asia_data['Close'].dropna()
+            alphaASIA_1m = ((float(asia_c.iloc[-1]) / float(asia_c.iloc[-21])) - 1) * 100
         except: pass
 
         ws = conectar_db()
@@ -731,7 +733,10 @@ with tab3:
                 
                 sma50_serie = df['Close'].rolling(window=50).mean()
                 sma200_serie = df['Close'].rolling(window=200).mean()
+                sma150_serie = df['Close'].rolling(window=150).mean()
+                
                 sma50, sma200 = float(sma50_serie.iloc[-1]), float(sma200_serie.iloc[-1])
+                sma150 = float(sma150_serie.iloc[-1]) if not sma150_serie.isna().all() else sma200
                 sma50_prev = float(sma50_serie.iloc[-6])
                 
                 delta = df['Close'].diff()
@@ -742,11 +747,6 @@ with tab3:
                 def ret_d(d): return ((c_hoy / float(df['Close'].iloc[-(d+1)])) - 1) * 100 if len(df) > d else 0
                 r1m, r6m, r1y, r5y = ret_d(21), ret_d(126), ret_d(252), ret_d(1260)
                 
-                exp1 = df['Close'].ewm(span=12, adjust=False).mean()
-                exp2 = df['Close'].ewm(span=26, adjust=False).mean()
-                macd_h = (exp1 - exp2).iloc[-1]
-                signal_h = (exp1 - exp2).ewm(span=9, adjust=False).mean().iloc[-1]
-
                 # --- DETECTORES DE PATRONES ---
                 cruce_reciente = False
                 proximidad_oro = False
@@ -769,93 +769,82 @@ with tab3:
                 dist_max = ((c_hoy / max_52) - 1) * 100
                 isF = (dist_max <= -20 and c_hoy > sma50 and pct_h > 2.0)
                 
-                b_1m = alphaSPY_1m if obtener_region(ticker) == "EEUU" else 0
+                # Novedad V3.0: Pocket Pivot & Trend Template
+                df_10 = df.iloc[-10:]
+                vol_down = df_10[df_10['Close'] < df_10['Close'].shift(1)]['Volume']
+                max_vol_down = vol_down.max() if not vol_down.empty else 0
+                es_pocket_pivot = (vol_h > max_vol_down) if max_vol_down > 0 else False
+                
+                es_lider = (c_hoy > sma50 > sma150 > (sma200 if sma200 else 0))
+                
+                region_act = obtener_region(ticker)
+                if region_act == "EEUU": b_1m = alphaSPY_1m
+                elif region_act == "Europa": b_1m = alphaEU_1m
+                else: b_1m = alphaASIA_1m
                 outperformance = r1m - b_1m
 
                 # ==========================================
-                # MOTOR DE PUNTUACIÓN (100% DINÁMICO Y ORGÁNICO)
-                # ==========================================
-# ==========================================
-                # MOTOR DE PUNTUACIÓN (100% DINÁMICO Y ORGÁNICO)
+                # MOTOR DE PUNTUACIÓN V3.0 (SNIPER INSTITUCIONAL)
                 # ==========================================
                 p = 0
                 status_t = "Alcista" if c_hoy > sma50 else "Bajista"
                 analisis_parts = []
-                analisis_parts.append(f"Estructura {status_t.lower()} primaria.")
+                
+                if es_lider:
+                    p += 15
+                    analisis_parts.append("🏆 LÍDER REAL: Cumple el 'Trend Template' de Wall Street (Jerarquía de medias perfecta).")
+                else:
+                    analisis_parts.append(f"Estructura {status_t.lower()} en fase de consolidación.")
 
                 if c_hoy > sma50: p += 10
                 if sma200 and c_hoy > sma200: p += 10
                 
                 if cruce_reciente: 
-                    p += 20
-                    analisis_parts.append("✨ 'Cruce de Oro' confirmado (fuerte señal institucional).")
+                    p += 20; analisis_parts.append("✨ 'Cruce de Oro' confirmado: cambio de ciclo estructural.")
                 elif proximidad_oro: 
-                    p += 12
-                    analisis_parts.append("🎯 Pre-Oro: Medias convergiendo para posible cruce alcista.")
+                    p += 12; analisis_parts.append("🎯 Pre-Oro: Las manos fuertes preparan el cruce de medias.")
                 
                 if es_compresion: 
-                    p += 15
-                    analisis_parts.append(f"🤫 VCP Real: Rango hiper-estrecho ({rango_14d:.1f}%) con 'secado de volumen'. Los vendedores se han agotado.")
+                    p += 15; analisis_parts.append(f"🤫 VCP: Compresión de precio ({rango_14d:.1f}%) con secado de ventas.")
                 
-                # Cohete Dinámico
+                if es_pocket_pivot and es_compresion:
+                    p += 20
+                    analisis_parts.append("🎯 POCKET PIVOT: Detectada entrada de volumen masivo oculto dentro del muelle.")
+                
                 if es_cohete: 
                     puntos_cohete = 15 + min(15, int(pct_h)) 
                     p += puntos_cohete
-                    analisis_parts.append(f"🚀 Ruptura de Momentum (+{pct_h:.1f}% hoy).")
+                    analisis_parts.append(f"🚀 Ruptura de Momentum: El precio escapa con fuerza (+{pct_h:.1f}%).")
                 
-                # Proximidad a Máximos Dinámico (El Fénix se salta esta penalización)
                 if dist_max >= -15.0:
-                    puntos_max = 5 + int((15 - abs(dist_max)) / 1.5)
-                    p += puntos_max
-                    analisis_parts.append(f"🏆 Cotiza a solo un {abs(dist_max):.1f}% de sus máximos anuales.")
+                    p += (5 + int((15 - abs(dist_max)) / 1.5))
+                    analisis_parts.append(f"💎 Proximidad a Máximos: Solo un {abs(dist_max):.1f}% le separa de la zona libre.")
                 elif dist_max < -40.0 and not isF:
                     p -= 15
                     analisis_parts.append("⚠️ Acción hundida. Peligro de resistencia vendedora estructural.")
-
-                # Fuerza Relativa Dinámica
+                
                 if outperformance > 5.0:
-                    puntos_rs = 10 + min(10, int(outperformance / 2))
-                    p += puntos_rs
-                    analisis_parts.append(f"💪 Fuerza Relativa extrema: Rinde un {outperformance:.1f}% MÁS que el mercado general este mes.")
+                    p += (10 + min(10, int(outperformance / 2)))
+                    analisis_parts.append(f"💪 FUERZA RELATIVA: Bate al índice de referencia por un {outperformance:.1f}% este mes.")
 
-                if macd_h > signal_h: 
-                    p += 10
-                    analisis_parts.append("📈 MACD acompañando al alza.")
-
-                # RSI Inteligente
-                if 50 <= rsi <= 70: 
-                    p += 10
-                    analisis_parts.append(f"RSI óptimo ({rsi:.1f}).")
-                elif rsi > 70:
-                    if es_cohete or isF: # Si es cohete o fénix, el RSI alto es fuerza, no peligro
-                        analisis_parts.append(f"RSI alto ({rsi:.1f}) justificado por el violento impulso comprador.")
-                    else: 
-                        p -= 15
-                        analisis_parts.append(f"⚠️ Precaución: Posible sobrecompra (RSI {rsi:.1f}).")
-
-                # Volumen Inteligente Dinámico
-                if vol_h > (vol_m * 1.2): 
-                    puntos_vol = 10 + min(10, int((vol_h / vol_m) * 2))
-                    p += puntos_vol
-                    analisis_parts.append(f"🐋 Inyección de volumen institucional ({(vol_h/vol_m):.1f}x).")
-
-                # 🔥 FÉNIX ARREGLADO: Inyección de Puntos de Resurrección
                 if isF: 
-                    # Como le faltan puntos de estructura, le damos un bonus potente para que pueda llegar a 90+
                     puntos_fenix = 35 + min(15, int(abs(dist_max) / 2))
                     p += puntos_fenix
-                    analisis_parts.append("🔥 Activado patrón Fénix: Intento de rebote violento tras un castigo severo. Gran oportunidad de entrada en suelo.")
+                    analisis_parts.append("🔥 PATRÓN FÉNIX: Intento de resurrección violenta tras castigo severo. Gran oportunidad en suelo.")
 
-                # Limitamos a 99 el máximo para que la nota siempre refleje variabilidad.
+                if vol_h > (vol_m * 1.2): 
+                    p += (10 + min(10, int((vol_h / vol_m) * 2)))
+                    analisis_parts.append(f"🐋 Inyección de volumen institucional ({(vol_h/vol_m):.1f}x).")
+
                 pts = max(0, min(99, int(p)))
                 analisis_final_texto = " ".join(analisis_parts)
 
-                # --- ASIGNACIÓN DE ESTRATEGIA (CON PRIORIDADES CORREGIDAS) ---
+                # --- ASIGNACIÓN DE ESTRATEGIA DEFINITIVA ---
                 est = "⚪ IGNORAR"
                 if pts >= 88:
-                    if isF: est = "🔥 FÉNIX (Rebote)" # Le damos prioridad al Fénix para que no se pise con el Cohete
+                    if isF: est = "🔥 FÉNIX (Rebote)"
                     elif cruce_reciente: est = "✨ ORO (Élite)"
-                    elif proximidad_oro: est = "⏳ PRE-ORO (Anticipar)"
+                    elif es_pocket_pivot and es_compresion: est = "🎯 POCKET PIVOT"
                     elif es_cohete: est = "⚡ MOMENTUM (Cohete)"
                     elif es_compresion: est = "🤫 ACECHO (Muelle)"
                     else: est = "💎 ALFA (Fuerte)"
@@ -863,25 +852,10 @@ with tab3:
                     if es_cohete: est = "⚡ MOMENTUM (Fase 1)"
                     elif es_compresion: est = "🤫 ACECHO (Vigilancia)"
                     else: est = "🟢 ACUMULAR"
-                elif pts >= 70: est = "🟡 VIGILAR"
-                analisis_final_texto = " ".join(analisis_parts)
+                elif pts >= 70: 
+                    est = "🟡 VIGILAR"
 
-                # --- ASIGNACIÓN DE ESTRATEGIA SIN FORZAR PUNTOS ---
-                est = "⚪ IGNORAR"
-                if pts >= 88: # Bajamos el umbral a 88 ya que ahora los puntos no se regalan
-                    if cruce_reciente: est = "✨ ORO (Élite)"
-                    elif proximidad_oro: est = "⏳ PRE-ORO (Anticipar)"
-                    elif es_cohete: est = "⚡ MOMENTUM (Cohete)"
-                    elif es_compresion: est = "🤫 ACECHO (Muelle)"
-                    elif isF: est = "🔥 FÉNIX (Rebote)"
-                    else: est = "💎 ALFA (Fuerte)"
-                elif pts >= 78: 
-                    if es_cohete: est = "⚡ MOMENTUM (Fase 1)"
-                    elif es_compresion: est = "🤫 ACECHO (Vigilancia)"
-                    else: est = "🟢 ACUMULAR"
-                elif pts >= 70: est = "🟡 VIGILAR"
-
-                # Guardado en Base de Datos (Si supera 88 entra en la zona noble)
+                # Guardado en Base de Datos
                 if pts >= 88 and ticker not in existentes_en_db and ws:
                     ws.append_row([ticker, tickers_nombres[ticker], datetime.datetime.now().strftime("%Y-%m-%d %H:%M"), float(c_hoy), int(pts)])
                     existentes_en_db.append(ticker)
@@ -939,7 +913,18 @@ with tab3:
                             "TICKER": st.column_config.TextColumn(help="Símbolo oficial de la empresa en la bolsa."),
                             "NOMBRE": st.column_config.TextColumn(help="Nombre comercial."),
                             "PUNTOS": st.column_config.ProgressColumn("Rating IA", help="Nota global (0-100). >88 es recomendación clara de compra.", min_value=0, max_value=100, format="%d"),
-                            "🎯 SETUP": st.column_config.TextColumn("🎯 ESTRATEGIA", help="🤫 ACECHO: Lleva días en compresión (muelle). Ideal para acumular antes del despegue.\n⚡ MOMENTUM: Ya está explotando al alza hoy. \n✨ ORO: La media de 50 cruzó la de 200 (Señal histórica alcista a largo plazo).\n⏳ PRE-ORO: A punto de ocurrir un Cruce de Oro.\n🔥 FÉNIX: Rebote desde un suelo profundo.\n💎 ALFA: Compra Fuerte.\n🟢 ACUMULAR: Acción fuerte en tendencia sana. Ideal para comprar poco a poco."),
+                            "🎯 SETUP": st.column_config.TextColumn("🎯 ESTRATEGIA", help="""
+🎯 POCKET PIVOT: Entrada de dinero institucional oculto. ¡Ojo de halcón!
+⚡ MOMENTUM (Cohete): Ruptura alcista explosiva y confirmada hoy.
+⚡ MOMENTUM (Fase 1): El valor está despertando hoy. Ideal para vigilancia.
+🤫 ACECHO (Muelle): Máxima compresión de precio. Explosión inminente.
+🤫 ACECHO (Vigilancia): Comprimiéndose, pero en una estructura aún algo débil.
+💎 ALFA (Fuerte): Acción LÍDER. Sube de forma constante, segura e imparable (Tren Bala).
+✨ ORO (Élite): Cruce de Medias (50 sobre 200). Ciclo alcista de largo plazo.
+⏳ PRE-ORO (Anticipar): Las medias están a punto de cruzarse. Anticipación.
+🔥 FÉNIX (Rebote): Resurrección violenta tras una caída del -20% o más.
+🟢 ACUMULAR: Tendencia sana y tranquila. Para comprar sin prisas.
+"""),
                             "RSI": st.column_config.TextColumn("RSI", help="Termómetro de fuerza relativa. Entre 55 y 68 es la zona dorada de crecimiento."),
                             "VOL. x": st.column_config.TextColumn("Volumen x", help="Volumen hoy vs la media del último mes. Si es mayor a 1.2x, el mercado está respaldando la subida."),
                             "PRECIO": st.column_config.TextColumn("Precio Actual", help="Cotización y conversión estimada a USD."),
@@ -951,6 +936,7 @@ with tab3:
                             "% 5 AÑOS": st.column_config.TextColumn("5 Años", help="Rendimiento a largo plazo."),
                             "ANÁLISIS": st.column_config.TextColumn("Reporte del Algoritmo", width="large", help="Resumen elaborado de la estructura de mercado actual generada por la IA Oppenheimer.")
                          })
+
 # ------------------------------------------
 # PESTAÑA 4: SALA DE TROFEOS (PERSISTENTE)
 # ------------------------------------------
@@ -960,64 +946,67 @@ with tab4:
     
     ws = conectar_db()
     if ws is not None:
-        data_sheet = ws.get_all_records()
-        if not data_sheet:
-            st.info("La vitrina está vacía.")
-        else:
-            with st.expander("🗑️ Gestionar Base de Datos"):
-                with st.form("del_form"):
-                    tk_del = st.selectbox("Ticker a eliminar:", [d['Ticker'] for d in data_sheet])
-                    if st.form_submit_button("Borrar"):
-                        cell = ws.find(tk_del, in_column=1)
-                        if cell: ws.delete_rows(cell.row); st.success(f"{tk_del} eliminado."); time.sleep(1); st.rerun()
+        try:
+            data_sheet = ws.get_all_records()
+            if not data_sheet:
+                st.info("La vitrina está vacía.")
+            else:
+                with st.expander("🗑️ Gestionar Base de Datos"):
+                    with st.form("del_form"):
+                        tk_del = st.selectbox("Ticker a eliminar:", [d['Ticker'] for d in data_sheet])
+                        if st.form_submit_button("Borrar"):
+                            cell = ws.find(tk_del, in_column=1)
+                            if cell: ws.delete_rows(cell.row); st.success(f"{tk_del} eliminado."); time.sleep(1); st.rerun()
 
-            if st.button("🔄 Lanzar Auditoría de Rendimiento", use_container_width=True):
-                with st.spinner("Sincronizando con Wall Street..."):
-                    res_aud = {"exitos": [], "cuarentena": [], "fracasos": [], "pendiente": [], "w_rate": 0, "cohetes": 0}
-                    ahora = datetime.datetime.now()
-                    for d in data_sheet:
-                        try:
-                            ticker = d['Ticker']; tk_y = a_yahoo(ticker); mon = obtener_simbolo_moneda(ticker)
-                            hist = yf.download(tk_y, period="5d", progress=False)
-                            if isinstance(hist.columns, pd.MultiIndex): hist.columns = hist.columns.get_level_values(0)
-                            p_hoy = float(hist['Close'].iloc[-1]); p_in = float(str(d['Precio_Aviso']).replace(',', '.'))
-                            rent = ((p_hoy / p_in) - 1) * 100; f_ent = datetime.datetime.strptime(d['Fecha'], "%Y-%m-%d %H:%M")
-                            dias = (ahora - f_ent).days
-                            kpi = f"🚀 +5% en {dias}d" if rent >= 5.0 else (f"⏳ {dias}d" if rent > 0 else "")
-                            obj = {"T": ticker, "N": d['Empresa'], "E": p_in, "A": p_hoy, "R": rent, "F": d['Fecha'], "KPI": kpi, "M": mon}
-                            if abs(rent) < 0.1: res_aud["pendiente"].append(obj)
-                            elif rent > 0: res_aud["exitos"].append(obj)
-                            elif rent >= -3.0: res_aud["cuarentena"].append(obj)
-                            else: res_aud["fracasos"].append(obj)
-                        except: continue
-                    tot_v = len(res_aud["exitos"]) + len(res_aud["cuarentena"]) + len(res_aud["fracasos"])
-                    res_aud["w_rate"] = (len(res_aud["exitos"])/tot_v*100 if tot_v > 0 else 0)
-                    res_aud["cohetes"] = len([x for x in res_aud["exitos"] if "🚀" in x['KPI']])
-                    st.session_state.resultados_auditoria = res_aud
+                if st.button("🔄 Lanzar Auditoría de Rendimiento", use_container_width=True):
+                    with st.spinner("Sincronizando con Wall Street..."):
+                        res_aud = {"exitos": [], "cuarentena": [], "fracasos": [], "pendiente": [], "w_rate": 0, "cohetes": 0}
+                        ahora = datetime.datetime.now()
+                        for d in data_sheet:
+                            try:
+                                ticker = d['Ticker']; tk_y = a_yahoo(ticker); mon = obtener_simbolo_moneda(ticker)
+                                hist = yf.download(tk_y, period="5d", progress=False)
+                                if isinstance(hist.columns, pd.MultiIndex): hist.columns = hist.columns.get_level_values(0)
+                                p_hoy = float(hist['Close'].iloc[-1]); p_in = float(str(d['Precio_Aviso']).replace(',', '.'))
+                                rent = ((p_hoy / p_in) - 1) * 100; f_ent = datetime.datetime.strptime(d['Fecha'], "%Y-%m-%d %H:%M")
+                                dias = (ahora - f_ent).days
+                                kpi = f"🚀 +5% en {dias}d" if rent >= 5.0 else (f"⏳ {dias}d" if rent > 0 else "")
+                                obj = {"T": ticker, "N": d['Empresa'], "E": p_in, "A": p_hoy, "R": rent, "F": d['Fecha'], "KPI": kpi, "M": mon}
+                                if abs(rent) < 0.1: res_aud["pendiente"].append(obj)
+                                elif rent > 0: res_aud["exitos"].append(obj)
+                                elif rent >= -3.0: res_aud["cuarentena"].append(obj)
+                                else: res_aud["fracasos"].append(obj)
+                            except: continue
+                        tot_v = len(res_aud["exitos"]) + len(res_aud["cuarentena"]) + len(res_aud["fracasos"])
+                        res_aud["w_rate"] = (len(res_aud["exitos"])/tot_v*100 if tot_v > 0 else 0)
+                        res_aud["cohetes"] = len([x for x in res_aud["exitos"] if "🚀" in x['KPI']])
+                        st.session_state.resultados_auditoria = res_aud
 
-            # MOSTRAR RESULTADOS DESDE LA MEMORIA
-            if st.session_state.resultados_auditoria:
-                ra = st.session_state.resultados_auditoria
-                c1, c2 = st.columns(2)
-                c1.metric("🎯 Win Rate Global", f"{ra['w_rate']:.1f}%")
-                c2.metric("🔥 Cohetes (+5%)", ra['cohetes'])
-                st.markdown("---")
-                cols = st.columns(4)
-                tits = ["⏸️ Pendiente", "🏆 Éxitos", "⏳ Cuarentena", "🪦 Fracasos"]
-                lists = [ra["pendiente"], ra["exitos"], ra["cuarentena"], ra["fracasos"]]
-                cols_color = ["#bdc3c7", "#228B22", "#f39c12", "#FF3333"]
-                for i, l in enumerate(lists):
-                    with cols[i]:
-                        st.markdown(f'<h4 title="Nota informativa" style="cursor:help;">{tits[i]}</h4>', unsafe_allow_html=True)
-                        for item in l:
-                            st.markdown(f"""
-                            <div style="border-top:3px solid {cols_color[i]}; background:white; padding:10px; border-radius:8px; margin-bottom:10px; box-shadow:0 2px 5px rgba(0,0,0,0.05);">
-                                <div style="display:flex; justify-content:space-between; align-items:center;">
-                                    <div><b>{item['T']}</b> <span style="font-size:11px; color:#7f8c8d;">{item['N']}</span></div>
-                                    <b style="color:{cols_color[i]};">{item['R']:+.2f}%</b>
+                # MOSTRAR RESULTADOS DESDE LA MEMORIA
+                if st.session_state.resultados_auditoria:
+                    ra = st.session_state.resultados_auditoria
+                    c1, c2 = st.columns(2)
+                    c1.metric("🎯 Win Rate Global", f"{ra['w_rate']:.1f}%")
+                    c2.metric("🔥 Cohetes (+5%)", ra['cohetes'])
+                    st.markdown("---")
+                    cols = st.columns(4)
+                    tits = ["⏸️ Pendiente", "🏆 Éxitos", "⏳ Cuarentena", "🪦 Fracasos"]
+                    lists = [ra["pendiente"], ra["exitos"], ra["cuarentena"], ra["fracasos"]]
+                    cols_color = ["#bdc3c7", "#228B22", "#f39c12", "#FF3333"]
+                    for i, l in enumerate(lists):
+                        with cols[i]:
+                            st.markdown(f'<h4 title="Nota informativa" style="cursor:help;">{tits[i]}</h4>', unsafe_allow_html=True)
+                            for item in l:
+                                st.markdown(f"""
+                                <div style="border-top:3px solid {cols_color[i]}; background:white; padding:10px; border-radius:8px; margin-bottom:10px; box-shadow:0 2px 5px rgba(0,0,0,0.05);">
+                                    <div style="display:flex; justify-content:space-between; align-items:center;">
+                                        <div><b>{item['T']}</b> <span style="font-size:11px; color:#7f8c8d;">{item['N']}</span></div>
+                                        <b style="color:{cols_color[i]};">{item['R']:+.2f}%</b>
+                                    </div>
+                                    <div style="font-size:10px; color:#888; margin-top:4px;">Entrada: {item['F']}</div>
+                                    <div style="font-size:11px; color:#444; margin-top:4px;">In: <b>{item['E']:.2f}{item['M']}</b> | Actual: <b>{item['A']:.2f}{item['M']}</b></div>
+                                    <div style="font-size:10px; margin-top:6px; color:#1E90FF; font-weight:bold;">{item['KPI']}</div>
                                 </div>
-                                <div style="font-size:10px; color:#888; margin-top:4px;">Entrada: {item['F']}</div>
-                                <div style="font-size:11px; color:#444; margin-top:4px;">In: <b>{item['E']:.2f}{item['M']}</b> | Actual: <b>{item['A']:.2f}{item['M']}</b></div>
-                                <div style="font-size:10px; margin-top:6px; color:#1E90FF; font-weight:bold;">{item['KPI']}</div>
-                            </div>
-                            """, unsafe_allow_html=True)
+                                """, unsafe_allow_html=True)
+        except:
+            st.error("Error leyendo la base de datos. Comprueba la pestaña de Google Sheets.")
