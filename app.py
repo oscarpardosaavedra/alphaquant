@@ -853,7 +853,10 @@ with tab3:
             df_res = pd.DataFrame(st.session_state.resultados_radar)
             df_res = df_res.sort_values(by="PUNTOS", ascending=False).reset_index(drop=True)
             st.dataframe(df_res.style.map(color_pct, subset=["% HOY", "% 1 MES", "% 6 MESES", "% 1 AÑO", "% 5 AÑOS"]), 
-                         use_container_width=False, height=600, hide_index=True,
+                         use_container_width=False, 
+                         width=2000,   # Forzamos un ancho gigante para asegurar la barra horizontal
+                         height=400,   # Forzamos una altura contenida para asegurar la barra vertical
+                         hide_index=True,
                          column_config={
                             "TICKER": st.column_config.TextColumn(help="Símbolo en bolsa de la empresa."),
                             "NOMBRE": st.column_config.TextColumn(help="Nombre de la compañía."),
