@@ -1226,15 +1226,14 @@ if es_admin:
                 data_inv = ws_inventario.get_all_records()
                 if data_inv:
                     for d in data_inv:
-                        # Limpieza extrema de nombres de columna
+                        # Limpieza extrema de columnas
                         d_l = {str(k).lower().replace(' ', '').replace('_', '').replace('º', '').replace('.', ''): v for k, v in d.items()}
                         tk = str(d_l.get('ticker', d_l.get('activo', ''))).strip().upper()
-                        # Buscamos la cantidad comprada
                         raw_cant = str(d_l.get('cantidad', d_l.get('cant', d_l.get('nacciones', 0)))).replace(',', '.')
                         cant = float(raw_cant) if raw_cant else 0.0
                         if tk and cant > 0:
                             dict_compras[tk] = dict_compras.get(tk, 0.0) + cant
-            except: pass
+            except Exception: pass
 
         dict_ventas = {}
         ws_cierres = conectar_ws("Cierres")
@@ -1245,19 +1244,18 @@ if es_admin:
                     for d in data_cierres:
                         d_l = {str(k).lower().replace(' ', '').replace('_', '').replace('º', '').replace('.', ''): v for k, v in d.items()}
                         tk = str(d_l.get('ticker', d_l.get('activo', ''))).strip().upper()
-                        # Buscamos la cantidad vendida
                         raw_cant = str(d_l.get('cantidad', d_l.get('cant', d_l.get('nacciones', 0)))).replace(',', '.')
                         cant = float(raw_cant) if raw_cant else 0.0
                         if tk and cant > 0:
                             dict_ventas[tk] = dict_ventas.get(tk, 0.0) + cant
-            except: pass
+            except Exception: pass
 
         # Calculamos el Stock Real (Compradas - Vendidas)
         dict_stock = {}
         for tk, cant_comprada in dict_compras.items():
             cant_vendida = dict_ventas.get(tk, 0.0)
             cant_restante = cant_comprada - cant_vendida
-            # Si queda más de 0 acciones (usamos 0.0001 por los decimales), lo mostramos
+            # Si le quedan acciones (con un margen para decimales), se añaden
             if cant_restante > 0.0001:
                 dict_stock[tk] = round(cant_restante, 4)
 
@@ -1269,17 +1267,14 @@ if es_admin:
             if not dict_stock:
                 st.warning("⚠️ No tienes acciones registradas en cartera para poder vender.")
             else:
+                # Mostramos información visual fuera del form para no bloquear
+                st.info("💡 **Stock Disponible:**\n" + "\n".join([f"- **{t}**: {c}" for t, c in dict_stock.items()]))
+                
                 with st.form("form_cierre_validado"):
                     tk_v = st.selectbox("Activo a Vender:", sorted(list(dict_stock.keys())))
                     
-                    max_stock = dict_stock.get(tk_v, 0.0)
-                    st.info(f"Disponible: **{max_stock}** acciones de {tk_v}")
-                    
-                    cant_v = st.number_input("Cantidad a vender:", 
-                                             min_value=0.0001, 
-                                             max_value=float(max_stock), 
-                                             step=1.0,
-                                             help="No puedes vender más unidades de las que posees.")
+                    # Quitamos el límite máximo aquí para que el formulario no se rompa al cambiar de Ticker
+                    cant_v = st.number_input("Cantidad a vender:", min_value=0.0001, step=1.0)
                     
                     broker_v = st.selectbox("Broker de Venta:", ["Trade Republic", "Revolut", "Interactive Brokers", "Scalable Capital", "Otro"])
                     prec_v = st.number_input("Rentabilidad Final (%):", format="%.2f")
@@ -1287,26 +1282,34 @@ if es_admin:
                     fecha_v = st.date_input("Fecha de Venta:")
                     
                     if st.form_submit_button("Registrar Cierre", use_container_width=True):
-                        if ws_cierres:
-                            t_v_limpio = tk_v.strip().upper()
-                            empresa_v = tickers_nombres.get(t_v_limpio, t_v_limpio)
-                            
-                            # Guardar en orden: Ticker | Empresa | Rentabilidad | Ganancia | Fecha | Broker | Cantidad
-                            ws_cierres.append_row([
-                                t_v_limpio, 
-                                empresa_v, 
-                                float(prec_v), 
-                                float(gan_v), 
-                                str(fecha_v), 
-                                broker_v,
-                                float(cant_v)
-                            ])
-                            st.success(f"✅ Venta de {tk_v} registrada correctamente.")
-                            time.sleep(1.5)
-                            st.rerun()
+                        max_permitido = dict_stock.get(tk_v, 0.0)
+                        
+                        # ESCUDO ANTI-VENTA EN DESCUBIERTO
+                        if cant_v > max_permitido:
+                            st.error(f"❌ Operación bloqueada. Intento de vender {cant_v} uds de {tk_v}, pero tu stock real es {max_permitido}.")
+                        else:
+                            if ws_cierres:
+                                t_v_limpio = tk_v.strip().upper()
+                                empresa_v = tickers_nombres.get(t_v_limpio, t_v_limpio)
+                                
+                                # Guardamos en el orden exacto de tu pantallazo:
+                                # Ticker | Empresa | Rentabilidad | Ganancia | Fecha | Broker | Cantidad
+                                ws_cierres.append_row([
+                                    t_v_limpio, 
+                                    empresa_v, 
+                                    float(prec_v), 
+                                    float(gan_v), 
+                                    str(fecha_v), 
+                                    broker_v,
+                                    float(cant_v)
+                                ])
+                                st.success(f"✅ Venta de {tk_v} registrada correctamente.")
+                                time.sleep(1.5)
+                                st.rerun()
 
             st.markdown("#### 📥 Analizar Resultados")
             if st.button("Cargar Histórico de Cierres", use_container_width=True):
+                ws_cierres = conectar_ws("Cierres")
                 if ws_cierres:
                     try:
                         datos_cierres = ws_cierres.get_all_records()
@@ -1372,3 +1375,4 @@ if es_admin:
                     st.error("⚠️ No se encuentran las columnas de Ganancia o Rentabilidad. Revisa el Google Sheets.")
             else:
                 st.info("👈 Pulsa en 'Cargar Histórico de Cierres' para ver tus resultados.")
+    
