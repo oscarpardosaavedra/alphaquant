@@ -1213,45 +1213,58 @@ if es_admin:
             else:
                 st.info("👈 Pulsa en 'Sincronizar con Wall Street' para ver tus gráficos y datos.")
 
-   # --- PESTAÑA CIERRES ANUALES ---
-    # --- PESTAÑA CIERRES ANUALES ---
+ # --- PESTAÑA CIERRES ANUALES ---
     with tabs[5]:
         st.subheader("🗓️ Histórico de Cierres y Rendimiento Anual")
         
         # 1. CÁLCULO DE STOCK DISPONIBLE Y CARGA AUTOMÁTICA
         dict_compras = {}
-        ws_inventario = conectar_ws("Cartera")
-        if ws_inventario:
-            try:
-                data_inv = ws_inventario.get_all_records()
-                if data_inv:
-                    for d in data_inv:
-                        # Limpieza extrema de columnas
-                        d_l = {str(k).lower().replace(' ', '').replace('_', '').replace('º', '').replace('.', ''): v for k, v in d.items()}
-                        tk = str(d_l.get('ticker', d_l.get('activo', ''))).strip().upper()
-                        raw_cant = str(d_l.get('cantidad', d_l.get('cant', d_l.get('nacciones', 0)))).replace(',', '.')
-                        cant = float(raw_cant) if raw_cant else 0.0
-                        if tk and cant > 0:
-                            dict_compras[tk] = dict_compras.get(tk, 0.0) + cant
-            except Exception: pass
+        # Extraemos las compras DIRECTAMENTE de la memoria de "Mi Cartera"
+        if st.session_state.get('datos_cartera'):
+            for item in st.session_state.datos_cartera:
+                tk = item.get("TICKER", "").upper()
+                cant = float(item.get("CANT.", 0.0))
+                if tk and cant > 0:
+                    dict_compras[tk] = dict_compras.get(tk, 0.0) + cant
+        else:
+            # Fallback por si entras aquí sin sincronizar "Mi Cartera"
+            ws_inventario = conectar_ws("Cartera")
+            if ws_inventario:
+                try:
+                    data_inv = ws_inventario.get_all_records()
+                    if data_inv:
+                        for d in data_inv:
+                            d_l = {str(k).lower().replace(' ', '').replace('_', '').replace('º', '').replace('.', ''): v for k, v in d.items()}
+                            tk = str(d_l.get('ticker', d_l.get('activo', ''))).strip().upper()
+                            raw_cant = str(d_l.get('cantidad', d_l.get('cant', d_l.get('nacciones', 0)))).replace(',', '.')
+                            try: cant = float(raw_cant) if raw_cant else 0.0
+                            except: cant = 0.0
+                            if tk and cant > 0: dict_compras[tk] = dict_compras.get(tk, 0.0) + cant
+                except Exception: pass
 
         dict_ventas = {}
         ws_cierres = conectar_ws("Cierres")
-        datos_cierres_auto = [] # Variable para guardar los datos cargados automáticamente
+        datos_cierres_auto = [] 
         if ws_cierres:
             try:
                 datos_cierres_auto = ws_cierres.get_all_records()
                 if datos_cierres_auto:
                     for d in datos_cierres_auto:
-                        d_l = {str(k).lower().replace(' ', '').replace('_', '').replace('º', '').replace('.', ''): v for k, v in d.items()}
-                        tk = str(d_l.get('ticker', d_l.get('activo', ''))).strip().upper()
-                        raw_cant = str(d_l.get('cantidad', d_l.get('cant', d_l.get('nacciones', 0)))).replace(',', '.')
-                        cant = float(raw_cant) if raw_cant else 0.0
-                        if tk and cant > 0:
-                            dict_ventas[tk] = dict_ventas.get(tk, 0.0) + cant
+                        d_l = {str(k).lower().replace(' ', '').replace('_', '').replace('º', '').replace('.', ''): str(v) for k, v in d.items()}
+                        tk = d_l.get('ticker', d_l.get('activo', '')).strip().upper()
+                        
+                        raw_cant = d_l.get('cantidad', d_l.get('cant', '')).replace(',', '.')
+                        try:
+                            cant = float(raw_cant) if raw_cant else 0.0
+                        except ValueError:
+                            cant = 0.0
+                        
+                        # Si no hay cantidad válida en un registro antiguo, asume venta total
+                        if tk and cant <= 0: cant = 999999.0 
+                        if tk: dict_ventas[tk] = dict_ventas.get(tk, 0.0) + cant
             except Exception: pass
 
-        # Calculamos el Stock Real (Compradas - Vendidas)
+        # Calculamos el Stock Real
         dict_stock = {}
         for tk, cant_comprada in dict_compras.items():
             cant_vendida = dict_ventas.get(tk, 0.0)
@@ -1269,7 +1282,6 @@ if es_admin:
             else:
                 with st.form("form_cierre_validado"):
                     tk_v = st.selectbox("Activo a Vender:", sorted(list(dict_stock.keys())))
-                    
                     cant_v = st.number_input("Cantidad a vender:", min_value=0.0001, step=1.0)
                     
                     broker_v = st.selectbox("Broker de Venta:", ["Trade Republic", "Revolut", "Interactive Brokers", "Scalable Capital", "Otro"])
@@ -1280,7 +1292,6 @@ if es_admin:
                     if st.form_submit_button("Registrar Cierre", use_container_width=True):
                         max_permitido = dict_stock.get(tk_v, 0.0)
                         
-                        # ESCUDO ANTI-VENTA EN DESCUBIERTO
                         if cant_v > max_permitido:
                             st.error(f"❌ Operación bloqueada. Intentas vender {cant_v} uds de {tk_v}, pero solo posees {max_permitido}.")
                         else:
@@ -1302,16 +1313,23 @@ if es_admin:
                                 st.rerun()
 
         with col_cl2:
+            st.markdown("#### 📥 Analizar Resultados")
             if datos_cierres_auto and len(datos_cierres_auto) > 0:
                 df_cierres = pd.DataFrame(datos_cierres_auto)
                 
-                col_rent = next((c for c in df_cierres.columns if 'rentabilidad' in c.lower() or 'rent' in c.lower()), None)
-                col_gan = next((c for c in df_cierres.columns if 'ganancia' in c.lower() or 'efectiva' in c.lower()), None)
+                col_rent = next((c for c in df_cierres.columns if 'rent' in str(c).lower() or '%' in str(c)), None)
+                col_gan = next((c for c in df_cierres.columns if 'ganancia' in str(c).lower() or 'efectiva' in str(c).lower() or 'beneficio' in str(c).lower()), None)
                 
                 if col_gan and col_rent:
                     try:
-                        df_cierres[col_gan] = df_cierres[col_gan].astype(str).str.replace(r'[^\d\.,-]', '', regex=True).str.replace(',', '.').astype(float)
-                        df_cierres[col_rent] = df_cierres[col_rent].astype(str).str.replace(r'[^\d\.,-]', '', regex=True).str.replace(',', '.').astype(float)
+                        # Limpieza extrema antibug: convertimos extrayendo solo números (para ignorar fechas accidentalmente)
+                        def clean_numeric(series):
+                            s_str = series.astype(str).str.replace(',', '.')
+                            s_num = s_str.str.extract(r'([-]?\d+\.?\d*)', expand=False)
+                            return pd.to_numeric(s_num, errors='coerce').fillna(0.0)
+                            
+                        df_cierres[col_gan] = clean_numeric(df_cierres[col_gan])
+                        df_cierres[col_rent] = clean_numeric(df_cierres[col_rent])
                         
                         win_rate = (df_cierres[col_gan] > 0).mean() * 100
                         beneficio_neto = df_cierres[col_gan].sum()
@@ -1343,11 +1361,11 @@ if es_admin:
                         
                         st.markdown("#### 📜 Registro de Operaciones Cerradas")
                         df_cierres_mostrar = df_cierres.copy()
-                        df_cierres_mostrar[col_gan] = df_cierres_mostrar[col_gan].apply(lambda x: f"{x:+,.2f}")
+                        df_cierres_mostrar[col_gan] = df_cierres_mostrar[col_gan].apply(lambda x: f"{x:+,.2f} €")
                         df_cierres_mostrar[col_rent] = df_cierres_mostrar[col_rent].apply(lambda x: f"{x:+.2f}%")
                         
-                        # Extraemos las columnas exactas que tienes para pintarlas en pantalla
-                        cols_mostrar = [c for c in ['Fecha', 'Broker', 'Ticker', 'Empresa', 'Cantidad', col_rent, col_gan] if c in df_cierres_mostrar.columns]
+                        # Extraemos las columnas en el orden que tienes en el pantallazo
+                        cols_mostrar = [c for c in ['Ticker', 'Empresa', col_rent, col_gan, 'Fecha', 'Broker', 'Cantidad'] if c in df_cierres_mostrar.columns]
                         st.dataframe(df_cierres_mostrar[cols_mostrar].style.map(color_pct, subset=[col_gan, col_rent]), use_container_width=True, hide_index=True)
                     except Exception as e: 
                         st.error(f"Error interno procesando los cierres: {e}")
