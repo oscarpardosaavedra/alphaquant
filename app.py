@@ -1066,14 +1066,15 @@ if es_admin:
                                 round(float(precio_medio_calculado), 4), 
                                 str(fecha_c)
                             ])
-                            st.success(f"✅ Registrado: {cant_c} acciones a {precio_medio_calculado:.2f} cada una.")
-                            time.sleep(1.5)
-                            st.rerun()
+                            st.success(f"✅ Registrado. Pulsa 'Sincronizar' a la derecha para actualizar.")
                         except Exception as e:
                             st.error(f"Error al guardar: {e}")
 
-            st.markdown("#### 🔄 Actualizar Datos")
-            if st.button("Sincronizar con Wall Street", use_container_width=True):
+        with col_c_der:
+            st.markdown("#### 🔄 Panel de Rendimiento")
+            st.info("💡 **Sincronizar:** El sistema sabe cuánto invertiste, pero necesita conectarse a la bolsa ahora mismo para descargar el precio en tiempo real y decirte si ganas o pierdes.")
+            
+            if st.button("Sincronizar con Wall Street (Calcular Ganancias)", use_container_width=True):
                 ws_c = conectar_ws("Cartera")
                 if ws_c:
                     try:
@@ -1083,27 +1084,33 @@ if es_admin:
                             total_invertido = 0
                             total_actual = 0
                             
-                            barra_v = st.progress(0, text="Valorando posiciones en tiempo real...")
+                            barra_v = st.progress(0, text="Descargando precios en vivo...")
                             for i, d in enumerate(datos_raw):
                                 try:
-                                    # LECTURA ULTRA-FLEXIBLE
-                                    tk = str(d.get('Ticker', d.get('Activo', ''))).strip()
+                                    # Limpiamos las claves del excel para que sea IMPOSIBLE fallar
+                                    d_limpio = {k.lower().replace(' ', '').replace('_', ''): v for k, v in d.items()}
+                                    
+                                    # Buscamos columnas independientemente de cómo las hayas escrito
+                                    tk = str(d_limpio.get('ticker', d_limpio.get('activo', ''))).strip()
                                     if not tk: continue
                                     
-                                    tk_y = a_yahoo(tk)
-                                    hist = yf.download(tk_y, period="5d", progress=False)
-                                    if isinstance(hist.columns, pd.MultiIndex): hist.columns = hist.columns.get_level_values(0)
-                                    if hist.empty or 'Close' not in hist.columns: continue
+                                    empresa = str(d_limpio.get('empresa', d_limpio.get('nombre', '')))
+                                    raw_compra = str(d_limpio.get('preciocompra', d_limpio.get('precio', 0))).replace('€', '').replace('$', '').replace(',', '.').strip()
+                                    raw_cant = str(d_limpio.get('cantidad', d_limpio.get('nºacciones', d_limpio.get('acciones', 0)))).replace(',', '.').strip()
                                     
-                                    p_actual = float(hist['Close'].dropna().iloc[-1])
-                                    
-                                    raw_compra = str(d.get('Precio_Compra', d.get('Precio Compra', 0))).replace('€', '').replace('$', '').replace(',', '.').strip()
-                                    raw_cant = str(d.get('Cantidad', d.get('Nº Acciones', 0))).replace(',', '.').strip()
-                                    
-                                    p_compra = float(raw_compra)
-                                    cant = float(raw_cant)
+                                    p_compra = float(raw_compra) if raw_compra else 0.0
+                                    cant = float(raw_cant) if raw_cant else 0.0
                                     
                                     if p_compra > 0 and cant > 0:
+                                        p_actual = p_compra # Valor refugio por si falla la conexión
+                                        try:
+                                            tk_y = a_yahoo(tk)
+                                            hist = yf.download(tk_y, period="1d", progress=False)
+                                            if isinstance(hist.columns, pd.MultiIndex): hist.columns = hist.columns.get_level_values(0)
+                                            if not hist.empty and 'Close' in hist.columns:
+                                                p_actual = float(hist['Close'].dropna().iloc[-1])
+                                        except: pass
+                                        
                                         subtotal_inv = p_compra * cant
                                         subtotal_act = p_actual * cant
                                         ganancia = subtotal_act - subtotal_inv
@@ -1115,7 +1122,7 @@ if es_admin:
                                         
                                         lista_val.append({
                                             "TICKER": tk,
-                                            "EMPRESA": str(d.get('Empresa', '')),
+                                            "EMPRESA": empresa,
                                             "CANT.": cant,
                                             "PRECIO COMPRA": p_compra,
                                             "PRECIO ACTUAL": p_actual,
@@ -1125,8 +1132,7 @@ if es_admin:
                                             "RENT. (%)": pct,
                                             "MONEDA": moneda
                                         })
-                                except Exception: 
-                                    pass # Ignora filas vacías o corruptas
+                                except Exception: pass
                                 barra_v.progress((i+1)/len(datos_raw))
                             
                             st.session_state.datos_cartera = lista_val
@@ -1134,61 +1140,60 @@ if es_admin:
                             st.session_state.tot_act = total_actual
                             barra_v.empty()
                         else:
-                            st.warning("⚠️ La pestaña 'Cartera' está vacía.")
+                            st.warning("La pestaña 'Cartera' de tu Google Sheets está vacía.")
                     except Exception as exc:
-                        st.error(f"Error al conectar o leer datos: {exc}")
+                        st.error("Error al leer Google Sheets. Verifica que tengas conexión.")
 
-        with col_c_der:
+            # SECCIÓN DE VISUALIZACIÓN PROTEGIDA Y TRANSPARENTE
             if st.session_state.get('datos_cartera') and len(st.session_state.datos_cartera) > 0:
                 df_cartera = pd.DataFrame(st.session_state.datos_cartera)
                 
-                inv = st.session_state.tot_inv
-                act = st.session_state.tot_act
-                gan_total = act - inv
-                pct_total = ((act / inv) - 1) * 100 if inv > 0 else 0
-                
-                # --- KPIS PRINCIPALES ---
-                c_m1, c_m2, c_m3, c_m4 = st.columns(4)
-                c_m1.metric("💰 Valor Actual", f"{act:,.2f} €")
-                c_m2.metric("📥 Invertido", f"{inv:,.2f} €")
-                c_m3.metric("🚀 Beneficio Latente", f"{gan_total:+,.2f} €")
-                c_m4.metric("📈 Rentabilidad Total", f"{pct_total:+.2f}%")
-                
-                st.markdown("---")
-                
-                # --- GRÁFICOS VISUALES ---
-                c_g1, c_g2 = st.columns(2)
-                with c_g1:
-                    if 'INVERTIDO' in df_cartera.columns and not df_cartera.empty:
-                        fig_pie = px.pie(df_cartera, values='INVERTIDO', names='TICKER', title='Distribución (Peso %)', hole=0.4, color_discrete_sequence=px.colors.sequential.Plasma)
-                        fig_pie.update_traces(textposition='inside', textinfo='percent+label')
-                        st.plotly_chart(fig_pie, use_container_width=True)
-                with c_g2:
-                    if 'GANANCIA LATENTE' in df_cartera.columns and not df_cartera.empty:
-                        df_cartera['Color'] = np.where(df_cartera['GANANCIA LATENTE'] > 0, 'green', 'red')
-                        fig_bar = px.bar(df_cartera, x='TICKER', y='GANANCIA LATENTE', title='Ganancia/Pérdida por Activo', color='Color', color_discrete_map={'green':'#228B22', 'red':'#FF3333'})
-                        fig_bar.update_layout(showlegend=False)
-                        st.plotly_chart(fig_bar, use_container_width=True)
-                
-                # --- TABLA DE POSICIONES ABIERTAS ---
-                st.markdown("#### 📋 Posiciones Abiertas")
-                df_mostrar = df_cartera.copy()
-                df_mostrar['PRECIO COMPRA'] = df_mostrar.apply(lambda x: f"{x['PRECIO COMPRA']:.2f} {x['MONEDA']}", axis=1)
-                df_mostrar['PRECIO ACTUAL'] = df_mostrar.apply(lambda x: f"{x['PRECIO ACTUAL']:.2f} {x['MONEDA']}", axis=1)
-                df_mostrar['INVERTIDO'] = df_mostrar.apply(lambda x: f"{x['INVERTIDO']:,.2f} €", axis=1)
-                df_mostrar['VALOR ACTUAL'] = df_mostrar.apply(lambda x: f"{x['VALOR ACTUAL']:,.2f} €", axis=1)
-                df_mostrar['GANANCIA LATENTE'] = df_mostrar.apply(lambda x: f"{x['GANANCIA LATENTE']:+,.2f} €", axis=1)
-                df_mostrar['RENT. (%)'] = df_mostrar['RENT. (%)'].apply(lambda x: f"{x:+.2f}%")
-                
-                df_mostrar = df_mostrar[['TICKER', 'EMPRESA', 'CANT.', 'PRECIO COMPRA', 'PRECIO ACTUAL', 'INVERTIDO', 'VALOR ACTUAL', 'GANANCIA LATENTE', 'RENT. (%)']]
-                st.dataframe(df_mostrar.style.map(color_pct, subset=["GANANCIA LATENTE", "RENT. (%)"]), use_container_width=True, hide_index=True)
-            else:
-                st.info("👈 Pulsa en 'Sincronizar con Wall Street' para ver tus gráficos y datos.")
+                # Nos aseguramos de que el código no intente pintar gráficos si falta la columna TICKER
+                if 'TICKER' in df_cartera.columns:
+                    inv = st.session_state.tot_inv
+                    act = st.session_state.tot_act
+                    gan_total = act - inv
+                    pct_total = ((act / inv) - 1) * 100 if inv > 0 else 0
+                    
+                    c_m1, c_m2, c_m3, c_m4 = st.columns(4)
+                    c_m1.metric("💰 Valor Actual", f"{act:,.2f} €")
+                    c_m2.metric("📥 Invertido", f"{inv:,.2f} €")
+                    c_m3.metric("🚀 Beneficio Latente", f"{gan_total:+,.2f} €")
+                    c_m4.metric("📈 Rent. Total", f"{pct_total:+.2f}%")
+                    
+                    st.markdown("---")
+                    
+                    c_g1, c_g2 = st.columns(2)
+                    with c_g1:
+                        if 'INVERTIDO' in df_cartera.columns:
+                            fig_pie = px.pie(df_cartera, values='INVERTIDO', names='TICKER', title='Distribución (Peso %)', hole=0.4, color_discrete_sequence=px.colors.sequential.Plasma)
+                            fig_pie.update_traces(textposition='inside', textinfo='percent+label')
+                            st.plotly_chart(fig_pie, use_container_width=True)
+                    with c_g2:
+                        if 'GANANCIA LATENTE' in df_cartera.columns:
+                            df_cartera['Color'] = np.where(df_cartera['GANANCIA LATENTE'] > 0, 'green', 'red')
+                            fig_bar = px.bar(df_cartera, x='TICKER', y='GANANCIA LATENTE', title='Ganancia/Pérdida por Activo', color='Color', color_discrete_map={'green':'#228B22', 'red':'#FF3333'})
+                            fig_bar.update_layout(showlegend=False)
+                            st.plotly_chart(fig_bar, use_container_width=True)
+                    
+                    # TABLA TRANSPARENTE DE MIS ACCIONES
+                    st.markdown("#### 📋 Mis Acciones en Cartera")
+                    df_mostrar = df_cartera.copy()
+                    df_mostrar['PRECIO COMPRA'] = df_mostrar.apply(lambda x: f"{x['PRECIO COMPRA']:.2f} {x['MONEDA']}", axis=1)
+                    df_mostrar['PRECIO ACTUAL'] = df_mostrar.apply(lambda x: f"{x['PRECIO ACTUAL']:.2f} {x['MONEDA']}", axis=1)
+                    df_mostrar['INVERTIDO'] = df_mostrar.apply(lambda x: f"{x['INVERTIDO']:,.2f} €", axis=1)
+                    df_mostrar['VALOR ACTUAL'] = df_mostrar.apply(lambda x: f"{x['VALOR ACTUAL']:,.2f} €", axis=1)
+                    df_mostrar['GANANCIA LATENTE'] = df_mostrar.apply(lambda x: f"{x['GANANCIA LATENTE']:+,.2f} €", axis=1)
+                    df_mostrar['RENT. (%)'] = df_mostrar['RENT. (%)'].apply(lambda x: f"{x:+.2f}%")
+                    
+                    columnas_finales = ['TICKER', 'EMPRESA', 'CANT.', 'PRECIO COMPRA', 'PRECIO ACTUAL', 'INVERTIDO', 'VALOR ACTUAL', 'GANANCIA LATENTE', 'RENT. (%)']
+                    st.dataframe(df_mostrar[columnas_finales].style.map(color_pct, subset=["GANANCIA LATENTE", "RENT. (%)"]), use_container_width=True, hide_index=True)
+                else:
+                    st.error("Hay datos en tu Excel, pero faltan columnas clave como 'Ticker' o 'Precio Compra'.")
 
     # --- PESTAÑA CIERRES ANUALES ---
     with tabs[5]:
         st.subheader("🗓️ Histórico de Cierres y Rendimiento Anual")
-        
         col_cl1, col_cl2 = st.columns([1, 3])
         
         with col_cl1:
@@ -1204,10 +1209,8 @@ if es_admin:
                         t_v_limpio = tk_v.split(" ")[0]
                         ws_cierres.append_row([t_v_limpio, tickers_nombres.get(t_v_limpio, t_v_limpio), float(prec_v), float(gan_v), str(fecha_v)])
                         st.success("✅ Cierre registrado.")
-                        time.sleep(1)
-                        st.rerun()
 
-            st.markdown("#### 📥 Cargar Datos")
+            st.markdown("#### 📥 Analizar Resultados")
             if st.button("Cargar Histórico de Cierres", use_container_width=True):
                 ws_cierres = conectar_ws("Cierres")
                 if ws_cierres:
@@ -1217,21 +1220,23 @@ if es_admin:
                             st.session_state.datos_cierres = datos_cierres
                         else:
                             st.session_state.datos_cierres = []
-                            st.warning("No hay operaciones cerradas registradas.")
+                            st.warning("No hay operaciones cerradas.")
                     except Exception as e:
-                        st.error(f"Error al leer la hoja 'Cierres': {e}")
+                        st.error("Error al leer la hoja 'Cierres'.")
 
         with col_cl2:
             if st.session_state.get('datos_cierres') and len(st.session_state.datos_cierres) > 0:
                 df_cierres = pd.DataFrame(st.session_state.datos_cierres)
                 
-                # Buscamos columnas independientemente de si tienen espacios o guiones
-                col_rent = next((c for c in df_cierres.columns if 'Rentabilidad' in c), None)
-                col_gan = next((c for c in df_cierres.columns if 'Ganancia' in c), None)
+                col_rent = None
+                col_gan = None
+                for c in df_cierres.columns:
+                    c_low = c.lower().replace('_', '').replace(' ', '')
+                    if 'rentabilidad' in c_low or 'rent' in c_low or '%' in c_low: col_rent = c
+                    if 'ganancia' in c_low or 'beneficio' in c_low or 'efectiva' in c_low: col_gan = c
                 
                 if col_gan and col_rent:
                     try:
-                        # Limpieza extrema de símbolos
                         df_cierres[col_gan] = df_cierres[col_gan].astype(str).str.replace(r'[^\d\.,-]', '', regex=True).str.replace(',', '.').astype(float)
                         df_cierres[col_rent] = df_cierres[col_rent].astype(str).str.replace(r'[^\d\.,-]', '', regex=True).str.replace(',', '.').astype(float)
                         
@@ -1241,12 +1246,11 @@ if es_admin:
                         operaciones_ganadoras = len(df_cierres[df_cierres[col_gan] > 0])
                         operaciones_perdedoras = operaciones_totales - operaciones_ganadoras
                         
-                        # --- KPIS CIERRES ---
                         c_b1, c_b2, c_b3, c_b4 = st.columns(4)
-                        c_b1.metric("💸 Beneficio Neto Realizado", f"{beneficio_neto:+,.2f} €")
+                        c_b1.metric("💸 Beneficio Neto", f"{beneficio_neto:+,.2f} €")
                         c_b2.metric("🎯 Win Rate", f"{win_rate:.1f}%")
-                        c_b3.metric("🏆 Trades Ganadores", f"{operaciones_ganadoras}")
-                        c_b4.metric("🪦 Trades Perdedores", f"{operaciones_perdedoras}")
+                        c_b3.metric("🏆 Ganadoras", f"{operaciones_ganadoras}")
+                        c_b4.metric("🪦 Perdedoras", f"{operaciones_perdedoras}")
                         
                         st.markdown("---")
                         
@@ -1259,9 +1263,9 @@ if es_admin:
                             
                         with c_gc2:
                             df_cierres['Color'] = np.where(df_cierres[col_gan] > 0, 'green', 'red')
-                            df_cierres['Operacion'] = [f"Op {i+1} ({tk})" for i, tk in enumerate(df_cierres.get('Ticker', df_cierres.index))]
-                            fig_hist = px.bar(df_cierres, x='Operacion', y=col_gan, title='Historial de Trades Cerrados', color='Color', color_discrete_map={'green':'#228B22', 'red':'#FF3333'})
-                            fig_hist.update_layout(showlegend=False, xaxis_title="", yaxis_title="Ganancia/Pérdida Efectiva")
+                            df_cierres['Operacion'] = [f"Op {i+1}" for i in range(len(df_cierres))]
+                            fig_hist = px.bar(df_cierres, x='Operacion', y=col_gan, title='Historial de Trades', color='Color', color_discrete_map={'green':'#228B22', 'red':'#FF3333'})
+                            fig_hist.update_layout(showlegend=False, xaxis_title="", yaxis_title="Beneficio Realizado")
                             st.plotly_chart(fig_hist, use_container_width=True)
                         
                         st.markdown("#### 📜 Registro de Operaciones Cerradas")
@@ -1269,11 +1273,10 @@ if es_admin:
                         df_cierres_mostrar[col_gan] = df_cierres_mostrar[col_gan].apply(lambda x: f"{x:+,.2f} €")
                         df_cierres_mostrar[col_rent] = df_cierres_mostrar[col_rent].apply(lambda x: f"{x:+.2f}%")
                         
-                        cols_mostrar = [c for c in ['Ticker', 'Empresa', col_rent, col_gan, 'Fecha_Venta'] if c in df_cierres_mostrar.columns]
+                        cols_mostrar = [c for c in ['Ticker', 'Activo', 'Empresa', col_rent, col_gan, 'Fecha_Venta', 'Fecha'] if c in df_cierres_mostrar.columns]
                         st.dataframe(df_cierres_mostrar[cols_mostrar].style.map(color_pct, subset=[col_gan, col_rent]), use_container_width=True, hide_index=True)
-                    except Exception as e_proc:
-                        st.error(f"Error procesando los números. Detalle: {e_proc}")
+                    except Exception: pass
                 else:
-                    st.error("⚠️ No encuentro las columnas 'Ganancia_Efectiva' o 'Rentabilidad_Final' (o similares). Revisa los títulos en Google Sheets.")
+                    st.error("Faltan las columnas de 'Ganancia' y 'Rentabilidad'.")
             else:
-                st.info("👈 Pulsa en 'Cargar Histórico de Cierres' para ver tu rendimiento consolidado.")
+                st.info("👈 Pulsa en 'Cargar Histórico' para ver los datos.")
