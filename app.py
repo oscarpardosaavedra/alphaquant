@@ -14,6 +14,25 @@ import requests
 # 1. CONFIGURACIÓN Y CONEXIÓN DB (BASE DE DATOS)
 # ==========================================
 st.set_page_config(page_title="Alphaquant", page_icon="📈", layout="wide")
+# --- SISTEMA ADMIN Y NUEVA CONEXIÓN ---
+PIN_PROCURADO = "1234" 
+
+def conectar_ws(nombre_hoja):
+    try:
+        scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
+        creds_dict = st.secrets["gcp_service_account"]
+        creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
+        client = gspread.authorize(creds)
+        return client.open("Alphaquant_DB").worksheet(nombre_hoja)
+    except:
+        return None
+
+with st.sidebar:
+    st.markdown("<h2 style='text-align: center;'>🔐 Acceso Admin</h2>", unsafe_allow_html=True)
+    pin_ingresado = st.text_input("Introduce tu PIN para ver tu cartera privada:", type="password")
+    es_admin = (pin_ingresado == PIN_PROCURADO)
+    if es_admin: st.success("✅ Modo Administrador Activo")
+    else: st.info("Modo Público: Solo herramientas de análisis.")
 
 # ---> MEMORIA PERSISTENTE PARA QUE NO SE BORRE EL RADAR NI AUDITORÍA <---
 if 'resultados_radar' not in st.session_state: st.session_state.resultados_radar = None
@@ -314,7 +333,12 @@ col2.info(f"**Europa:** {eu['estado']} | Hora: {eu['horario']} (Madrid)")
 col3.info(f"**Asia:** {asia['estado']} | Hora: {asia['horario']} (Madrid)")
 st.markdown("---")
 
-tab1, tab2, tab3, tab4 = st.tabs(["🔬 Análisis Individual", "⚔️ Análisis Colectivo", "🎯 Cazar Alpha (Radar)", "🏆 Sala de Trofeos"])
+nombres_tabs = ["🔬 Análisis Individual", "⚔️ Comparativa", "🎯 Radar Oppenheimer", "🏆 Sala de Trofeos"]
+if es_admin:
+    nombres_tabs += ["💼 Mi Cartera", "🗓️ Cierres Anuales"]
+
+tabs = st.tabs(nombres_tabs)
+tab1, tab2, tab3, tab4 = tabs[0], tabs[1], tabs[2], tabs[3]
 
 # ------------------------------------------
 # PESTAÑA 1: VISOR DE GRÁFICOS
@@ -1010,3 +1034,144 @@ with tab4:
                                 """, unsafe_allow_html=True)
         except:
             st.error("Error leyendo la base de datos. Comprueba la pestaña de Google Sheets.")
+
+# ==========================================
+# 5. PESTAÑAS PRIVADAS (MODO ADMIN)
+# ==========================================
+if es_admin:
+    # --- PESTAÑA MI CARTERA ---
+    with tabs[4]:
+        st.markdown("### 💼 Gestión de Cartera en Tiempo Real")
+        col_c1, col_c2 = st.columns([1, 2.5])
+        
+        with col_c1:
+            st.markdown("#### 🛒 Registrar Compra")
+            with st.form("form_compra"):
+                tk_c = st.selectbox("Activo:", opciones_desplegable)
+                cant_c = st.number_input("Cantidad de Acciones:", min_value=0.01, step=1.0)
+                prec_c = st.number_input("Precio Medio de Compra:", min_value=0.01, step=0.5)
+                fecha_c = st.date_input("Fecha de Compra:")
+                if st.form_submit_button("Añadir a Cartera", use_container_width=True):
+                    ws_c = conectar_ws("Cartera")
+                    if ws_c:
+                        t_limpio = tk_c.split(" ")[0]
+                        ws_c.append_row([t_limpio, tickers_nombres.get(t_limpio, t_limpio), float(cant_c), float(prec_c), str(fecha_c)])
+                        st.success("✅ Compra registrada en Google Sheets.")
+                        time.sleep(1)
+                        st.rerun()
+
+        with col_c2:
+            if st.button("🔄 Sincronizar Cartera con Wall Street", use_container_width=True):
+                ws_c = conectar_ws("Cartera")
+                if ws_c:
+                    datos_raw = ws_c.get_all_records()
+                    if datos_raw:
+                        lista_val = []
+                        total_invertido = 0
+                        total_actual = 0
+                        barra_v = st.progress(0, text="Valorando posiciones en tiempo real...")
+                        
+                        for i, d in enumerate(datos_raw):
+                            try:
+                                tk = str(d.get('Ticker', d.get('TICKER', '')))
+                                if not tk: continue
+                                tk_y = a_yahoo(tk)
+                                hist = yf.download(tk_y, period="1d", progress=False)
+                                p_actual = float(hist['Close'].iloc[-1]) if not hist.empty else 0.0
+                                p_compra = float(str(d.get('Precio_Compra', d.get('PRECIO', 0))).replace(',', '.'))
+                                cant = float(str(d.get('Cantidad', d.get('CANTIDAD', 0))).replace(',', '.'))
+                                
+                                if p_compra > 0 and cant > 0 and p_actual > 0:
+                                    subtotal_inv = p_compra * cant
+                                    subtotal_act = p_actual * cant
+                                    ganancia = subtotal_act - subtotal_inv
+                                    pct = ((p_actual / p_compra) - 1) * 100
+                                    moneda = obtener_simbolo_moneda(tk)
+                                    total_invertido += subtotal_inv
+                                    total_actual += subtotal_act
+                                    
+                                    lista_val.append({
+                                        "TICKER": tk, "CANT.": cant, "PRECIO COMPRA": f"{p_compra:.2f} {moneda}",
+                                        "PRECIO ACTUAL": f"{p_actual:.2f} {moneda}", "INVERTIDO": subtotal_inv,
+                                        "VALOR ACTUAL": f"{subtotal_act:,.2f} {moneda}",
+                                        "GANANCIA LATENTE": f"{ganancia:+,.2f} {moneda}", "RENT. (%)": f"{pct:+.2f}%"
+                                    })
+                            except: pass
+                            barra_v.progress((i+1)/len(datos_raw))
+                        
+                        st.session_state.datos_cartera = lista_val
+                        st.session_state.tot_inv = total_invertido
+                        st.session_state.tot_act = total_actual
+                        barra_v.empty()
+            
+            if st.session_state.get('datos_cartera'):
+                inv = st.session_state.tot_inv
+                act = st.session_state.tot_act
+                gan_total = act - inv
+                pct_total = ((act / inv) - 1) * 100 if inv > 0 else 0
+                
+                c_m1, c_m2, c_m3 = st.columns(3)
+                c_m1.metric("💰 Valor de Cartera Actual", f"{act:,.2f} €")
+                c_m2.metric("📥 Inversión Inicial", f"{inv:,.2f} €")
+                c_m3.metric("🚀 Rendimiento Latente", f"{gan_total:+,.2f} €", f"{pct_total:+.2f}%")
+                
+                st.markdown("---")
+                df_cartera = pd.DataFrame(st.session_state.datos_cartera)
+                df_cartera['PESO (%)'] = (df_cartera['INVERTIDO'] / inv * 100).apply(lambda x: f"{x:.1f}%")
+                df_mostrar = df_cartera.drop(columns=['INVERTIDO'])
+                st.dataframe(df_mostrar.style.map(color_pct, subset=["GANANCIA LATENTE", "RENT. (%)"]), use_container_width=True)
+                
+                import plotly.express as px
+                fig_pie = px.pie(df_cartera, values='INVERTIDO', names='TICKER', title='Diversificación de Cartera (Peso %)', hole=0.4, color_discrete_sequence=px.colors.sequential.Teal)
+                st.plotly_chart(fig_pie, use_container_width=True)
+
+    # --- PESTAÑA CIERRES ANUALES ---
+    with tabs[5]:
+        st.subheader("🗓️ Histórico de Cierres Anuales")
+        col_cl1, col_cl2 = st.columns([1, 2.5])
+        
+        with col_cl1:
+            st.markdown("#### 🤝 Registrar Venta (Cierre)")
+            with st.form("form_cierre"):
+                tk_v = st.selectbox("Activo Vendido:", opciones_desplegable)
+                prec_v = st.number_input("Rentabilidad Final (%):", format="%.2f")
+                gan_v = st.number_input("Ganancia/Pérdida Efectiva (€/$):", format="%.2f")
+                fecha_v = st.date_input("Fecha de Venta:")
+                if st.form_submit_button("Registrar Cierre", use_container_width=True):
+                    ws_cierres = conectar_ws("Cierres")
+                    if ws_cierres:
+                        t_v_limpio = tk_v.split(" ")[0]
+                        ws_cierres.append_row([t_v_limpio, tickers_nombres.get(t_v_limpio, t_v_limpio), float(prec_v), float(gan_v), str(fecha_v)])
+                        st.success("✅ Cierre registrado en el histórico.")
+                        time.sleep(1)
+                        st.rerun()
+
+        with col_cl2:
+            st.markdown("#### 📊 Balance Acumulado de Operaciones Cerradas")
+            if st.button("📥 Cargar Histórico de Cierres"):
+                ws_cierres = conectar_ws("Cierres")
+                if ws_cierres:
+                    try:
+                        datos_cierres = ws_cierres.get_all_records()
+                        if datos_cierres:
+                            df_cierres = pd.DataFrame(datos_cierres)
+                            col_ganancia = next((c for c in df_cierres.columns if 'Ganancia' in c or 'Beneficio' in c), None)
+                            
+                            if col_ganancia:
+                                df_cierres[col_ganancia] = df_cierres[col_ganancia].replace({',': '.', '€': '', '\$': ''}, regex=True).astype(float)
+                                win_rate = (df_cierres[col_ganancia] > 0).mean() * 100
+                                beneficio_neto = df_cierres[col_ganancia].sum()
+                                operaciones_totales = len(df_cierres)
+                                
+                                c_b1, c_b2, c_b3 = st.columns(3)
+                                c_b1.metric("💸 Beneficio Neto Realizado", f"{beneficio_neto:+,.2f} €")
+                                c_b2.metric("🎯 Win Rate (Acierto)", f"{win_rate:.1f}%")
+                                c_b3.metric("🤝 Operaciones Totales", f"{operaciones_totales}")
+                                
+                                st.dataframe(df_cierres.style.map(color_pct, subset=[c for c in df_cierres.columns if '%' in c]), use_container_width=True)
+                            else:
+                                st.table(df_cierres)
+                        else:
+                            st.info("Aún no tienes operaciones cerradas registradas.")
+                    except Exception as e:
+                        st.error("Comprueba que los encabezados de tu pestaña 'Cierres' estén correctos.")
