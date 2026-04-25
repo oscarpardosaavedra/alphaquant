@@ -1047,11 +1047,10 @@ with tab4:
 # 5. PESTAÑAS PRIVADAS (MODO ADMIN)
 # ==========================================
 if es_admin:
-    # --- PESTAÑA MI CARTERA (CARGA AUTOMÁTICA CON GRÁFICOS Y ESCUDO) ---
+# --- PESTAÑA MI CARTERA (CARGA AUTOMÁTICA CON GRÁFICOS Y ESCUDO) ---
     with tabs[4]:
         st.markdown("### 💼 Centro de Control: Mi Cartera")
         
-        # 1. CARGA Y PROCESAMIENTO AUTOMÁTICO AL ENTRAR
         ws_c = conectar_ws("Cartera")
         if ws_c:
             try:
@@ -1099,10 +1098,22 @@ if es_admin:
                             hist = yf.download(tk_y, period="5d", progress=False)
                             if isinstance(hist.columns, pd.MultiIndex): hist.columns = hist.columns.get_level_values(0)
                             
+                            moneda_nativa = obtener_simbolo_moneda(tk)
+                            
                             if not hist.empty and 'Close' in hist.columns:
-                                p_actual = float(hist['Close'].dropna().iloc[-1])
+                                p_actual_nativo = float(hist['Close'].dropna().iloc[-1])
                             else:
-                                p_actual = p_compra
+                                p_actual_nativo = p_compra
+                                
+                            # --- TRADUCTOR INTELIGENTE DE DIVISAS ---
+                            if moneda_nativa == "$" and not es_usd:
+                                # Acción de EEUU pero broker europeo (ej. Trade Republic) -> Pasamos precio Yahoo a Euros
+                                p_actual = p_actual_nativo / tasa_eur_usd
+                            elif moneda_nativa != "$" and es_usd:
+                                # Acción europea pero broker en USD -> Pasamos precio Yahoo a Dólares
+                                p_actual = p_actual_nativo * tasa_eur_usd
+                            else:
+                                p_actual = p_actual_nativo
                                 
                             inv_l = p_compra * cant
                             act_l = p_actual * cant
@@ -1140,7 +1151,6 @@ if es_admin:
             except:
                 st.session_state.datos_cartera = []
 
-        # --- DISEÑO DE LA INTERFAZ ---
         col_c_izq, col_c_der = st.columns([1, 3])
         
         with col_c_izq:
@@ -1156,7 +1166,8 @@ if es_admin:
                     if ws_c:
                         try:
                             t_limpio = tk_c.split(" ")[0]
-                            ahora = datetime.datetime.now().strftime("%H:%M")
+                            # HORA MADRID
+                            ahora = datetime.datetime.now(pytz.timezone('Europe/Madrid')).strftime("%H:%M")
                             fecha_con_hora = f"{fecha_c} {ahora}"
                             
                             ws_c.append_row([
@@ -1215,13 +1226,19 @@ if es_admin:
                 st.markdown("---")
                 st.markdown("#### 📋 Posiciones Actuales")
                 
+                def color_numeros(val):
+                    if isinstance(val, (int, float)):
+                        if val > 0: return 'color: #228B22; font-weight: bold;'
+                        elif val < 0: return 'color: #FF3333; font-weight: bold;'
+                    return ''
+                
                 st.dataframe(
-                    df_c[['TICKER', 'EMPRESA', 'FECHA', 'BROKER', 'CANT.', 'P. COMPRA', 'P. ACTUAL', 'INVERTIDO', 'VALOR ACTUAL', 'GANANCIA (€)', 'RENT (%)']],
+                    df_c[['TICKER', 'EMPRESA', 'FECHA', 'BROKER', 'CANT.', 'P. COMPRA', 'P. ACTUAL', 'INVERTIDO', 'VALOR ACTUAL', 'GANANCIA (€)', 'RENT (%)']].style.map(color_numeros, subset=['GANANCIA (€)', 'RENT (%)']),
                     use_container_width=True, hide_index=True,
                     column_config={
                         "TICKER": st.column_config.TextColumn("TICKER", help="Código bursátil del activo."),
-                        "GANANCIA (€)": st.column_config.NumberColumn("GANANCIA (€)", format="%.2f €", help="Beneficio neto convertido a euros."),
-                        "RENT (%)": st.column_config.NumberColumn("RENT (%)", format="%.2f%%", help="Rentabilidad porcentual de la posición.")
+                        "GANANCIA (€)": st.column_config.NumberColumn("GANANCIA (€)", format="%+.2f €"),
+                        "RENT (%)": st.column_config.NumberColumn("RENT (%)", format="%+.2f%%")
                     }
                 )
 
@@ -1245,11 +1262,10 @@ if es_admin:
             else:
                 st.info("No hay nada en la cartera.")
 
-# --- PESTAÑA CIERRES ANUALES ---
+    # --- PESTAÑA CIERRES ANUALES ---
     with tabs[5]:
         st.subheader("🗓️ Histórico de Cierres y Rendimiento Anual")
         
-        # 1. CÁLCULO DE STOCK DISPONIBLE Y DATOS DE COMPRA
         dict_compras = {}
         dict_compras_info = {} 
         
@@ -1299,7 +1315,6 @@ if es_admin:
                                 dict_compras[tk] += cant
                 except Exception: pass
 
-        # Ya no restamos las ventas del stock aquí, porque ahora las borramos físicamente del Excel de Cartera
         dict_stock = {}
         for tk, cant_comprada in dict_compras.items():
             if cant_comprada > 0.0001:
@@ -1323,7 +1338,7 @@ if es_admin:
                 with st.form("form_cierre_validado"):
                     tk_v = st.selectbox("Activo a Vender:", sorted(list(dict_stock.keys())))
                     cant_v = st.number_input("Cantidad a vender:", min_value=0.0001, step=1.0)
-                    total_venta_local = st.number_input("Total Obtenido por la Venta (€/$):", min_value=0.0, step=10.0, help="Importe bruto que has recibido por esta venta en la moneda original de tu broker.")
+                    total_venta_local = st.number_input("Total Obtenido por la Venta (€/$):", min_value=0.0, step=10.0, help="Importe bruto recibido por la venta en la moneda de tu broker.")
                     fecha_v = st.date_input("Fecha de Venta:")
                     
                     if st.form_submit_button("Registrar Cierre Automático", use_container_width=True):
@@ -1373,11 +1388,11 @@ if es_admin:
                                     prec_v = 0.0
                                     gan_v = total_venta_e
 
-                                hora_v = datetime.datetime.now().strftime("%H:%M")
+                                # HORA MADRID PARA LA VENTA
+                                hora_v = datetime.datetime.now(pytz.timezone('Europe/Madrid')).strftime("%H:%M")
                                 fecha_venta_completa = f"{fecha_v} {hora_v}"
 
                                 if ws_cierres:
-                                    # 1. Guardamos en Ventas
                                     ws_cierres.append_row([
                                         tk_v, 
                                         empresa_v, 
@@ -1390,17 +1405,16 @@ if es_admin:
                                         float(total_venta_local)
                                     ])
                                     
-                                    # 2. Descontamos de la Cartera
+                                    # Descontamos de la Cartera
                                     ws_cartera = conectar_ws("Cartera")
                                     if ws_cartera:
                                         celdas_c = ws_cartera.findall(tk_v, in_column=1)
-                                        celdas_c.reverse() # Vamos de abajo hacia arriba
+                                        celdas_c.reverse() 
                                         cant_a_descontar = cant_v
                                         
                                         for celda in celdas_c:
                                             if cant_a_descontar <= 0.0001: break
                                             try:
-                                                # La cantidad está en la columna 3 del Excel Cartera
                                                 cant_fila = float(str(ws_cartera.cell(celda.row, 3).value).replace(',', '.'))
                                             except: cant_fila = 0.0
                                             
@@ -1432,13 +1446,11 @@ if es_admin:
                                 cell = ws_cierres.find(tk_a_borrar, in_column=1)
                                 
                                 if cell: 
-                                    # Extraemos los datos de la venta antes de borrarla
                                     row_vals = ws_cierres.row_values(cell.row)
                                     ws_cierres.delete_rows(cell.row)
                                     
                                     if "Anular" in accion_borrar:
                                         try:
-                                            # Intentamos reconstruir los datos para mandarlos de vuelta a Cartera
                                             emp_rest = row_vals[1]
                                             gan_rest = float(str(row_vals[3]).replace(',', '.'))
                                             fec_rest = row_vals[4].split(" ")[0]
@@ -1446,14 +1458,15 @@ if es_admin:
                                             cant_rest = float(str(row_vals[6]).replace(',', '.'))
                                             tot_rest = float(str(row_vals[8]).replace(',', '.'))
                                             
-                                            # Ingeniería inversa: Inversión inicial = Total - Ganancia
                                             inv_rest = tot_rest - gan_rest
                                             precio_medio_rest = round(inv_rest / cant_rest, 4) if cant_rest > 0 else 0
                                             
                                             ws_cartera = conectar_ws("Cartera")
                                             if ws_cartera:
+                                                hora_r = datetime.datetime.now(pytz.timezone('Europe/Madrid')).strftime("%H:%M")
+                                                fecha_r = f"{fec_rest} {hora_r}"
                                                 ws_cartera.append_row([
-                                                    tk_a_borrar, emp_rest, cant_rest, precio_medio_rest, fec_rest, brk_rest
+                                                    tk_a_borrar, emp_rest, cant_rest, precio_medio_rest, fecha_r, brk_rest
                                                 ])
                                             st.success(f"🔄 Venta anulada. Las {cant_rest} acciones vuelven a tu Cartera.")
                                         except:
@@ -1508,7 +1521,6 @@ if es_admin:
                         col_tot = next((c for c in df_cierres_mostrar.columns if 'total' in str(c).lower() or 'obtenido' in str(c).lower()), None)
                         if col_tot: df_cierres_mostrar[col_tot] = clean_numeric(df_cierres_mostrar[col_tot]).apply(lambda x: f"{x:,.2f} €" if pd.notnull(x) else x)
 
-                        # Forzamos la búsqueda de columnas por nombre genérico para que encajen con tu Excel
                         cols_buscadas = ["Ticker", "Empresa", "Rentabilidad", "Ganancia", "Fecha", "Broker", "Cantidad", "Días", "Total"]
                         cols_mostrar_final = []
                         
@@ -1518,15 +1530,14 @@ if es_admin:
                                     cols_mostrar_final.append(real)
                                     break
                                     
-                        # Si quedó alguna rezagada, la añadimos al final
                         for real in df_cierres_mostrar.columns:
                             if real not in cols_mostrar_final:
                                 cols_mostrar_final.append(real)
                         
                         def color_celdas(val):
                             if isinstance(val, str) and ('%' in val or '€' in val):
-                                if val.startswith('+'): return 'color: #228B22;' 
-                                elif val.startswith('-'): return 'color: #FF3333;' 
+                                if val.startswith('+'): return 'color: #228B22; font-weight: bold;' 
+                                elif val.startswith('-'): return 'color: #FF3333; font-weight: bold;' 
                             return ''
 
                         st.dataframe(df_cierres_mostrar[cols_mostrar_final].style.map(color_celdas), use_container_width=True, hide_index=True)
