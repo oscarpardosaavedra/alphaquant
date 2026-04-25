@@ -1191,8 +1191,11 @@ if es_admin:
                 df_mostrar['RENT. (%)'] = df_mostrar['RENT. (%)'].apply(lambda x: f"{x:+.2f}%")
                 
                 # Orden exacto para que se parezca al excel y a la pestaña de cierres
-                columnas_orden = ['FECHA', 'TICKER', 'EMPRESA', 'CANT.', 'PRECIO COMPRA', 'PRECIO ACTUAL', 'INVERTIDO', 'VALOR ACTUAL', 'GANANCIA LATENTE', 'RENT. (%)']
-                st.dataframe(df_mostrar[columnas_orden].style.map(color_pct, subset=["GANANCIA LATENTE", "RENT. (%)"]), use_container_width=True, hide_index=True)
+                # ESCUDO ANTI-ERRORES: Dibuja las columnas solo si existen
+                columnas_ideales = ['FECHA', 'TICKER', 'EMPRESA', 'CANT.', 'PRECIO COMPRA', 'PRECIO ACTUAL', 'INVERTIDO', 'VALOR ACTUAL', 'GANANCIA LATENTE', 'RENT. (%)']
+                columnas_seguras = [c for c in columnas_ideales if c in df_mostrar.columns]
+                
+                st.dataframe(df_mostrar[columnas_seguras].style.map(color_pct, subset=["GANANCIA LATENTE", "RENT. (%)"]), use_container_width=True, hide_index=True)
             else:
                 st.info("👈 Pulsa en 'Sincronizar con Wall Street' para ver tus gráficos y las acciones de tu tabla.")
 
