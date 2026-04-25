@@ -300,18 +300,26 @@ def a_yahoo(ticker):
     if ticker.startswith("NYSE:"): return ticker.replace("NYSE:", "")
     return ticker
 
-# --- FUNCIÓN PARA GUARDAR EL SNAPSHOT DIARIO ---
 def guardar_foto_cartera(total_actual):
     ws_ev = conectar_ws("Evolucion")
     if ws_ev:
         try:
-            # Obtenemos la columna de fechas para no repetir el registro hoy
+            valor_actual = round(float(total_actual), 2)
+            # Traemos las columnas para comparar
             fechas_registradas = ws_ev.col_values(1)
-            hoy = datetime.datetime.now(pytz.timezone('Europe/Madrid')).strftime("%Y-%m-%d")
             
-            if hoy not in fechas_registradas:
-                ws_ev.append_row([hoy, round(total_actual, 2)])
-        except:
+            tz = pytz.timezone('Europe/Madrid')
+            hoy = datetime.datetime.now(tz).strftime("%Y-%m-%d")
+            
+            if hoy in fechas_registradas:
+                # YA EXISTE HOY: Buscamos dónde está y machacamos el valor
+                # El índice en Google Sheets empieza en 1
+                fila_index = fechas_registradas.index(hoy) + 1
+                ws_ev.update_cell(fila_index, 2, valor_actual)
+            else:
+                # DÍA NUEVO: Añadimos una fila nueva al final
+                ws_ev.append_row([hoy, valor_actual])
+        except Exception as e:
             pass
 
 def obtener_estado_mercados():
@@ -1276,14 +1284,13 @@ if es_admin:
             else:
                 st.info("No hay nada en la cartera.")
 
-    # --- LÓGICA DE EVOLUCIÓN HISTÓRICA ---
+# --- LÓGICA DE EVOLUCIÓN HISTÓRICA AUTOMÁTICA ---
         if st.session_state.get('tot_act'):
-            # 1. Guardar la foto del día automáticamente
+            # El sistema guarda/actualiza el valor de hoy automáticamente al entrar
             guardar_foto_cartera(st.session_state.tot_act)
             
-            # 2. Dibujar la gráfica al final de la pestaña
             st.markdown("---")
-            st.markdown("### 📈 Evolución Histórica de mi Capital")
+            st.markdown("### 📈 Evolución Histórica de mi Capital (en €)")
             
             ws_ev = conectar_ws("Evolucion")
             if ws_ev:
@@ -1291,25 +1298,34 @@ if es_admin:
                     datos_ev = ws_ev.get_all_records()
                     if datos_ev:
                         df_ev = pd.DataFrame(datos_ev)
+                        # Normalizamos nombres de columnas
+                        df_ev.columns = [str(c).strip().capitalize() for c in df_ev.columns]
+                        
                         df_ev['Fecha'] = pd.to_datetime(df_ev['Fecha'])
+                        df_ev = df_ev.sort_values('Fecha')
+                        
+                        if df_ev['Valor'].dtype == object:
+                            df_ev['Valor'] = df_ev['Valor'].astype(str).str.replace(',', '.').str.extract(r'([-]?\d+\.?\d*)').astype(float)
                         
                         fig_evolucion = px.area(df_ev, x='Fecha', y='Valor', 
-                                                title="Crecimiento Total de la Cartera (€)",
-                                                labels={'Valor': 'Euros (€)', 'Fecha': 'Día'},
-                                                color_discrete_sequence=['#228B22']) # Verde Alpha
+                                                title="Patrimonio Total Realizado (Cierre Diario)",
+                                                labels={'Valor': 'Total (€)', 'Fecha': 'Día'},
+                                                color_discrete_sequence=['#228B22'])
                         
                         fig_evolucion.update_layout(
                             hovermode="x unified",
                             template="plotly_dark",
                             paper_bgcolor='rgba(0,0,0,0)',
                             plot_bgcolor='rgba(0,0,0,0)',
-                            yaxis=dict(gridcolor='rgba(255,255,255,0.1)')
+                            yaxis=dict(gridcolor='rgba(255,255,255,0.1)', tickformat=",.2f")
                         )
+                        fig_evolucion.update_traces(mode="lines+markers", marker=dict(size=8))
+                        
                         st.plotly_chart(fig_evolucion, use_container_width=True)
                     else:
-                        st.info("💡 Mañana aparecerá aquí tu primer punto de evolución diaria.")
-                except:
-                    st.error("Error al conectar con la pestaña 'Evolucion' del Sheets.")
+                        st.info("💡 La gráfica empezará a dibujarse en cuanto registres tu primera acción.")
+                except Exception as e:
+                    st.error(f"Error al cargar la evolución: {e}")
 
     # --- PESTAÑA CIERRES ANUALES ---
     with tabs[5]:
