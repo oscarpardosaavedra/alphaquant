@@ -1299,32 +1299,18 @@ if es_admin:
                                 dict_compras[tk] += cant
                 except Exception: pass
 
-        dict_ventas = {}
+        # Ya no restamos las ventas del stock aquí, porque ahora las borramos físicamente del Excel de Cartera
+        dict_stock = {}
+        for tk, cant_comprada in dict_compras.items():
+            if cant_comprada > 0.0001:
+                dict_stock[tk] = round(cant_comprada, 4)
+
         ws_cierres = conectar_ws("Cierres")
         datos_cierres_auto = [] 
         if ws_cierres:
             try:
                 datos_cierres_auto = ws_cierres.get_all_records()
-                if datos_cierres_auto:
-                    for d in datos_cierres_auto:
-                        d_l = {str(k).lower().replace(' ', '').replace('_', '').replace('º', '').replace('.', ''): str(v) for k, v in d.items()}
-                        tk = d_l.get('ticker', d_l.get('activo', '')).strip().upper()
-                        
-                        raw_cant = d_l.get('cantidad', d_l.get('cant', '')).replace(',', '.')
-                        try: cant = float(raw_cant) if raw_cant else 0.0
-                        except ValueError: cant = 0.0
-                        
-                        if tk and cant <= 0: cant = 999999.0 
-                        if tk: dict_ventas[tk] = dict_ventas.get(tk, 0.0) + cant
             except Exception: pass
-
-        # Calculamos el Stock Real
-        dict_stock = {}
-        for tk, cant_comprada in dict_compras.items():
-            cant_vendida = dict_ventas.get(tk, 0.0)
-            cant_restante = cant_comprada - cant_vendida
-            if cant_restante > 0.0001:
-                dict_stock[tk] = round(cant_restante, 4)
 
         col_cl1, col_cl2 = st.columns([1, 3])
         
@@ -1346,7 +1332,7 @@ if es_admin:
                         if cant_v > max_permitido:
                             st.error(f"❌ Operación bloqueada. Intentas vender {cant_v} uds de {tk_v}, pero solo posees {max_permitido}.")
                         else:
-                            with st.spinner("Registrando y calculando rentabilidad..."):
+                            with st.spinner("Registrando venta y actualizando tu Cartera..."):
                                 info_compra = dict_compras_info[tk_v]
                                 empresa_v = info_compra['empresa']
                                 broker_v = info_compra['broker']
@@ -1391,6 +1377,7 @@ if es_admin:
                                 fecha_venta_completa = f"{fecha_v} {hora_v}"
 
                                 if ws_cierres:
+                                    # 1. Guardamos en Ventas
                                     ws_cierres.append_row([
                                         tk_v, 
                                         empresa_v, 
@@ -1402,11 +1389,32 @@ if es_admin:
                                         int(dias_cartera),
                                         float(total_venta_local)
                                     ])
-                                    st.success(f"✅ Venta registrada a las {hora_v}. Beneficio: {gan_v:+.2f} €")
+                                    
+                                    # 2. Descontamos de la Cartera
+                                    ws_cartera = conectar_ws("Cartera")
+                                    if ws_cartera:
+                                        celdas_c = ws_cartera.findall(tk_v, in_column=1)
+                                        celdas_c.reverse() # Vamos de abajo hacia arriba
+                                        cant_a_descontar = cant_v
+                                        
+                                        for celda in celdas_c:
+                                            if cant_a_descontar <= 0.0001: break
+                                            try:
+                                                # La cantidad está en la columna 3 del Excel Cartera
+                                                cant_fila = float(str(ws_cartera.cell(celda.row, 3).value).replace(',', '.'))
+                                            except: cant_fila = 0.0
+                                            
+                                            if cant_fila <= cant_a_descontar + 0.0001:
+                                                ws_cartera.delete_rows(celda.row)
+                                                cant_a_descontar -= cant_fila
+                                            else:
+                                                ws_cartera.update_cell(celda.row, 3, cant_fila - cant_a_descontar)
+                                                cant_a_descontar = 0
+
+                                    st.success(f"✅ Venta registrada a las {hora_v}. Stock actualizado.")
                                     time.sleep(2)
                                     st.rerun()
 
-            # --- NUEVA SECCIÓN DE BORRADO DE VENTAS ---
             st.markdown("#### 🗑️ Gestión de Ventas")
             with st.expander("Corregir / Eliminar Venta"):
                 if datos_cierres_auto:
@@ -1415,28 +1423,45 @@ if es_admin:
                         v_borrar = st.selectbox("Selecciona la venta:", opciones_borrar_v)
                         accion_borrar = st.radio("¿Qué deseas hacer?", [
                             "🔄 Anular Venta (Las acciones vuelven a tu Cartera)",
-                            "❌ Eliminar Definitivamente (Se borra de Ventas y de Cartera)"
+                            "❌ Eliminar Definitivamente (Solo se borra del historial de Ventas)"
                         ])
                         
                         if st.form_submit_button("Ejecutar Acción", use_container_width=True):
                             if ws_cierres:
                                 tk_a_borrar = v_borrar.split(" - ")[0].strip()
                                 cell = ws_cierres.find(tk_a_borrar, in_column=1)
+                                
                                 if cell: 
+                                    # Extraemos los datos de la venta antes de borrarla
+                                    row_vals = ws_cierres.row_values(cell.row)
                                     ws_cierres.delete_rows(cell.row)
                                     
-                                    if "Definitivamente" in accion_borrar:
-                                        # Si elige eliminar definitivamente, conectamos a la Cartera y lo fulminamos allí también
-                                        ws_cartera = conectar_ws("Cartera")
-                                        if ws_cartera:
-                                            cell_c = ws_cartera.find(tk_a_borrar, in_column=1)
-                                            if cell_c:
-                                                ws_cartera.delete_rows(cell_c.row)
-                                        st.success(f"❌ {tk_a_borrar} ha sido eliminado de Ventas y de tu Cartera de forma permanente.")
+                                    if "Anular" in accion_borrar:
+                                        try:
+                                            # Intentamos reconstruir los datos para mandarlos de vuelta a Cartera
+                                            emp_rest = row_vals[1]
+                                            gan_rest = float(str(row_vals[3]).replace(',', '.'))
+                                            fec_rest = row_vals[4].split(" ")[0]
+                                            brk_rest = row_vals[5]
+                                            cant_rest = float(str(row_vals[6]).replace(',', '.'))
+                                            tot_rest = float(str(row_vals[8]).replace(',', '.'))
+                                            
+                                            # Ingeniería inversa: Inversión inicial = Total - Ganancia
+                                            inv_rest = tot_rest - gan_rest
+                                            precio_medio_rest = round(inv_rest / cant_rest, 4) if cant_rest > 0 else 0
+                                            
+                                            ws_cartera = conectar_ws("Cartera")
+                                            if ws_cartera:
+                                                ws_cartera.append_row([
+                                                    tk_a_borrar, emp_rest, cant_rest, precio_medio_rest, fec_rest, brk_rest
+                                                ])
+                                            st.success(f"🔄 Venta anulada. Las {cant_rest} acciones vuelven a tu Cartera.")
+                                        except:
+                                            st.warning("Venta borrada, pero no se pudo restaurar en la cartera (faltan datos).")
                                     else:
-                                        st.success(f"🔄 Venta anulada. Las acciones de {tk_a_borrar} vuelven a tu Cartera.")
+                                        st.success(f"❌ Venta eliminada definitivamente del historial.")
                                         
-                                    time.sleep(1.5)
+                                    time.sleep(2)
                                     st.rerun()
                 else:
                     st.info("No hay ventas registradas.")
@@ -1481,9 +1506,22 @@ if es_admin:
                         if col_rent: df_cierres_mostrar[col_rent] = clean_numeric(df_cierres_mostrar[col_rent]).apply(lambda x: f"{x:+.2f}%")
                         
                         col_tot = next((c for c in df_cierres_mostrar.columns if 'total' in str(c).lower() or 'obtenido' in str(c).lower()), None)
-                        if col_tot: df_cierres_mostrar[col_tot] = clean_numeric(df_cierres_mostrar[col_tot]).apply(lambda x: f"{x:,.2f} €")
+                        if col_tot: df_cierres_mostrar[col_tot] = clean_numeric(df_cierres_mostrar[col_tot]).apply(lambda x: f"{x:,.2f} €" if pd.notnull(x) else x)
 
-                        cols_mostrar_final = df_cierres_mostrar.columns.tolist()
+                        # Forzamos la búsqueda de columnas por nombre genérico para que encajen con tu Excel
+                        cols_buscadas = ["Ticker", "Empresa", "Rentabilidad", "Ganancia", "Fecha", "Broker", "Cantidad", "Días", "Total"]
+                        cols_mostrar_final = []
+                        
+                        for ideal in cols_buscadas:
+                            for real in df_cierres_mostrar.columns:
+                                if ideal.lower() in str(real).lower() and real not in cols_mostrar_final:
+                                    cols_mostrar_final.append(real)
+                                    break
+                                    
+                        # Si quedó alguna rezagada, la añadimos al final
+                        for real in df_cierres_mostrar.columns:
+                            if real not in cols_mostrar_final:
+                                cols_mostrar_final.append(real)
                         
                         def color_celdas(val):
                             if isinstance(val, str) and ('%' in val or '€' in val):
