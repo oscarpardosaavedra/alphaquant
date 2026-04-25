@@ -1145,6 +1145,7 @@ if es_admin:
                             time.sleep(1)
                             st.rerun()
                         except Exception as e: st.error(f"Error al guardar: {e}")
+                            
             st.markdown("#### 🗑️ Corregir / Borrar")
                         with st.expander("Eliminar operación de la Cartera"):
                             if st.session_state.get('datos_cartera'):
