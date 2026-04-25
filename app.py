@@ -1040,117 +1040,263 @@ with tab4:
 # 5. PESTAÑAS PRIVADAS (MODO ADMIN)
 # ==========================================
 if es_admin:
+    # --- PESTAÑA MI CARTERA ---
     with tabs[4]:
         st.markdown("### 💼 Centro de Control: Mi Cartera")
+        
         col_c_izq, col_c_der = st.columns([1, 3])
         
         with col_c_izq:
             st.markdown("#### 🛒 Registrar Compra")
             with st.form("form_compra"):
                 tk_c = st.selectbox("Activo:", opciones_desplegable)
-                broker_c = st.selectbox("Broker / Moneda:", ["Revolut ($)", "IBKR ($)", "Trade Republic (€)", "Scalable (€)"])
-                total_c = st.number_input("Capital Total Invertido:", min_value=0.01, step=10.0)
-                cant_c = st.number_input("Nº de Acciones:", min_value=0.0001, step=1.0)
-                fecha_c = st.date_input("Fecha:")
-                if st.form_submit_button("Añadir", use_container_width=True):
+                broker_c = st.selectbox("Broker / Moneda:", ["Trade Republic (€)", "Revolut ($)", "Interactive Brokers ($)", "Scalable Capital (€)", "Otro (€)", "Otro ($)"])
+                total_c = st.number_input("Capital Total Invertido:", min_value=0.01, step=100.0)
+                cant_c = st.number_input("Nº de Acciones recibidas:", min_value=0.000001, step=1.0)
+                fecha_c = st.date_input("Fecha de Compra:")
+                
+                if st.form_submit_button("Añadir a Cartera", use_container_width=True):
                     ws_c = conectar_ws("Cartera")
                     if ws_c:
-                        t_limpio = tk_c.split(" ")[0]
-                        ws_c.append_row([t_limpio, tickers_nombres.get(t_limpio, t_limpio), float(cant_c), round(total_c/cant_c, 4), str(fecha_c), broker_c])
-                        st.success("✅ Añadido.")
-                        time.sleep(1); st.rerun()
+                        try:
+                            t_limpio = tk_c.split(" ")[0]
+                            precio_medio_calculado = total_c / cant_c
+                            ws_c.append_row([
+                                t_limpio, 
+                                tickers_nombres.get(t_limpio, t_limpio), 
+                                float(cant_c), 
+                                round(float(precio_medio_calculado), 4), 
+                                str(fecha_c),
+                                broker_c
+                            ])
+                            st.success(f"✅ Registrado. Pulsa 'Sincronizar' para actualizar.")
+                            time.sleep(1.5)
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Error al guardar. Revisa que tengas la columna 'Broker'. Detalle: {e}")
 
-            st.markdown("#### 🔄 Actualizar")
-            if st.button("Sincronizar Wall Street", use_container_width=True):
-                st.session_state.datos_cartera = []
+            st.markdown("#### 🔄 Actualizar Datos")
+            if st.button("Sincronizar con Wall Street", use_container_width=True):
                 ws_c = conectar_ws("Cartera")
                 if ws_c:
-                    datos_raw = ws_c.get_all_records()
-                    if datos_raw:
-                        # 1. Tasa EURUSD real (Auditoría al céntimo)
-                        tasa_fx = 1.08
-                        try:
-                            fx = yf.download("EURUSD=X", period="1d", progress=False)
-                            if not fx.empty:
-                                if isinstance(fx.columns, pd.MultiIndex): fx.columns = fx.columns.get_level_values(0)
-                                tasa_fx = float(fx['Close'].dropna().iloc[-1])
-                        except: pass
-
-                        lista_val = []; t_inv_eur = 0; t_act_eur = 0
-                        barra = st.progress(0, text="Sincronizando...")
-                        
-                        for i, d in enumerate(datos_raw):
+                    try:
+                        datos_raw = ws_c.get_all_records()
+                        if datos_raw:
+                            # Tasa de cambio EUR/USD
+                            tasa_eur_usd = 1.08 
                             try:
-                                d_l = {str(k).lower().strip(): v for k, v in d.items()}
-                                tk = str(d_l.get('ticker', d_l.get('activo', ''))).strip().upper()
-                                if not tk or tk == 'TICKER': continue
-                                
-                                p_compra = float(str(d.get('Precio_Compra', d.get('Precio Compra', d.get('Precio', 0)))).replace(',','.'))
-                                cant = float(str(d.get('Cantidad', d.get('Nº Acciones', 0))).replace(',','.'))
-                                broker = str(d.get('Broker', '')).upper()
-                                es_usd = ("$" in broker or tk in ['DQ', 'GOOGL', 'AAPL', 'NVDA'])
+                                df_fx = yf.download("EURUSD=X", period="1d", progress=False)
+                                if not df_fx.empty:
+                                    if isinstance(df_fx.columns, pd.MultiIndex): df_fx.columns = df_fx.columns.get_level_values(0)
+                                    tasa_eur_usd = float(df_fx['Close'].iloc[-1])
+                            except: pass
 
-                                hist = yf.download(a_yahoo(tk), period="5d", progress=False)
-                                if isinstance(hist.columns, pd.MultiIndex): hist.columns = hist.columns.get_level_values(0)
-                                p_actual = float(hist['Close'].dropna().iloc[-1]) if not hist.empty else p_compra
-                                
-                                inv_l = p_compra * cant
-                                act_l = p_actual * cant
-                                
-                                # Conversión a EUR para los cuadros de arriba
-                                inv_e = inv_l / tasa_fx if es_usd else inv_l
-                                act_e = act_l / tasa_fx if es_usd else act_l
-                                
-                                t_inv_eur += inv_e
-                                t_act_eur += act_e
-                                
-                                # Guardamos los datos con los nombres de columna exactos
-                                lista_val.append({
-                                    "TICKER": tk,
-                                    "CANT.": cant,
-                                    "INVERTIDO": f"{inv_l:,.2f} {'$' if es_usd else '€'}",
-                                    "VALOR ACTUAL": f"{act_l:,.2f} {'$' if es_usd else '€'}",
-                                    "RENT (%)": ((p_actual/p_compra)-1)*100,
-                                    "GAN_E": act_e - inv_e
-                                })
-                            except: continue
-                            barra.progress((i+1)/len(datos_raw))
-                        
-                        st.session_state.datos_cartera = lista_val
-                        st.session_state.tot_inv = t_inv_eur
-                        st.session_state.tot_act = t_act_eur
-                        st.rerun()
+                            lista_val = []
+                            total_invertido_eur = 0
+                            total_actual_eur = 0
+                            
+                            barra_v = st.progress(0, text="Valorando y convirtiendo divisas...")
+                            for i, d in enumerate(datos_raw):
+                                try:
+                                    # Limpiador absoluto de diccionario (ignora mayúsculas, espacios y símbolos)
+                                    d_limpio = {str(k).lower().replace(' ', '').replace('_', '').replace('º', ''): v for k, v in d.items()}
+                                    
+                                    tk = str(d_limpio.get('ticker', d_limpio.get('activo', ''))).strip()
+                                    if not tk: continue
+                                    
+                                    broker_db = str(d_limpio.get('broker', ''))
+                                    es_usd = True if "($)" in broker_db or "REVOLUT" in broker_db.upper() or "IBKR" in broker_db.upper() else False
+                                    if not broker_db: es_usd = (obtener_simbolo_moneda(tk) == "$")
+                                    
+                                    moneda_str = "$" if es_usd else "€"
+                                    
+                                    tk_y = a_yahoo(tk)
+                                    hist = yf.download(tk_y, period="5d", progress=False)
+                                    if isinstance(hist.columns, pd.MultiIndex): hist.columns = hist.columns.get_level_values(0)
+                                    
+                                    raw_compra = str(d_limpio.get('preciocompra', d_limpio.get('precio', 0))).replace('€', '').replace('$', '').replace(',', '.').strip()
+                                    raw_cant = str(d_limpio.get('nacciones', d_limpio.get('cantidad', d_limpio.get('acciones', 0)))).replace(',', '.').strip()
+                                    
+                                    p_compra = float(raw_compra) if raw_compra else 0.0
+                                    cant = float(raw_cant) if raw_cant else 0.0
+                                    
+                                    if p_compra > 0 and cant > 0:
+                                        p_actual = p_compra 
+                                        if not hist.empty and 'Close' in hist.columns:
+                                            p_actual = float(hist['Close'].dropna().iloc[-1])
+                                            
+                                        subtotal_inv_local = p_compra * cant
+                                        subtotal_act_local = p_actual * cant
+                                        ganancia_local = subtotal_act_local - subtotal_inv_local
+                                        pct = ((p_actual / p_compra) - 1) * 100
+                                        
+                                        # Conversión a EUROS puros para los totales
+                                        inv_eur = (subtotal_inv_local / tasa_eur_usd) if es_usd else subtotal_inv_local
+                                        act_eur = (subtotal_act_local / tasa_eur_usd) if es_usd else subtotal_act_local
+                                        ganancia_eur = act_eur - inv_eur
+                                        
+                                        total_invertido_eur += inv_eur
+                                        total_actual_eur += act_eur
+                                        
+                                        lista_val.append({
+                                            "FECHA": str(d.get('Fecha', '')),
+                                            "BROKER": broker_db.split(" ")[0] if broker_db else "N/A",
+                                            "TICKER": tk,
+                                            "EMPRESA": str(d.get('Empresa', '')),
+                                            "CANT.": cant,
+                                            "PRECIO COMPRA": p_compra,
+                                            "PRECIO ACTUAL": p_actual,
+                                            "INV_LOCAL": subtotal_inv_local,
+                                            "ACT_LOCAL": subtotal_act_local,
+                                            "GAN_LOCAL": ganancia_local,
+                                            "INVERTIDO_EUR": inv_eur,
+                                            "GANANCIA_EUR": ganancia_eur,
+                                            "RENT. (%)": pct,
+                                            "MONEDA": moneda_str
+                                        })
+                                except Exception: pass 
+                                barra_v.progress((i+1)/len(datos_raw))
+                            
+                            st.session_state.datos_cartera = lista_val
+                            st.session_state.tot_inv = total_invertido_eur
+                            st.session_state.tot_act = total_actual_eur
+                            barra_v.empty()
+                        else:
+                            st.warning("⚠️ La pestaña 'Cartera' está vacía.")
+                    except Exception as exc:
+                        st.error(f"Error al leer datos: {exc}")
 
         with col_c_der:
             if st.session_state.get('datos_cartera') and len(st.session_state.datos_cartera) > 0:
-                df = pd.DataFrame(st.session_state.datos_cartera)
+                df_cartera = pd.DataFrame(st.session_state.datos_cartera)
                 
-                # KPIs REALES EN EUROS (Matemática corregida)
-                inv_total = st.session_state.tot_inv
-                act_total = st.session_state.tot_act
-                gan_total = act_total - inv_total
-                
-                c1, c2, c3, c4 = st.columns(4)
-                c1.metric("💰 Valor Cartera", f"{act_total:,.2f} €")
-                c2.metric("📥 Invertido", f"{inv_total:,.2f} €")
-                c3.metric("🚀 Ganancia Real", f"{gan_total:+,.2f} €")
-                c4.metric("📈 Rentabilidad", f"{((gan_total/inv_total)*100 if inv_total>0 else 0):+.2f}%")
-                
-                st.markdown("---")
-                
-                # TABLA CON TOOLTIPS (Ayuda al pasar el ratón)
-                st.markdown("#### 📋 Detalle de Acciones")
-                st.dataframe(
-                    df[['TICKER', 'CANT.', 'INVERTIDO', 'VALOR ACTUAL', 'RENT (%)']],
-                    use_container_width=True,
-                    hide_index=True,
-                    column_config={
-                        "TICKER": st.column_config.TextColumn("TICKER", help="Símbolo oficial del activo (ej: GOOGL)."),
-                        "CANT.": st.column_config.NumberColumn("CANT.", help="Número de acciones que tienes actualmente."),
-                        "INVERTIDO": st.column_config.TextColumn("INVERTIDO", help="Dinero total que pusiste (en la moneda en que lo compraste)."),
-                        "VALOR ACTUAL": st.column_config.TextColumn("VALOR ACTUAL", help="Lo que vale tu posición ahora mismo en el mercado."),
-                        "RENT (%)": st.column_config.NumberColumn("RENT (%)", format="%.2f%%", help="Rentabilidad porcentual de la operación.")
-                    }
-                )
+                # Verificación de seguridad
+                if 'TICKER' in df_cartera.columns:
+                    inv = st.session_state.tot_inv
+                    act = st.session_state.tot_act
+                    gan_total = act - inv
+                    pct_total = ((act / inv) - 1) * 100 if inv > 0 else 0
+                    
+                    c_m1, c_m2, c_m3, c_m4 = st.columns(4)
+                    c_m1.metric("💰 Valor Actual", f"{act:,.2f} €")
+                    c_m2.metric("📥 Invertido", f"{inv:,.2f} €")
+                    c_m3.metric("🚀 Beneficio Latente", f"{gan_total:+,.2f} €")
+                    c_m4.metric("📈 Rentabilidad Total", f"{pct_total:+.2f}%")
+                    st.markdown("---")
+                    
+                    c_g1, c_g2 = st.columns(2)
+                    with c_g1:
+                        if 'INVERTIDO_EUR' in df_cartera.columns and not df_cartera.empty:
+                            fig_pie = px.pie(df_cartera, values='INVERTIDO_EUR', names='TICKER', title='Distribución Real (Peso en €)', hole=0.4, color_discrete_sequence=px.colors.sequential.Plasma)
+                            fig_pie.update_traces(textposition='inside', textinfo='percent+label')
+                            st.plotly_chart(fig_pie, use_container_width=True)
+                    with c_g2:
+                        if 'GANANCIA_EUR' in df_cartera.columns and not df_cartera.empty:
+                            df_cartera['Color'] = np.where(df_cartera['GANANCIA_EUR'] > 0, 'green', 'red')
+                            fig_bar = px.bar(df_cartera, x='TICKER', y='GANANCIA_EUR', title='Ganancia/Pérdida (Unificado en €)', color='Color', color_discrete_map={'green':'#228B22', 'red':'#FF3333'})
+                            fig_bar.update_layout(showlegend=False)
+                            st.plotly_chart(fig_bar, use_container_width=True)
+                    
+                    st.markdown("#### 📋 Mis Acciones en Cartera (Moneda Original)")
+                    df_mostrar = df_cartera.copy()
+                    df_mostrar['PRECIO COMPRA'] = df_mostrar.apply(lambda x: f"{x['PRECIO COMPRA']:.2f} {x['MONEDA']}", axis=1)
+                    df_mostrar['PRECIO ACTUAL'] = df_mostrar.apply(lambda x: f"{x['PRECIO ACTUAL']:.2f} {x['MONEDA']}", axis=1)
+                    df_mostrar['INVERTIDO'] = df_mostrar.apply(lambda x: f"{x['INV_LOCAL']:,.2f} {x['MONEDA']}", axis=1)
+                    df_mostrar['VALOR ACTUAL'] = df_mostrar.apply(lambda x: f"{x['ACT_LOCAL']:,.2f} {x['MONEDA']}", axis=1)
+                    df_mostrar['GANANCIA LATENTE'] = df_mostrar.apply(lambda x: f"{x['GAN_LOCAL']:+,.2f} {x['MONEDA']}", axis=1)
+                    df_mostrar['RENT. (%)'] = df_mostrar['RENT. (%)'].apply(lambda x: f"{x:+.2f}%")
+                    
+                    columnas_seguras = [c for c in ['FECHA', 'BROKER', 'TICKER', 'EMPRESA', 'CANT.', 'PRECIO COMPRA', 'PRECIO ACTUAL', 'INVERTIDO', 'VALOR ACTUAL', 'GANANCIA LATENTE', 'RENT. (%)'] if c in df_mostrar.columns]
+                    st.dataframe(df_mostrar[columnas_seguras].style.map(color_pct, subset=["GANANCIA LATENTE", "RENT. (%)"]), use_container_width=True, hide_index=True)
+                else:
+                    st.error("Error de formato: Refresca la web completa con F5 y vuelve a Sincronizar.")
             else:
-                st.info("Pestaña lista. Pulsa 'Sincronizar' para ver tus acciones y la auditoría de divisas.")
+                st.info("👈 Pulsa en 'Sincronizar con Wall Street' para ver tus gráficos y datos.")
+
+    # --- PESTAÑA CIERRES ANUALES ---
+    with tabs[5]:
+        st.subheader("🗓️ Histórico de Cierres y Rendimiento Anual")
+        col_cl1, col_cl2 = st.columns([1, 3])
+        
+        with col_cl1:
+            st.markdown("#### 🤝 Registrar Venta")
+            with st.form("form_cierre"):
+                tk_v = st.selectbox("Activo Vendido:", opciones_desplegable)
+                broker_v = st.selectbox("Broker de Venta:", ["Trade Republic", "Revolut", "Interactive Brokers", "Otro"])
+                prec_v = st.number_input("Rentabilidad Final (%):", format="%.2f")
+                gan_v = st.number_input("Ganancia/Pérdida Efectiva (€/$):", format="%.2f")
+                fecha_v = st.date_input("Fecha de Venta:")
+                if st.form_submit_button("Registrar Cierre", use_container_width=True):
+                    ws_cierres = conectar_ws("Cierres")
+                    if ws_cierres:
+                        t_v_limpio = tk_v.split(" ")[0]
+                        ws_cierres.append_row([t_v_limpio, tickers_nombres.get(t_v_limpio, t_v_limpio), float(prec_v), float(gan_v), str(fecha_v), broker_v])
+                        st.success("✅ Cierre registrado.")
+                        time.sleep(1)
+                        st.rerun()
+
+            st.markdown("#### 📥 Analizar Resultados")
+            if st.button("Cargar Histórico de Cierres", use_container_width=True):
+                ws_cierres = conectar_ws("Cierres")
+                if ws_cierres:
+                    try:
+                        datos_cierres = ws_cierres.get_all_records()
+                        if datos_cierres:
+                            st.session_state.datos_cierres = datos_cierres
+                        else:
+                            st.session_state.datos_cierres = []
+                            st.warning("No hay operaciones cerradas.")
+                    except Exception as e:
+                        st.error("Error al leer la hoja 'Cierres'. ¿Añadiste la columna 'Broker'?")
+
+        with col_cl2:
+            if st.session_state.get('datos_cierres') and len(st.session_state.datos_cierres) > 0:
+                df_cierres = pd.DataFrame(st.session_state.datos_cierres)
+                
+                col_rent = None
+                col_gan = None
+                for c in df_cierres.columns:
+                    c_low = c.lower().replace('_', '').replace(' ', '')
+                    if 'rentabilidad' in c_low or 'rent' in c_low or '%' in c_low: col_rent = c
+                    if 'ganancia' in c_low or 'beneficio' in c_low or 'efectiva' in c_low: col_gan = c
+                
+                if col_gan and col_rent:
+                    try:
+                        df_cierres[col_gan] = df_cierres[col_gan].astype(str).str.replace(r'[^\d\.,-]', '', regex=True).str.replace(',', '.').astype(float)
+                        df_cierres[col_rent] = df_cierres[col_rent].astype(str).str.replace(r'[^\d\.,-]', '', regex=True).str.replace(',', '.').astype(float)
+                        
+                        win_rate = (df_cierres[col_gan] > 0).mean() * 100
+                        beneficio_neto = df_cierres[col_gan].sum()
+                        operaciones_totales = len(df_cierres)
+                        operaciones_ganadoras = len(df_cierres[df_cierres[col_gan] > 0])
+                        operaciones_perdedoras = operaciones_totales - operaciones_ganadoras
+                        
+                        c_b1, c_b2, c_b3, c_b4 = st.columns(4)
+                        c_b1.metric("💸 Beneficio Neto", f"{beneficio_neto:+,.2f} €")
+                        c_b2.metric("🎯 Win Rate", f"{win_rate:.1f}%")
+                        c_b3.metric("🏆 Ganadoras", f"{operaciones_ganadoras}")
+                        c_b4.metric("🪦 Perdedoras", f"{operaciones_perdedoras}")
+                        st.markdown("---")
+                        
+                        c_gc1, c_gc2 = st.columns(2)
+                        with c_gc1:
+                            if operaciones_totales > 0:
+                                df_win_loss = pd.DataFrame({'Resultado': ['Ganadoras', 'Perdedoras'], 'Cantidad': [operaciones_ganadoras, operaciones_perdedoras]})
+                                fig_win = px.pie(df_win_loss, values='Cantidad', names='Resultado', title='Tasa de Acierto (Win Rate)', hole=0.4, color='Resultado', color_discrete_map={'Ganadoras':'#228B22', 'Perdedoras':'#FF3333'})
+                                st.plotly_chart(fig_win, use_container_width=True)
+                            
+                        with c_gc2:
+                            df_cierres['Color'] = np.where(df_cierres[col_gan] > 0, 'green', 'red')
+                            df_cierres['Operacion'] = [f"Op {i+1} ({tk})" for i, tk in enumerate(df_cierres.get('Ticker', df_cierres.get('Activo', df_cierres.index)))]
+                            fig_hist = px.bar(df_cierres, x='Operacion', y=col_gan, title='Historial de Trades', color='Color', color_discrete_map={'green':'#228B22', 'red':'#FF3333'})
+                            fig_hist.update_layout(showlegend=False, xaxis_title="", yaxis_title="Beneficio Realizado")
+                            st.plotly_chart(fig_hist, use_container_width=True)
+                        
+                        st.markdown("#### 📜 Registro de Operaciones Cerradas")
+                        df_cierres_mostrar = df_cierres.copy()
+                        df_cierres_mostrar[col_gan] = df_cierres_mostrar[col_gan].apply(lambda x: f"{x:+,.2f} €")
+                        df_cierres_mostrar[col_rent] = df_cierres_mostrar[col_rent].apply(lambda x: f"{x:+.2f}%")
+                        
+                        cols_mostrar = [c for c in ['Fecha', 'Broker', 'Ticker', 'Activo', 'Empresa', col_rent, col_gan, 'Fecha_Venta'] if c in df_cierres_mostrar.columns]
+                        st.dataframe(df_cierres_mostrar[cols_mostrar].style.map(color_pct, subset=[col_gan, col_rent]), use_container_width=True, hide_index=True)
+                    except Exception: pass
