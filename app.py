@@ -1214,89 +1214,120 @@ if es_admin:
                 st.info("👈 Pulsa en 'Sincronizar con Wall Street' para ver tus gráficos y datos.")
 
     # --- PESTAÑA CIERRES ANUALES ---
+    # --- PESTAÑA CIERRES ANUALES (CON VALIDACIÓN DE STOCK) ---
     with tabs[5]:
         st.subheader("🗓️ Histórico de Cierres y Rendimiento Anual")
+        
+        # 1. PASO PREVIO: Leer Cartera para saber qué podemos vender
+        dict_stock = {}
+        ws_inventario = conectar_ws("Cartera")
+        if ws_inventario:
+            try:
+                data_inv = ws_inventario.get_all_records()
+                if data_inv:
+                    temp_df = pd.DataFrame(data_inv)
+                    # Limpiamos nombres de columnas para leer cantidad
+                    temp_df.columns = [str(c).lower().replace(' ', '').replace('_', '').replace('º', '') for c in temp_df.columns]
+                    # Agrupamos por ticker por si compraste el mismo valor varias veces
+                    resumen_stock = temp_df.groupby('ticker')['nacciones'].sum().to_dict()
+                    # Filtramos solo los que tengan cantidad > 0
+                    dict_stock = {t.upper(): q for t, q in resumen_stock.items() if q > 0}
+            except: pass
+
         col_cl1, col_cl2 = st.columns([1, 3])
         
         with col_cl1:
             st.markdown("#### 🤝 Registrar Venta")
-            with st.form("form_cierre"):
-                tk_v = st.selectbox("Activo Vendido:", opciones_desplegable)
-                broker_v = st.selectbox("Broker de Venta:", ["Trade Republic", "Revolut", "Interactive Brokers", "Otro"])
-                prec_v = st.number_input("Rentabilidad Final (%):", format="%.2f")
-                gan_v = st.number_input("Ganancia/Pérdida Efectiva (€/$):", format="%.2f")
-                fecha_v = st.date_input("Fecha de Venta:")
-                if st.form_submit_button("Registrar Cierre", use_container_width=True):
-                    ws_cierres = conectar_ws("Cierres")
-                    if ws_cierres:
-                        t_v_limpio = tk_v.split(" ")[0]
-                        ws_cierres.append_row([t_v_limpio, tickers_nombres.get(t_v_limpio, t_v_limpio), float(prec_v), float(gan_v), str(fecha_v), broker_v])
-                        st.success("✅ Cierre registrado.")
-                        time.sleep(1)
-                        st.rerun()
+            
+            if not dict_stock:
+                st.warning("⚠️ No hay acciones en cartera para vender.")
+            else:
+                with st.form("form_cierre_validado"):
+                    # Solo mostramos lo que hay en el dict_stock
+                    tk_v = st.selectbox("Activo en Cartera:", list(dict_stock.keys()))
+                    max_posible = dict_stock.get(tk_v, 0.0)
+                    
+                    st.info(f"Disponible: **{max_posible}** acciones de {tk_v}")
+                    
+                    cant_v = st.number_input("Cantidad a vender:", min_value=0.0001, max_value=max_posible, step=1.0, help="No puedes vender más de lo que tienes.")
+                    prec_v = st.number_input("Rentabilidad Final (%):", format="%.2f")
+                    gan_v = st.number_input("Ganancia/Pérdida Efectiva (€/$):", format="%.2f")
+                    fecha_v = st.date_input("Fecha de Venta:")
+                    
+                    # El botón solo se activa si la cantidad es lógica
+                    if st.form_submit_button("Registrar Venta", use_container_width=True):
+                        ws_cierres = conectar_ws("Cierres")
+                        if ws_cierres:
+                            t_v_limpio = tk_v.strip().upper()
+                            ws_cierres.append_row([
+                                t_v_limpio, 
+                                tickers_nombres.get(t_v_limpio, t_v_limpio), 
+                                float(prec_v), 
+                                float(gan_v), 
+                                str(fecha_v),
+                                f"Venta de {cant_v} acciones" # Nota informativa
+                            ])
+                            st.success(f"✅ Venta de {tk_v} registrada correctamente.")
+                            time.sleep(1.5)
+                            st.rerun()
 
-            st.markdown("#### 📥 Analizar Resultados")
-            if st.button("Cargar Histórico de Cierres", use_container_width=True):
+            st.markdown("---")
+            if st.button("📥 Cargar Historial de Cierres", use_container_width=True):
                 ws_cierres = conectar_ws("Cierres")
                 if ws_cierres:
                     try:
-                        datos_cierres = ws_cierres.get_all_records()
-                        if datos_cierres:
-                            st.session_state.datos_cierres = datos_cierres
-                        else:
-                            st.session_state.datos_cierres = []
-                            st.warning("No hay operaciones cerradas.")
-                    except Exception as e:
-                        st.error("Error al leer la hoja 'Cierres'. ¿Añadiste la columna 'Broker'?")
+                        st.session_state.datos_cierres = ws_cierres.get_all_records()
+                    except: st.error("Error al cargar.")
 
         with col_cl2:
             if st.session_state.get('datos_cierres') and len(st.session_state.datos_cierres) > 0:
                 df_cierres = pd.DataFrame(st.session_state.datos_cierres)
                 
-                col_rent = None
-                col_gan = None
-                for c in df_cierres.columns:
-                    c_low = c.lower().replace('_', '').replace(' ', '')
-                    if 'rentabilidad' in c_low or 'rent' in c_low or '%' in c_low: col_rent = c
-                    if 'ganancia' in c_low or 'beneficio' in c_low or 'efectiva' in c_low: col_gan = c
+                # Buscamos columnas de ganancia y rentabilidad
+                col_rent = next((c for c in df_cierres.columns if 'Rentabilidad' in c), None)
+                col_gan = next((c for c in df_cierres.columns if 'Ganancia' in c), None)
                 
                 if col_gan and col_rent:
                     try:
+                        # Limpieza y conversión
                         df_cierres[col_gan] = df_cierres[col_gan].astype(str).str.replace(r'[^\d\.,-]', '', regex=True).str.replace(',', '.').astype(float)
                         df_cierres[col_rent] = df_cierres[col_rent].astype(str).str.replace(r'[^\d\.,-]', '', regex=True).str.replace(',', '.').astype(float)
                         
-                        win_rate = (df_cierres[col_gan] > 0).mean() * 100
                         beneficio_neto = df_cierres[col_gan].sum()
-                        operaciones_totales = len(df_cierres)
-                        operaciones_ganadoras = len(df_cierres[df_cierres[col_gan] > 0])
-                        operaciones_perdedoras = operaciones_totales - operaciones_ganadoras
+                        win_rate = (df_cierres[col_gan] > 0).mean() * 100
                         
-                        c_b1, c_b2, c_b3, c_b4 = st.columns(4)
-                        c_b1.metric("💸 Beneficio Neto", f"{beneficio_neto:+,.2f} €")
+                        # KPIs de Cierres
+                        c_b1, c_b2, c_b3 = st.columns(3)
+                        c_b1.metric("💸 Beneficio Total Realizado", f"{beneficio_neto:+,.2f} €")
                         c_b2.metric("🎯 Win Rate", f"{win_rate:.1f}%")
-                        c_b3.metric("🏆 Ganadoras", f"{operaciones_ganadoras}")
-                        c_b4.metric("🪦 Perdedoras", f"{operaciones_perdedoras}")
+                        c_b3.metric("🤝 Operaciones", len(df_cierres))
+                        
                         st.markdown("---")
                         
-                        c_gc1, c_gc2 = st.columns(2)
-                        with c_gc1:
-                            if operaciones_totales > 0:
-                                df_win_loss = pd.DataFrame({'Resultado': ['Ganadoras', 'Perdedoras'], 'Cantidad': [operaciones_ganadoras, operaciones_perdedoras]})
-                                fig_win = px.pie(df_win_loss, values='Cantidad', names='Resultado', title='Tasa de Acierto (Win Rate)', hole=0.4, color='Resultado', color_discrete_map={'Ganadoras':'#228B22', 'Perdedoras':'#FF3333'})
-                                st.plotly_chart(fig_win, use_container_width=True)
-                            
-                        with c_gc2:
-                            df_cierres['Color'] = np.where(df_cierres[col_gan] > 0, 'green', 'red')
-                            df_cierres['Operacion'] = [f"Op {i+1} ({tk})" for i, tk in enumerate(df_cierres.get('Ticker', df_cierres.get('Activo', df_cierres.index)))]
-                            fig_hist = px.bar(df_cierres, x='Operacion', y=col_gan, title='Historial de Trades', color='Color', color_discrete_map={'green':'#228B22', 'red':'#FF3333'})
-                            fig_hist.update_layout(showlegend=False, xaxis_title="", yaxis_title="Beneficio Realizado")
-                            st.plotly_chart(fig_hist, use_container_width=True)
+                        # Gráfico de barras de beneficios cerrados
+                        df_cierres['Color'] = np.where(df_cierres[col_gan] > 0, 'green', 'red')
+                        fig_h = px.bar(df_cierres, x=df_cierres.index, y=col_gan, color='Color', 
+                                       title="Histórico de Ganancias Realizadas (€)",
+                                       color_discrete_map={'green':'#228B22','red':'#FF3333'})
+                        fig_h.update_layout(showlegend=False, xaxis_title="Operación #")
+                        st.plotly_chart(fig_h, use_container_width=True)
+
+                        # Tabla con tooltips
+                        st.markdown("#### 📜 Registro de Operaciones")
+                        df_viz = df_cierres.copy()
+                        df_viz[col_gan] = df_viz[col_gan].apply(lambda x: f"{x:+,.2f} €")
+                        df_viz[col_rent] = df_viz[col_rent].apply(lambda x: f"{x:+.2f}%")
                         
-                        st.markdown("#### 📜 Registro de Operaciones Cerradas")
-                        df_cierres_mostrar = df_cierres.copy()
-                        df_cierres_mostrar[col_gan] = df_cierres_mostrar[col_gan].apply(lambda x: f"{x:+,.2f} €")
-                        df_cierres_mostrar[col_rent] = df_cierres_mostrar[col_rent].apply(lambda x: f"{x:+.2f}%")
-                        
-                        cols_mostrar = [c for c in ['Fecha', 'Broker', 'Ticker', 'Activo', 'Empresa', col_rent, col_gan, 'Fecha_Venta'] if c in df_cierres_mostrar.columns]
-                        st.dataframe(df_cierres_mostrar[cols_mostrar].style.map(color_pct, subset=[col_gan, col_rent]), use_container_width=True, hide_index=True)
+                        st.dataframe(
+                            df_viz[['Ticker', 'Empresa', col_rent, col_gan, 'Fecha_Venta']],
+                            use_container_width=True, hide_index=True,
+                            column_config={
+                                "Ticker": st.column_config.TextColumn("ACTIVO", help="Símbolo de la acción vendida."),
+                                col_rent: st.column_config.TextColumn("RENTABILIDAD", help="Porcentaje final de beneficio o pérdida."),
+                                col_gan: st.column_config.TextColumn("GANANCIA NETA", help="Dinero real ganado o perdido tras la venta.")
+                            }
+                        )
+                    except: st.info("Sincroniza los datos para ver las gráficas.")
+            else:
+                st.info("Pulsa 'Cargar Historial' para ver tus resultados cerrados.")
                     except Exception: pass
