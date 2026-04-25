@@ -1245,7 +1245,7 @@ if es_admin:
             else:
                 st.info("No hay nada en la cartera.")
 
-    # --- PESTAÑA CIERRES ANUALES ---
+# --- PESTAÑA CIERRES ANUALES ---
     with tabs[5]:
         st.subheader("🗓️ Histórico de Cierres y Rendimiento Anual")
         
@@ -1396,7 +1396,7 @@ if es_admin:
                                         fecha_venta_completa,      # Fecha con la hora incluida
                                         broker_v,
                                         float(cant_v),
-                                        int(dias_cartera),         # Días en cartera (Fecha venta - Fecha compra)
+                                        int(dias_cartera),         # Días en cartera
                                         float(total_venta_local)   # Total de la venta
                                     ])
                                     st.success(f"✅ Venta registrada a las {hora_v}. Beneficio: {gan_v:+.2f} €")
@@ -1406,7 +1406,7 @@ if es_admin:
             st.markdown("#### 🗑️ Corregir / Anular Venta")
             with st.expander("Eliminar Venta Registrada"):
                 if datos_cierres_auto:
-                    opciones_borrar_v = [f"{d.get('Ticker', d.get('Activo', ''))} - {d.get('Fecha', '')} ({d.get('Cantidad', '')} uds)" for d in datos_cierres_auto]
+                    opciones_borrar_v = [f"{d.get('Ticker', d.get('Activo', ''))} - {d.get('Fecha de Venta', d.get('Fecha', ''))} ({d.get('Cantidad', '')} uds)" for d in datos_cierres_auto]
                     with st.form("form_borrar_venta"):
                         v_borrar = st.selectbox("Selecciona la venta a anular:", opciones_borrar_v)
                         if st.form_submit_button("Eliminar Registro", use_container_width=True):
@@ -1452,28 +1452,49 @@ if es_admin:
                         
                         st.markdown("---")
                     
-# --- 1. TABLA (ARRIBA) ---
+                        # --- 1. TABLA (ARRIBA) ---
                         st.markdown("#### 📜 Registro de Operaciones Cerradas")
                         df_cierres_mostrar = df_cierres.copy()
                         
-                        # Damos formato bonito a los euros y porcentajes, buscando la columna original por parte de su nombre
-                        col_g = next((c for c in df_cierres_mostrar.columns if 'ganancia' in str(c).lower() or 'efectiva' in str(c).lower()), None)
-                        col_r = next((c for c in df_cierres_mostrar.columns if 'rentabilidad' in str(c).lower() or '%' in str(c)), None)
+                        # Extraemos TODAS las columnas que vengan de Google Sheets tal cual están
+                        cols_mostrar_final = df_cierres_mostrar.columns.tolist()
                         
-                        if col_g: df_cierres_mostrar[col_g] = df_cierres_mostrar[col_g].apply(lambda x: f"{x:+,.2f} €")
-                        if col_r: df_cierres_mostrar[col_r] = df_cierres_mostrar[col_r].apply(lambda x: f"{x:+.2f}%")
+                        # Damos formato visual al DataFrame solo si existen esas columnas
+                        if col_gan: df_cierres_mostrar[col_gan] = df_cierres_mostrar[col_gan].apply(lambda x: f"{x:+,.2f} €" if pd.notnull(x) else x)
+                        if col_rent: df_cierres_mostrar[col_rent] = df_cierres_mostrar[col_rent].apply(lambda x: f"{x:+.2f}%" if pd.notnull(x) else x)
                         
-                        # Definimos el orden exacto de tu Excel. Si una columna no existe (porque no la pusiste aún), simplemente no se muestra.
-                        columnas_excel_original = [
-                            "Ticker", "Empresa", "Rentabilidad Final (%)", "Ganancia/Pérdida Efectiva (€/$)", 
-                            "Fecha de Venta", "Broker", "Cantidad", "Días en Cartera", "Total Obtenido por la Venta (€/$)"
-                        ]
-                        
-                        # Cruzamos la lista ideal con lo que realmente ha leído del Excel para evitar crasheos
-                        cols_mostrar_final = [c for c in df_cierres_mostrar.columns if any(str(c).lower() in col_ideal.lower() for col_ideal in columnas_excel_original) or c in columnas_excel_original]
-                        
-                        # Si por algún motivo los nombres no cuadran exactamente (espacios raros en el Excel), forzamos a que muestre TODO lo que haya leído
-                        if not cols_mostrar_final:
-                            cols_mostrar_final = df_cierres_mostrar.columns.tolist()
+                        # Definimos el coloreado especial localmente para los euros y porcentajes
+                        def color_celdas(val):
+                            if isinstance(val, str) and ('%' in val or '€' in val):
+                                if val.startswith('+'): return 'color: #228B22;' 
+                                elif val.startswith('-'): return 'color: #FF3333;' 
+                            return ''
 
-                        st.dataframe(df_cierres_mostrar[cols_mostrar_final].style.map(color_pct, subset=[col_g, col_r]), use_container_width=True, hide_index=True)
+                        st.dataframe(df_cierres_mostrar[cols_mostrar_final].style.map(color_celdas, subset=[c for c in [col_gan, col_rent] if c]), use_container_width=True, hide_index=True)
+
+                        st.markdown("<br>", unsafe_allow_html=True)
+
+                        # --- 2. GRÁFICOS (DEBAJO) ---
+                        st.markdown("#### 📊 Gráficos de Rendimiento")
+                        c_gc1, c_gc2 = st.columns(2)
+                        with c_gc1:
+                            if operaciones_totales > 0:
+                                df_win_loss = pd.DataFrame({'Resultado': ['Ganadoras', 'Perdedoras'], 'Cantidad': [operaciones_ganadoras, operaciones_perdedoras]})
+                                fig_win = px.pie(df_win_loss, values='Cantidad', names='Resultado', title='Tasa de Acierto (Win Rate)', hole=0.4, color='Resultado', color_discrete_map={'Ganadoras':'#228B22', 'Perdedoras':'#FF3333'})
+                                st.plotly_chart(fig_win, use_container_width=True)
+                            
+                        with c_gc2:
+                            df_cierres['Color'] = np.where(df_cierres[col_gan].astype(str).str.replace('€', '').str.replace(',', '.').str.replace('+', '').astype(float) > 0, 'green', 'red')
+                            df_cierres['Operacion'] = [f"Op {i+1} ({tk})" for i, tk in enumerate(df_cierres.get('Ticker', df_cierres.get('Activo', df_cierres.index)))]
+                            # Recuperamos el valor original para el gráfico
+                            df_cierres['Valor_Grafico'] = df_cierres[col_gan].astype(str).str.replace('€', '').str.replace(',', '.').str.replace('+', '').astype(float)
+                            fig_hist = px.bar(df_cierres, x='Operacion', y='Valor_Grafico', title='Historial de Trades', color='Color', color_discrete_map={'green':'#228B22', 'red':'#FF3333'})
+                            fig_hist.update_layout(showlegend=False, xaxis_title="", yaxis_title="Beneficio Realizado")
+                            st.plotly_chart(fig_hist, use_container_width=True)
+                            
+                    except Exception as e: 
+                        st.error(f"Error interno procesando los cierres: {e}")
+                else:
+                    st.error("⚠️ No se encuentran las columnas de Ganancia o Rentabilidad. Revisa el Google Sheets.")
+            else:
+                st.info("No hay operaciones cerradas registradas aún.")
