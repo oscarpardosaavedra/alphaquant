@@ -1214,10 +1214,11 @@ if es_admin:
                 st.info("👈 Pulsa en 'Sincronizar con Wall Street' para ver tus gráficos y datos.")
 
    # --- PESTAÑA CIERRES ANUALES ---
+    # --- PESTAÑA CIERRES ANUALES ---
     with tabs[5]:
         st.subheader("🗓️ Histórico de Cierres y Rendimiento Anual")
         
-        # 1. PASO CRÍTICO: Cálculo de stock disponible (Compras - Ventas)
+        # 1. CÁLCULO DE STOCK DISPONIBLE Y CARGA AUTOMÁTICA
         dict_compras = {}
         ws_inventario = conectar_ws("Cartera")
         if ws_inventario:
@@ -1236,11 +1237,12 @@ if es_admin:
 
         dict_ventas = {}
         ws_cierres = conectar_ws("Cierres")
+        datos_cierres_auto = [] # Variable para guardar los datos cargados automáticamente
         if ws_cierres:
             try:
-                data_cierres = ws_cierres.get_all_records()
-                if data_cierres:
-                    for d in data_cierres:
+                datos_cierres_auto = ws_cierres.get_all_records()
+                if datos_cierres_auto:
+                    for d in datos_cierres_auto:
                         d_l = {str(k).lower().replace(' ', '').replace('_', '').replace('º', '').replace('.', ''): v for k, v in d.items()}
                         tk = str(d_l.get('ticker', d_l.get('activo', ''))).strip().upper()
                         raw_cant = str(d_l.get('cantidad', d_l.get('cant', d_l.get('nacciones', 0)))).replace(',', '.')
@@ -1254,7 +1256,6 @@ if es_admin:
         for tk, cant_comprada in dict_compras.items():
             cant_vendida = dict_ventas.get(tk, 0.0)
             cant_restante = cant_comprada - cant_vendida
-            # Si le quedan acciones (con un margen para decimales), se añaden
             if cant_restante > 0.0001:
                 dict_stock[tk] = round(cant_restante, 4)
 
@@ -1266,17 +1267,10 @@ if es_admin:
             if not dict_stock:
                 st.warning("⚠️ No tienes acciones registradas en cartera para poder vender.")
             else:
-                # Mostramos información visual fuera del form para no bloquear
-                st.info("💡 **Stock Disponible:**\n" + "\n".join([f"- **{t}**: {c}" for t, c in dict_stock.items()]))
-                
                 with st.form("form_cierre_validado"):
                     tk_v = st.selectbox("Activo a Vender:", sorted(list(dict_stock.keys())))
                     
-                    # Obtenemos el stock máximo para el ticker seleccionado
-                    max_permitido = dict_stock.get(tk_v, 0.0)
-                    
-                    # Limitamos dinámicamente la cantidad a vender
-                    cant_v = st.number_input("Cantidad a vender:", min_value=0.0001, max_value=float(max_permitido), step=1.0)
+                    cant_v = st.number_input("Cantidad a vender:", min_value=0.0001, step=1.0)
                     
                     broker_v = st.selectbox("Broker de Venta:", ["Trade Republic", "Revolut", "Interactive Brokers", "Scalable Capital", "Otro"])
                     prec_v = st.number_input("Rentabilidad Final (%):", format="%.2f")
@@ -1284,16 +1278,16 @@ if es_admin:
                     fecha_v = st.date_input("Fecha de Venta:")
                     
                     if st.form_submit_button("Registrar Cierre", use_container_width=True):
-                        # ESCUDO ANTI-VENTA EN DESCUBIERTO (Doble comprobación)
+                        max_permitido = dict_stock.get(tk_v, 0.0)
+                        
+                        # ESCUDO ANTI-VENTA EN DESCUBIERTO
                         if cant_v > max_permitido:
-                            st.error(f"❌ Operación bloqueada. Intento de vender {cant_v} uds de {tk_v}, pero tu stock real es {max_permitido}.")
+                            st.error(f"❌ Operación bloqueada. Intentas vender {cant_v} uds de {tk_v}, pero solo posees {max_permitido}.")
                         else:
                             if ws_cierres:
                                 t_v_limpio = tk_v.strip().upper()
                                 empresa_v = tickers_nombres.get(t_v_limpio, t_v_limpio)
                                 
-                                # Guardamos en el orden exacto de tu pantallazo:
-                                # Ticker | Empresa | Rentabilidad | Ganancia | Fecha | Broker | Cantidad
                                 ws_cierres.append_row([
                                     t_v_limpio, 
                                     empresa_v, 
@@ -1307,23 +1301,9 @@ if es_admin:
                                 time.sleep(1.5)
                                 st.rerun()
 
-            st.markdown("#### 📥 Analizar Resultados")
-            if st.button("Cargar Histórico de Cierres", use_container_width=True):
-                ws_cierres = conectar_ws("Cierres")
-                if ws_cierres:
-                    try:
-                        datos_cierres = ws_cierres.get_all_records()
-                        if datos_cierres:
-                            st.session_state.datos_cierres = datos_cierres
-                        else:
-                            st.session_state.datos_cierres = []
-                            st.warning("No hay operaciones cerradas.")
-                    except Exception as e:
-                        st.error("Error al leer la hoja 'Cierres'. Revisa el nombre de las columnas en tu Sheet.")
-
         with col_cl2:
-            if st.session_state.get('datos_cierres') and len(st.session_state.datos_cierres) > 0:
-                df_cierres = pd.DataFrame(st.session_state.datos_cierres)
+            if datos_cierres_auto and len(datos_cierres_auto) > 0:
+                df_cierres = pd.DataFrame(datos_cierres_auto)
                 
                 col_rent = next((c for c in df_cierres.columns if 'rentabilidad' in c.lower() or 'rent' in c.lower()), None)
                 col_gan = next((c for c in df_cierres.columns if 'ganancia' in c.lower() or 'efectiva' in c.lower()), None)
@@ -1374,4 +1354,4 @@ if es_admin:
                 else:
                     st.error("⚠️ No se encuentran las columnas de Ganancia o Rentabilidad. Revisa el Google Sheets.")
             else:
-                st.info("👈 Pulsa en 'Cargar Histórico de Cierres' para ver tus resultados.")
+                st.info("No hay operaciones cerradas registradas aún.")
