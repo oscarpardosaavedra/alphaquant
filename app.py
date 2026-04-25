@@ -1047,13 +1047,10 @@ if es_admin:
         
         with col_c_izq:
             st.markdown("#### 🛒 Registrar Compra")
-with col_c_izq:
-            st.markdown("#### 🛒 Registrar Compra")
             with st.form("form_compra"):
                 tk_c = st.selectbox("Activo:", opciones_desplegable)
-                # Cambiamos "Precio por acción" por "Importe Total"
-                total_c = st.number_input("Capital Total Invertido (€/$):", min_value=0.01, step=100.0, help="Pon aquí el dinero total que ha salido de tu cuenta.")
-                cant_c = st.number_input("Nº de Acciones recibidas:", min_value=0.000001, step=1.0, help="Cuántos títulos te ha dado el broker por ese dinero.")
+                total_c = st.number_input("Capital Total Invertido (€/$):", min_value=0.01, step=100.0)
+                cant_c = st.number_input("Nº de Acciones recibidas:", min_value=0.000001, step=1.0)
                 fecha_c = st.date_input("Fecha de Compra:")
                 
                 if st.form_submit_button("Añadir a Cartera", use_container_width=True):
@@ -1061,10 +1058,7 @@ with col_c_izq:
                     if ws_c:
                         try:
                             t_limpio = tk_c.split(" ")[0]
-                            # Calculamos el precio medio automáticamente antes de guardar
                             precio_medio_calculado = total_c / cant_c
-                            
-                            # Guardamos en tu Google Sheets: [Ticker, Empresa, Cantidad, Precio_Unitario, Fecha]
                             ws_c.append_row([
                                 t_limpio, 
                                 tickers_nombres.get(t_limpio, t_limpio), 
@@ -1092,21 +1086,19 @@ with col_c_izq:
                             barra_v = st.progress(0, text="Valorando posiciones en tiempo real...")
                             for i, d in enumerate(datos_raw):
                                 try:
-                                    # LECTURA A PRUEBA DE FALLOS: Busca múltiples nombres posibles
+                                    # LECTURA ULTRA-FLEXIBLE
                                     tk = str(d.get('Ticker', d.get('Activo', ''))).strip()
                                     if not tk: continue
                                     
                                     tk_y = a_yahoo(tk)
                                     hist = yf.download(tk_y, period="5d", progress=False)
                                     if isinstance(hist.columns, pd.MultiIndex): hist.columns = hist.columns.get_level_values(0)
-                                    
                                     if hist.empty or 'Close' not in hist.columns: continue
                                     
                                     p_actual = float(hist['Close'].dropna().iloc[-1])
                                     
-                                    # Escáner flexible para los precios y cantidades
-                                    raw_compra = str(d.get('Precio_Compra', d.get('Precio Compra', 0))).replace(',', '.')
-                                    raw_cant = str(d.get('Nº Acciones', d.get('Cantidad', 0))).replace(',', '.')
+                                    raw_compra = str(d.get('Precio_Compra', d.get('Precio Compra', 0))).replace('€', '').replace('$', '').replace(',', '.').strip()
+                                    raw_cant = str(d.get('Cantidad', d.get('Nº Acciones', 0))).replace(',', '.').strip()
                                     
                                     p_compra = float(raw_compra)
                                     cant = float(raw_cant)
@@ -1116,8 +1108,8 @@ with col_c_izq:
                                         subtotal_act = p_actual * cant
                                         ganancia = subtotal_act - subtotal_inv
                                         pct = ((p_actual / p_compra) - 1) * 100
-                                        
                                         moneda = obtener_simbolo_moneda(tk)
+                                        
                                         total_invertido += subtotal_inv
                                         total_actual += subtotal_act
                                         
@@ -1133,8 +1125,8 @@ with col_c_izq:
                                             "RENT. (%)": pct,
                                             "MONEDA": moneda
                                         })
-                                except Exception as inner_e: 
-                                    pass # Ignora filas mal escritas pero NO rompe la web
+                                except Exception: 
+                                    pass # Ignora filas vacías o corruptas
                                 barra_v.progress((i+1)/len(datos_raw))
                             
                             st.session_state.datos_cartera = lista_val
@@ -1233,14 +1225,15 @@ with col_c_izq:
             if st.session_state.get('datos_cierres') and len(st.session_state.datos_cierres) > 0:
                 df_cierres = pd.DataFrame(st.session_state.datos_cierres)
                 
-                # Nombres de columnas estrictos como los tienes en el Excel:
-                col_rent = 'Rentabilidad_Final'
-                col_gan = 'Ganancia_Efectiva'
+                # Buscamos columnas independientemente de si tienen espacios o guiones
+                col_rent = next((c for c in df_cierres.columns if 'Rentabilidad' in c), None)
+                col_gan = next((c for c in df_cierres.columns if 'Ganancia' in c), None)
                 
-                if col_gan in df_cierres.columns and col_rent in df_cierres.columns:
+                if col_gan and col_rent:
                     try:
-                        df_cierres[col_gan] = df_cierres[col_gan].astype(str).str.replace(',', '.').astype(float)
-                        df_cierres[col_rent] = df_cierres[col_rent].astype(str).str.replace(',', '.').astype(float)
+                        # Limpieza extrema de símbolos
+                        df_cierres[col_gan] = df_cierres[col_gan].astype(str).str.replace(r'[^\d\.,-]', '', regex=True).str.replace(',', '.').astype(float)
+                        df_cierres[col_rent] = df_cierres[col_rent].astype(str).str.replace(r'[^\d\.,-]', '', regex=True).str.replace(',', '.').astype(float)
                         
                         win_rate = (df_cierres[col_gan] > 0).mean() * 100
                         beneficio_neto = df_cierres[col_gan].sum()
@@ -1276,14 +1269,11 @@ with col_c_izq:
                         df_cierres_mostrar[col_gan] = df_cierres_mostrar[col_gan].apply(lambda x: f"{x:+,.2f} €")
                         df_cierres_mostrar[col_rent] = df_cierres_mostrar[col_rent].apply(lambda x: f"{x:+.2f}%")
                         
-                        cols_mostrar = ['Ticker', 'Empresa', col_rent, col_gan, 'Fecha_Venta']
-                        cols_mostrar = [c for c in cols_mostrar if c in df_cierres_mostrar.columns]
-                        
+                        cols_mostrar = [c for c in ['Ticker', 'Empresa', col_rent, col_gan, 'Fecha_Venta'] if c in df_cierres_mostrar.columns]
                         st.dataframe(df_cierres_mostrar[cols_mostrar].style.map(color_pct, subset=[col_gan, col_rent]), use_container_width=True, hide_index=True)
                     except Exception as e_proc:
                         st.error(f"Error procesando los números. Detalle: {e_proc}")
                 else:
-                    st.error("⚠️ No encuentro las columnas 'Ganancia_Efectiva' o 'Rentabilidad_Final'. Revisa tu Google Sheets.")
+                    st.error("⚠️ No encuentro las columnas 'Ganancia_Efectiva' o 'Rentabilidad_Final' (o similares). Revisa los títulos en Google Sheets.")
             else:
                 st.info("👈 Pulsa en 'Cargar Histórico de Cierres' para ver tu rendimiento consolidado.")
-        
