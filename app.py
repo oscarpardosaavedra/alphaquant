@@ -58,8 +58,15 @@ st.markdown("""
     [data-testid="stMetric"] { 
         background-color: #f8f9fa; 
         border-radius: 10px; 
-        padding: 15px; 
+        padding: 10px; /* Reducido un poco el padding */
         box-shadow: 0 4px 6px rgba(0,0,0,0.05); 
+    }
+    /* Hacer el texto de los KPIs más pequeño para que no se corte */
+    [data-testid="stMetricValue"] {
+        font-size: 1.8rem !important; 
+    }
+    [data-testid="stMetricDelta"] {
+        font-size: 1.2rem !important;
     }
     .stDataFrame th, [data-testid="stDataFrame"] th { 
         font-weight: 900 !important; 
@@ -1040,7 +1047,7 @@ with tab4:
 # 5. PESTAÑAS PRIVADAS (MODO ADMIN)
 # ==========================================
 if es_admin:
-# --- PESTAÑA MI CARTERA (CARGA AUTOMÁTICA) ---
+# --- PESTAÑA MI CARTERA (CARGA AUTOMÁTICA CON GRÁFICOS) ---
     with tabs[4]:
         st.markdown("### 💼 Centro de Control: Mi Cartera")
         
@@ -1050,7 +1057,6 @@ if es_admin:
             try:
                 datos_raw = ws_c.get_all_records()
                 if datos_raw:
-                    # Tasa de cambio EUR/USD real para auditoría
                     tasa_eur_usd = 1.08 
                     try:
                         df_fx = yf.download("EURUSD=X", period="1d", progress=False)
@@ -1061,7 +1067,6 @@ if es_admin:
 
                     lista_val = []; total_inv_eur = 0; total_actual_eur = 0
                     
-                    # Procesamos cada fila del Excel
                     for d in datos_raw:
                         try:
                             d_l = {str(k).lower().replace(' ', '').replace('_', '').replace('º', '').replace('.', ''): v for k, v in d.items()}
@@ -1071,7 +1076,6 @@ if es_admin:
                             broker_db = str(d_l.get('broker', ''))
                             es_usd = ("($)" in broker_db or "REVOLUT" in broker_db.upper() or "IBKR" in broker_db.upper())
                             
-                            # Obtener precio actual
                             tk_y = a_yahoo(tk)
                             hist = yf.download(tk_y, period="5d", progress=False)
                             if isinstance(hist.columns, pd.MultiIndex): hist.columns = hist.columns.get_level_values(0)
@@ -1080,11 +1084,9 @@ if es_admin:
                             cant = float(str(d_l.get('nacciones', d_l.get('cantidad', 0))).replace(',', '.'))
                             p_actual = float(hist['Close'].dropna().iloc[-1]) if not hist.empty else p_compra
                             
-                            # Mates en moneda local ($ o €)
                             inv_l = p_compra * cant
                             act_l = p_actual * cant
                             
-                            # CONVERSIÓN A EURO (Auditoría Céntimo a Céntimo)
                             inv_e = (inv_l / tasa_eur_usd) if es_usd else inv_l
                             act_e = (act_l / tasa_eur_usd) if es_usd else act_l
                             
@@ -1151,7 +1153,7 @@ if es_admin:
                 act_e = st.session_state.tot_act
                 gan_e = act_e - inv_e
                 
-                # KPIs SUPERIORES
+                # KPIs SUPERIORES (AHORA CON LETRA MÁS PEQUEÑA POR EL CSS)
                 c1, c2, c3, c4 = st.columns(4)
                 c1.metric("💰 Valor Cartera", f"{act_e:,.2f} €")
                 c2.metric("📥 Invertido", f"{inv_e:,.2f} €")
@@ -1159,6 +1161,7 @@ if es_admin:
                 c4.metric("📈 Rent. Global", f"{((gan_e/inv_e)*100 if inv_e>0 else 0):+.2f}%")
                 
                 st.markdown("---")
+                st.markdown("#### 📋 Posiciones Actuales")
                 
                 # TABLA DETALLADA CON TOOLTIPS
                 st.dataframe(
@@ -1170,6 +1173,21 @@ if es_admin:
                         "RENT (%)": st.column_config.NumberColumn("RENT (%)", format="%.2f%%", help="Rentabilidad porcentual de la posición.")
                     }
                 )
+
+                st.markdown("<br>", unsafe_allow_html=True)
+                
+                # GRÁFICOS DE CARTERA RECUPERADOS
+                c_g1, c_g2 = st.columns(2)
+                with c_g1:
+                    fig_pie = px.pie(df_c, values='INV_E', names='TICKER', title='Distribución de Capital (€)', hole=0.4)
+                    st.plotly_chart(fig_pie, use_container_width=True)
+                
+                with c_g2:
+                    df_c['Color'] = np.where(df_c['GANANCIA (€)'] > 0, 'green', 'red')
+                    fig_bar = px.bar(df_c, x='TICKER', y='GANANCIA (€)', title='Ganancia / Pérdida en Curso (€)', color='Color', color_discrete_map={'green':'#228B22', 'red':'#FF3333'})
+                    fig_bar.update_layout(showlegend=False)
+                    st.plotly_chart(fig_bar, use_container_width=True)
+
             else:
                 st.info("No hay nada en la cartera.")
 
