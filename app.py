@@ -1391,14 +1391,15 @@ if es_admin:
                                     ws_cierres.append_row([
                                         tk_v, 
                                         empresa_v, 
-                                        round(float(prec_v), 2), 
-                                        round(float(gan_v), 2), 
-                                        fecha_venta_completa, 
+                                        round(float(prec_v), 2),   # Rentabilidad Final
+                                        round(float(gan_v), 2),    # Ganancia Efectiva / Beneficio Neto
+                                        fecha_venta_completa,      # Fecha con la hora incluida
                                         broker_v,
                                         float(cant_v),
-                                        int(dias_cartera)
+                                        int(dias_cartera),         # Días en cartera (Fecha venta - Fecha compra)
+                                        float(total_venta_local)   # Total de la venta
                                     ])
-                                    st.success(f"✅ Venta registrada a las {hora_v}. Beneficio: {gan_v:+.2f} € | Rentabilidad: {prec_v:+.2f}%")
+                                    st.success(f"✅ Venta registrada a las {hora_v}. Beneficio: {gan_v:+.2f} €")
                                     time.sleep(2)
                                     st.rerun()
 
@@ -1450,9 +1451,29 @@ if es_admin:
                         c_b4.metric("🪦 Perdedoras", f"{operaciones_perdedoras}")
                         
                         st.markdown("---")
-                        
-                        # --- 1. TABLA (ARRIBA) ---
+                    
+# --- 1. TABLA (ARRIBA) ---
                         st.markdown("#### 📜 Registro de Operaciones Cerradas")
                         df_cierres_mostrar = df_cierres.copy()
-                        df_cierres_mostrar[col_gan] = df_cierres_mostrar[col_gan].apply(lambda x: f"{x:+,.2f} €")
-                        df_cierres_
+                        
+                        # Damos formato bonito a los euros y porcentajes, buscando la columna original por parte de su nombre
+                        col_g = next((c for c in df_cierres_mostrar.columns if 'ganancia' in str(c).lower() or 'efectiva' in str(c).lower()), None)
+                        col_r = next((c for c in df_cierres_mostrar.columns if 'rentabilidad' in str(c).lower() or '%' in str(c)), None)
+                        
+                        if col_g: df_cierres_mostrar[col_g] = df_cierres_mostrar[col_g].apply(lambda x: f"{x:+,.2f} €")
+                        if col_r: df_cierres_mostrar[col_r] = df_cierres_mostrar[col_r].apply(lambda x: f"{x:+.2f}%")
+                        
+                        # Definimos el orden exacto de tu Excel. Si una columna no existe (porque no la pusiste aún), simplemente no se muestra.
+                        columnas_excel_original = [
+                            "Ticker", "Empresa", "Rentabilidad Final (%)", "Ganancia/Pérdida Efectiva (€/$)", 
+                            "Fecha de Venta", "Broker", "Cantidad", "Días en Cartera", "Total Obtenido por la Venta (€/$)"
+                        ]
+                        
+                        # Cruzamos la lista ideal con lo que realmente ha leído del Excel para evitar crasheos
+                        cols_mostrar_final = [c for c in df_cierres_mostrar.columns if any(str(c).lower() in col_ideal.lower() for col_ideal in columnas_excel_original) or c in columnas_excel_original]
+                        
+                        # Si por algún motivo los nombres no cuadran exactamente (espacios raros en el Excel), forzamos a que muestre TODO lo que haya leído
+                        if not cols_mostrar_final:
+                            cols_mostrar_final = df_cierres_mostrar.columns.tolist()
+
+                        st.dataframe(df_cierres_mostrar[cols_mostrar_final].style.map(color_pct, subset=[col_g, col_r]), use_container_width=True, hide_index=True)
