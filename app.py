@@ -1067,15 +1067,17 @@ if es_admin:
                 if ws_c:
                     datos_raw = ws_c.get_all_records()
                     if datos_raw:
-                        # 1. Tasa EURUSD real
+                        # 1. Tasa EURUSD real (Auditoría al céntimo)
                         tasa_fx = 1.08
                         try:
                             fx = yf.download("EURUSD=X", period="1d", progress=False)
-                            if not fx.empty: tasa_fx = float(fx['Close'].iloc[-1])
+                            if not fx.empty:
+                                if isinstance(fx.columns, pd.MultiIndex): fx.columns = fx.columns.get_level_values(0)
+                                tasa_fx = float(fx['Close'].dropna().iloc[-1])
                         except: pass
 
                         lista_val = []; t_inv_eur = 0; t_act_eur = 0
-                        barra = st.progress(0, text="Auditoría al céntimo...")
+                        barra = st.progress(0, text="Sincronizando...")
                         
                         for i, d in enumerate(datos_raw):
                             try:
@@ -1083,31 +1085,33 @@ if es_admin:
                                 tk = str(d_l.get('ticker', d_l.get('activo', ''))).strip().upper()
                                 if not tk or tk == 'TICKER': continue
                                 
-                                p_compra = float(str(d.get('Precio_Compra', d.get('Precio Compra', 0))).replace(',','.'))
+                                p_compra = float(str(d.get('Precio_Compra', d.get('Precio Compra', d.get('Precio', 0)))).replace(',','.'))
                                 cant = float(str(d.get('Cantidad', d.get('Nº Acciones', 0))).replace(',','.'))
                                 broker = str(d.get('Broker', '')).upper()
                                 es_usd = ("$" in broker or tk in ['DQ', 'GOOGL', 'AAPL', 'NVDA'])
 
                                 hist = yf.download(a_yahoo(tk), period="5d", progress=False)
-                                p_actual = float(hist['Close'].iloc[-1]) if not hist.empty else p_compra
+                                if isinstance(hist.columns, pd.MultiIndex): hist.columns = hist.columns.get_level_values(0)
+                                p_actual = float(hist['Close'].dropna().iloc[-1]) if not hist.empty else p_compra
                                 
                                 inv_l = p_compra * cant
                                 act_l = p_actual * cant
                                 
-                                # CONVERSIÓN PURA A EUR
+                                # Conversión a EUR para los cuadros de arriba
                                 inv_e = inv_l / tasa_fx if es_usd else inv_l
                                 act_e = act_l / tasa_fx if es_usd else act_l
                                 
                                 t_inv_eur += inv_e
                                 t_act_eur += act_e
                                 
+                                # Guardamos los datos con los nombres de columna exactos
                                 lista_val.append({
                                     "TICKER": tk,
                                     "CANT.": cant,
                                     "INVERTIDO": f"{inv_l:,.2f} {'$' if es_usd else '€'}",
                                     "VALOR ACTUAL": f"{act_l:,.2f} {'$' if es_usd else '€'}",
                                     "RENT (%)": ((p_actual/p_compra)-1)*100,
-                                    "GAN_E": act_e - inv_e # Guardamos ganancia en euros para gráfico
+                                    "GAN_E": act_e - inv_e
                                 })
                             except: continue
                             barra.progress((i+1)/len(datos_raw))
@@ -1118,7 +1122,7 @@ if es_admin:
                         st.rerun()
 
         with col_c_der:
-            if st.session_state.get('datos_cartera'):
+            if st.session_state.get('datos_cartera') and len(st.session_state.datos_cartera) > 0:
                 df = pd.DataFrame(st.session_state.datos_cartera)
                 
                 # KPIs REALES EN EUROS (Matemática corregida)
@@ -1134,19 +1138,19 @@ if es_admin:
                 
                 st.markdown("---")
                 
-                # TABLA CON TOOLTIPS EN CABECERA
+                # TABLA CON TOOLTIPS (Ayuda al pasar el ratón)
                 st.markdown("#### 📋 Detalle de Acciones")
                 st.dataframe(
                     df[['TICKER', 'CANT.', 'INVERTIDO', 'VALOR ACTUAL', 'RENT (%)']],
                     use_container_width=True,
                     hide_index=True,
                     column_config={
-                        "TICKER": st.column_config.TextColumn("TICKER", help="Símbolo oficial del activo en bolsa."),
-                        "CANT.": st.column_config.NumberColumn("CANT.", help="Número total de acciones que posees."),
-                        "INVERTIDO": st.column_config.TextColumn("INVERTIDO", help="Dinero total que gastaste en la compra (moneda original)."),
-                        "VALOR ACTUAL": st.column_config.TextColumn("VALOR ACTUAL", help="Lo que vale tu inversión ahora mismo según el mercado."),
-                        "RENT (%)": st.column_config.NumberColumn("RENT (%)", format="%.2f%%", help="Porcentaje de ganancia o pérdida sobre el capital invertido.")
+                        "TICKER": st.column_config.TextColumn("TICKER", help="Símbolo oficial del activo (ej: GOOGL)."),
+                        "CANT.": st.column_config.NumberColumn("CANT.", help="Número de acciones que tienes actualmente."),
+                        "INVERTIDO": st.column_config.TextColumn("INVERTIDO", help="Dinero total que pusiste (en la moneda en que lo compraste)."),
+                        "VALOR ACTUAL": st.column_config.TextColumn("VALOR ACTUAL", help="Lo que vale tu posición ahora mismo en el mercado."),
+                        "RENT (%)": st.column_config.NumberColumn("RENT (%)", format="%.2f%%", help="Rentabilidad porcentual de la operación.")
                     }
                 )
             else:
-                st.info("Pulsa 'Sincronizar' para ver la auditoría corregida.")
+                st.info("Pestaña lista. Pulsa 'Sincronizar' para ver tus acciones y la auditoría de divisas.")
