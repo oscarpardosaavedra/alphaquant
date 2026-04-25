@@ -1269,5 +1269,4 @@ if es_admin:
                     st.error("⚠️ No encuentro las columnas 'Ganancia_Efectiva' o 'Rentabilidad_Final'. Revisa tu Google Sheets.")
             else:
                 st.info("👈 Pulsa en 'Cargar Histórico de Cierres' para ver tu rendimiento consolidado.")
-            else:
-                st.info("👈 Pulsa en 'Cargar Histórico de Cierres' para ver tu rendimiento consolidado.")
+        
