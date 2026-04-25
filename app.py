@@ -1210,33 +1210,30 @@ if es_admin:
                 st.info("No hay nada en la cartera.")
 
  # --- PESTAÑA CIERRES ANUALES ---
+    # --- PESTAÑA CIERRES ANUALES ---
     with tabs[5]:
         st.subheader("🗓️ Histórico de Cierres y Rendimiento Anual")
         
-        # 1. CÁLCULO DE STOCK DISPONIBLE Y CARGA AUTOMÁTICA
+        # 1. CÁLCULO DE STOCK DISPONIBLE Y DATOS DE COMPRA
         dict_compras = {}
-        # Extraemos las compras DIRECTAMENTE de la memoria de "Mi Cartera"
+        dict_compras_info = {} # Guardaremos el precio medio, broker, etc.
+        
+        # Extraemos las compras de la memoria de "Mi Cartera"
         if st.session_state.get('datos_cartera'):
             for item in st.session_state.datos_cartera:
                 tk = item.get("TICKER", "").upper()
                 cant = float(item.get("CANT.", 0.0))
+                inv_e = float(item.get("INV_E", 0.0)) 
+                broker = item.get("BROKER", "N/A")
+                empresa = item.get("EMPRESA", tk)
+                
                 if tk and cant > 0:
-                    dict_compras[tk] = dict_compras.get(tk, 0.0) + cant
-        else:
-            # Fallback por si entras aquí sin sincronizar "Mi Cartera"
-            ws_inventario = conectar_ws("Cartera")
-            if ws_inventario:
-                try:
-                    data_inv = ws_inventario.get_all_records()
-                    if data_inv:
-                        for d in data_inv:
-                            d_l = {str(k).lower().replace(' ', '').replace('_', '').replace('º', '').replace('.', ''): v for k, v in d.items()}
-                            tk = str(d_l.get('ticker', d_l.get('activo', ''))).strip().upper()
-                            raw_cant = str(d_l.get('cantidad', d_l.get('cant', d_l.get('nacciones', 0)))).replace(',', '.')
-                            try: cant = float(raw_cant) if raw_cant else 0.0
-                            except: cant = 0.0
-                            if tk and cant > 0: dict_compras[tk] = dict_compras.get(tk, 0.0) + cant
-                except Exception: pass
+                    if tk not in dict_compras:
+                        dict_compras[tk] = 0.0
+                        dict_compras_info[tk] = {'inv_e_total': 0.0, 'broker': broker, 'empresa': empresa}
+                    
+                    dict_compras[tk] += cant
+                    dict_compras_info[tk]['inv_e_total'] += inv_e
 
         dict_ventas = {}
         ws_cierres = conectar_ws("Cierres")
@@ -1250,17 +1247,14 @@ if es_admin:
                         tk = d_l.get('ticker', d_l.get('activo', '')).strip().upper()
                         
                         raw_cant = d_l.get('cantidad', d_l.get('cant', '')).replace(',', '.')
-                        try:
-                            cant = float(raw_cant) if raw_cant else 0.0
-                        except ValueError:
-                            cant = 0.0
+                        try: cant = float(raw_cant) if raw_cant else 0.0
+                        except ValueError: cant = 0.0
                         
-                        # Si no hay cantidad válida en un registro antiguo, asume venta total
                         if tk and cant <= 0: cant = 999999.0 
                         if tk: dict_ventas[tk] = dict_ventas.get(tk, 0.0) + cant
             except Exception: pass
 
-        # Calculamos el Stock Real
+        # Calculamos el Stock Real (Compradas - Vendidas)
         dict_stock = {}
         for tk, cant_comprada in dict_compras.items():
             cant_vendida = dict_ventas.get(tk, 0.0)
@@ -1277,39 +1271,93 @@ if es_admin:
                 st.warning("⚠️ No tienes acciones registradas en cartera para poder vender.")
             else:
                 with st.form("form_cierre_validado"):
+                    # Solo pedimos Ticker, Cantidad y Fecha
                     tk_v = st.selectbox("Activo a Vender:", sorted(list(dict_stock.keys())))
                     cant_v = st.number_input("Cantidad a vender:", min_value=0.0001, step=1.0)
-                    
-                    broker_v = st.selectbox("Broker de Venta:", ["Trade Republic", "Revolut", "Interactive Brokers", "Scalable Capital", "Otro"])
-                    prec_v = st.number_input("Rentabilidad Final (%):", format="%.2f")
-                    gan_v = st.number_input("Ganancia/Pérdida Efectiva (€/$):", format="%.2f")
                     fecha_v = st.date_input("Fecha de Venta:")
                     
-                    if st.form_submit_button("Registrar Cierre", use_container_width=True):
+                    if st.form_submit_button("Registrar Cierre Automático", use_container_width=True):
                         max_permitido = dict_stock.get(tk_v, 0.0)
                         
+                        # ESCUDO DE CANTIDAD
                         if cant_v > max_permitido:
                             st.error(f"❌ Operación bloqueada. Intentas vender {cant_v} uds de {tk_v}, pero solo posees {max_permitido}.")
                         else:
-                            if ws_cierres:
-                                t_v_limpio = tk_v.strip().upper()
-                                empresa_v = tickers_nombres.get(t_v_limpio, t_v_limpio)
+                            with st.spinner("Calculando rentabilidad con Wall Street..."):
+                                # 1. Sacamos el precio de Venta Actual de Yahoo
+                                tk_y = a_yahoo(tk_v)
+                                hist = yf.download(tk_y, period="5d", progress=False)
+                                if isinstance(hist.columns, pd.MultiIndex): hist.columns = hist.columns.get_level_values(0)
+                                p_actual_local = float(hist['Close'].dropna().iloc[-1]) if not hist.empty else 0.0
                                 
-                                ws_cierres.append_row([
-                                    t_v_limpio, 
-                                    empresa_v, 
-                                    float(prec_v), 
-                                    float(gan_v), 
-                                    str(fecha_v), 
-                                    broker_v,
-                                    float(cant_v)
-                                ])
-                                st.success(f"✅ Venta de {tk_v} registrada correctamente.")
-                                time.sleep(1.5)
-                                st.rerun()
+                                # 2. Recuperamos los datos de Compra que ya teníamos
+                                info_compra = dict_compras_info[tk_v]
+                                empresa_v = info_compra['empresa']
+                                broker_v = info_compra['broker']
+                                total_comprado = dict_compras[tk_v]
+                                inv_e_total = info_compra['inv_e_total']
+                                
+                                # Precio Medio de Compra en Euros
+                                p_medio_compra_e = inv_e_total / total_comprado if total_comprado > 0 else 0
+                                
+                                # Tasa de cambio de hoy si es USD
+                                es_usd = ("($)" in broker_v or "REVOLUT" in broker_v.upper() or "IBKR" in broker_v.upper())
+                                tasa_eur_usd = 1.08 
+                                if es_usd:
+                                    try:
+                                        df_fx = yf.download("EURUSD=X", period="1d", progress=False)
+                                        if not df_fx.empty:
+                                            if isinstance(df_fx.columns, pd.MultiIndex): df_fx.columns = df_fx.columns.get_level_values(0)
+                                            tasa_eur_usd = float(df_fx['Close'].iloc[-1])
+                                    except: pass
+                                
+                                p_actual_e = (p_actual_local / tasa_eur_usd) if es_usd else p_actual_local
+                                
+                                # 3. Matemáticas
+                                if p_medio_compra_e > 0:
+                                    prec_v = ((p_actual_e / p_medio_compra_e) - 1) * 100
+                                    gan_v = (p_actual_e - p_medio_compra_e) * cant_v
+                                else:
+                                    prec_v = 0.0
+                                    gan_v = 0.0
+
+                                # 4. Guardado
+                                if ws_cierres:
+                                    ws_cierres.append_row([
+                                        tk_v, 
+                                        empresa_v, 
+                                        round(float(prec_v), 2), 
+                                        round(float(gan_v), 2), 
+                                        str(fecha_v), 
+                                        broker_v,
+                                        float(cant_v)
+                                    ])
+                                    st.success(f"✅ Venta de {tk_v} registrada. Rentabilidad: {prec_v:+.2f}%")
+                                    time.sleep(2)
+                                    st.rerun()
+
+            # BOTÓN DE CORRECCIÓN (ELIMINAR VENTAS)
+            st.markdown("#### 🗑️ Corregir / Anular Venta")
+            with st.expander("Eliminar Venta Registrada"):
+                if datos_cierres_auto:
+                    # Formato: AAPL - 2024-03-15 (10.0 uds)
+                    opciones_borrar_v = [f"{d.get('Ticker', d.get('Activo', ''))} - {d.get('Fecha', '')} ({d.get('Cantidad', '')} uds)" for d in datos_cierres_auto]
+                    with st.form("form_borrar_venta"):
+                        v_borrar = st.selectbox("Selecciona la venta a anular:", opciones_borrar_v)
+                        if st.form_submit_button("Eliminar Registro", use_container_width=True):
+                            if ws_cierres:
+                                tk_a_borrar = v_borrar.split(" - ")[0]
+                                cell = ws_cierres.find(tk_a_borrar, in_column=1)
+                                if cell: 
+                                    ws_cierres.delete_rows(cell.row)
+                                    st.success(f"🗑️ Venta anulada. Las acciones vuelven a tu Cartera.")
+                                    time.sleep(1.5)
+                                    st.rerun()
+                else:
+                    st.info("No hay ventas registradas.")
 
         with col_cl2:
-            st.markdown("#### 📥 Analizar Resultados")
+            st.markdown("#### 📥 Resumen de Operaciones Cerradas")
             if datos_cierres_auto and len(datos_cierres_auto) > 0:
                 df_cierres = pd.DataFrame(datos_cierres_auto)
                 
@@ -1318,7 +1366,6 @@ if es_admin:
                 
                 if col_gan and col_rent:
                     try:
-                        # Limpieza extrema antibug: convertimos extrayendo solo números (para ignorar fechas accidentalmente)
                         def clean_numeric(series):
                             s_str = series.astype(str).str.replace(',', '.')
                             s_num = s_str.str.extract(r'([-]?\d+\.?\d*)', expand=False)
@@ -1360,7 +1407,6 @@ if es_admin:
                         df_cierres_mostrar[col_gan] = df_cierres_mostrar[col_gan].apply(lambda x: f"{x:+,.2f} €")
                         df_cierres_mostrar[col_rent] = df_cierres_mostrar[col_rent].apply(lambda x: f"{x:+.2f}%")
                         
-                        # Extraemos las columnas en el orden que tienes en el pantallazo
                         cols_mostrar = [c for c in ['Ticker', 'Empresa', col_rent, col_gan, 'Fecha', 'Broker', 'Cantidad'] if c in df_cierres_mostrar.columns]
                         st.dataframe(df_cierres_mostrar[cols_mostrar].style.map(color_pct, subset=[col_gan, col_rent]), use_container_width=True, hide_index=True)
                     except Exception as e: 
