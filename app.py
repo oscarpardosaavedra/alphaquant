@@ -1047,19 +1047,36 @@ if es_admin:
         
         with col_c_izq:
             st.markdown("#### 🛒 Registrar Compra")
+with col_c_izq:
+            st.markdown("#### 🛒 Registrar Compra")
             with st.form("form_compra"):
                 tk_c = st.selectbox("Activo:", opciones_desplegable)
-                cant_c = st.number_input("Cantidad de Acciones:", min_value=0.01, step=1.0)
-                prec_c = st.number_input("Precio Medio de Compra:", min_value=0.01, step=0.5)
+                # Cambiamos "Precio por acción" por "Importe Total"
+                total_c = st.number_input("Capital Total Invertido (€/$):", min_value=0.01, step=100.0, help="Pon aquí el dinero total que ha salido de tu cuenta.")
+                cant_c = st.number_input("Nº de Acciones recibidas:", min_value=0.000001, step=1.0, help="Cuántos títulos te ha dado el broker por ese dinero.")
                 fecha_c = st.date_input("Fecha de Compra:")
+                
                 if st.form_submit_button("Añadir a Cartera", use_container_width=True):
                     ws_c = conectar_ws("Cartera")
                     if ws_c:
-                        t_limpio = tk_c.split(" ")[0]
-                        ws_c.append_row([t_limpio, tickers_nombres.get(t_limpio, t_limpio), float(cant_c), float(prec_c), str(fecha_c)])
-                        st.success("✅ Compra registrada en Sheets.")
-                        time.sleep(1)
-                        st.rerun()
+                        try:
+                            t_limpio = tk_c.split(" ")[0]
+                            # Calculamos el precio medio automáticamente antes de guardar
+                            precio_medio_calculado = total_c / cant_c
+                            
+                            # Guardamos en tu Google Sheets: [Ticker, Empresa, Cantidad, Precio_Unitario, Fecha]
+                            ws_c.append_row([
+                                t_limpio, 
+                                tickers_nombres.get(t_limpio, t_limpio), 
+                                float(cant_c), 
+                                round(float(precio_medio_calculado), 4), 
+                                str(fecha_c)
+                            ])
+                            st.success(f"✅ Registrado: {cant_c} acciones a {precio_medio_calculado:.2f} cada una.")
+                            time.sleep(1.5)
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Error al guardar: {e}")
 
             st.markdown("#### 🔄 Actualizar Datos")
             if st.button("Sincronizar con Wall Street", use_container_width=True):
