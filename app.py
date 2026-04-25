@@ -1213,27 +1213,99 @@ if es_admin:
             else:
                 st.info("👈 Pulsa en 'Sincronizar con Wall Street' para ver tus gráficos y datos.")
 
-    # --- PESTAÑA CIERRES ANUALES ---
+   # --- PESTAÑA CIERRES ANUALES ---
     with tabs[5]:
         st.subheader("🗓️ Histórico de Cierres y Rendimiento Anual")
+        
+        # 1. PASO CRÍTICO: Cálculo de stock disponible (Compras - Ventas)
+        dict_compras = {}
+        ws_inventario = conectar_ws("Cartera")
+        if ws_inventario:
+            try:
+                data_inv = ws_inventario.get_all_records()
+                if data_inv:
+                    for d in data_inv:
+                        # Limpieza extrema de columnas
+                        d_l = {str(k).lower().replace(' ', '').replace('_', '').replace('º', '').replace('.', ''): v for k, v in d.items()}
+                        tk = str(d_l.get('ticker', d_l.get('activo', ''))).strip().upper()
+                        raw_cant = str(d_l.get('cantidad', d_l.get('cant', d_l.get('nacciones', 0)))).replace(',', '.')
+                        cant = float(raw_cant) if raw_cant else 0.0
+                        if tk and cant > 0:
+                            dict_compras[tk] = dict_compras.get(tk, 0.0) + cant
+            except Exception: pass
+
+        dict_ventas = {}
+        ws_cierres = conectar_ws("Cierres")
+        if ws_cierres:
+            try:
+                data_cierres = ws_cierres.get_all_records()
+                if data_cierres:
+                    for d in data_cierres:
+                        d_l = {str(k).lower().replace(' ', '').replace('_', '').replace('º', '').replace('.', ''): v for k, v in d.items()}
+                        tk = str(d_l.get('ticker', d_l.get('activo', ''))).strip().upper()
+                        raw_cant = str(d_l.get('cantidad', d_l.get('cant', d_l.get('nacciones', 0)))).replace(',', '.')
+                        cant = float(raw_cant) if raw_cant else 0.0
+                        if tk and cant > 0:
+                            dict_ventas[tk] = dict_ventas.get(tk, 0.0) + cant
+            except Exception: pass
+
+        # Calculamos el Stock Real (Compradas - Vendidas)
+        dict_stock = {}
+        for tk, cant_comprada in dict_compras.items():
+            cant_vendida = dict_ventas.get(tk, 0.0)
+            cant_restante = cant_comprada - cant_vendida
+            # Si le quedan acciones (con un margen para decimales), se añaden
+            if cant_restante > 0.0001:
+                dict_stock[tk] = round(cant_restante, 4)
+
         col_cl1, col_cl2 = st.columns([1, 3])
         
         with col_cl1:
             st.markdown("#### 🤝 Registrar Venta")
-            with st.form("form_cierre"):
-                tk_v = st.selectbox("Activo Vendido:", opciones_desplegable)
-                broker_v = st.selectbox("Broker de Venta:", ["Trade Republic", "Revolut", "Interactive Brokers", "Otro"])
-                prec_v = st.number_input("Rentabilidad Final (%):", format="%.2f")
-                gan_v = st.number_input("Ganancia/Pérdida Efectiva (€/$):", format="%.2f")
-                fecha_v = st.date_input("Fecha de Venta:")
-                if st.form_submit_button("Registrar Cierre", use_container_width=True):
-                    ws_cierres = conectar_ws("Cierres")
-                    if ws_cierres:
-                        t_v_limpio = tk_v.split(" ")[0]
-                        ws_cierres.append_row([t_v_limpio, tickers_nombres.get(t_v_limpio, t_v_limpio), float(prec_v), float(gan_v), str(fecha_v), broker_v])
-                        st.success("✅ Cierre registrado.")
-                        time.sleep(1)
-                        st.rerun()
+            
+            if not dict_stock:
+                st.warning("⚠️ No tienes acciones registradas en cartera para poder vender.")
+            else:
+                # Mostramos información visual fuera del form para no bloquear
+                st.info("💡 **Stock Disponible:**\n" + "\n".join([f"- **{t}**: {c}" for t, c in dict_stock.items()]))
+                
+                with st.form("form_cierre_validado"):
+                    tk_v = st.selectbox("Activo a Vender:", sorted(list(dict_stock.keys())))
+                    
+                    # Obtenemos el stock máximo para el ticker seleccionado
+                    max_permitido = dict_stock.get(tk_v, 0.0)
+                    
+                    # Limitamos dinámicamente la cantidad a vender
+                    cant_v = st.number_input("Cantidad a vender:", min_value=0.0001, max_value=float(max_permitido), step=1.0)
+                    
+                    broker_v = st.selectbox("Broker de Venta:", ["Trade Republic", "Revolut", "Interactive Brokers", "Scalable Capital", "Otro"])
+                    prec_v = st.number_input("Rentabilidad Final (%):", format="%.2f")
+                    gan_v = st.number_input("Ganancia/Pérdida Efectiva (€/$):", format="%.2f")
+                    fecha_v = st.date_input("Fecha de Venta:")
+                    
+                    if st.form_submit_button("Registrar Cierre", use_container_width=True):
+                        # ESCUDO ANTI-VENTA EN DESCUBIERTO (Doble comprobación)
+                        if cant_v > max_permitido:
+                            st.error(f"❌ Operación bloqueada. Intento de vender {cant_v} uds de {tk_v}, pero tu stock real es {max_permitido}.")
+                        else:
+                            if ws_cierres:
+                                t_v_limpio = tk_v.strip().upper()
+                                empresa_v = tickers_nombres.get(t_v_limpio, t_v_limpio)
+                                
+                                # Guardamos en el orden exacto de tu pantallazo:
+                                # Ticker | Empresa | Rentabilidad | Ganancia | Fecha | Broker | Cantidad
+                                ws_cierres.append_row([
+                                    t_v_limpio, 
+                                    empresa_v, 
+                                    float(prec_v), 
+                                    float(gan_v), 
+                                    str(fecha_v), 
+                                    broker_v,
+                                    float(cant_v)
+                                ])
+                                st.success(f"✅ Venta de {tk_v} registrada correctamente.")
+                                time.sleep(1.5)
+                                st.rerun()
 
             st.markdown("#### 📥 Analizar Resultados")
             if st.button("Cargar Histórico de Cierres", use_container_width=True):
@@ -1247,18 +1319,14 @@ if es_admin:
                             st.session_state.datos_cierres = []
                             st.warning("No hay operaciones cerradas.")
                     except Exception as e:
-                        st.error("Error al leer la hoja 'Cierres'. ¿Añadiste la columna 'Broker'?")
+                        st.error("Error al leer la hoja 'Cierres'. Revisa el nombre de las columnas en tu Sheet.")
 
         with col_cl2:
             if st.session_state.get('datos_cierres') and len(st.session_state.datos_cierres) > 0:
                 df_cierres = pd.DataFrame(st.session_state.datos_cierres)
                 
-                col_rent = None
-                col_gan = None
-                for c in df_cierres.columns:
-                    c_low = c.lower().replace('_', '').replace(' ', '')
-                    if 'rentabilidad' in c_low or 'rent' in c_low or '%' in c_low: col_rent = c
-                    if 'ganancia' in c_low or 'beneficio' in c_low or 'efectiva' in c_low: col_gan = c
+                col_rent = next((c for c in df_cierres.columns if 'rentabilidad' in c.lower() or 'rent' in c.lower()), None)
+                col_gan = next((c for c in df_cierres.columns if 'ganancia' in c.lower() or 'efectiva' in c.lower()), None)
                 
                 if col_gan and col_rent:
                     try:
@@ -1276,6 +1344,7 @@ if es_admin:
                         c_b2.metric("🎯 Win Rate", f"{win_rate:.1f}%")
                         c_b3.metric("🏆 Ganadoras", f"{operaciones_ganadoras}")
                         c_b4.metric("🪦 Perdedoras", f"{operaciones_perdedoras}")
+                        
                         st.markdown("---")
                         
                         c_gc1, c_gc2 = st.columns(2)
@@ -1294,9 +1363,15 @@ if es_admin:
                         
                         st.markdown("#### 📜 Registro de Operaciones Cerradas")
                         df_cierres_mostrar = df_cierres.copy()
-                        df_cierres_mostrar[col_gan] = df_cierres_mostrar[col_gan].apply(lambda x: f"{x:+,.2f} €")
+                        df_cierres_mostrar[col_gan] = df_cierres_mostrar[col_gan].apply(lambda x: f"{x:+,.2f}")
                         df_cierres_mostrar[col_rent] = df_cierres_mostrar[col_rent].apply(lambda x: f"{x:+.2f}%")
                         
-                        cols_mostrar = [c for c in ['Fecha', 'Broker', 'Ticker', 'Activo', 'Empresa', col_rent, col_gan, 'Fecha_Venta'] if c in df_cierres_mostrar.columns]
+                        # Extraemos las columnas exactas que tienes para pintarlas en pantalla
+                        cols_mostrar = [c for c in ['Fecha', 'Broker', 'Ticker', 'Empresa', 'Cantidad', col_rent, col_gan] if c in df_cierres_mostrar.columns]
                         st.dataframe(df_cierres_mostrar[cols_mostrar].style.map(color_pct, subset=[col_gan, col_rent]), use_container_width=True, hide_index=True)
-                    except Exception: pass
+                    except Exception as e: 
+                        st.error(f"Error interno procesando los cierres: {e}")
+                else:
+                    st.error("⚠️ No se encuentran las columnas de Ganancia o Rentabilidad. Revisa el Google Sheets.")
+            else:
+                st.info("👈 Pulsa en 'Cargar Histórico de Cierres' para ver tus resultados.")
