@@ -1355,8 +1355,11 @@ if es_admin:
                                 fecha_compra_str = info_compra.get('fecha_compra', str(fecha_v))
                                 
                                 try:
-                                    fecha_c_limpia = fecha_compra_str.split(" ")[0]
-                                    f_compra_dt = datetime.datetime.strptime(fecha_c_limpia, "%Y-%m-%d").date()
+                                    f_compra_str = fecha_compra_str.split(" ")[0]
+                                    try:
+                                        f_compra_dt = datetime.datetime.strptime(f_compra_str, "%Y-%m-%d").date()
+                                    except:
+                                        f_compra_dt = pd.to_datetime(f_compra_str, dayfirst=True).date()
                                     dias_cartera = (fecha_v - f_compra_dt).days
                                     if dias_cartera < 0: dias_cartera = 0
                                 except:
@@ -1391,13 +1394,13 @@ if es_admin:
                                     ws_cierres.append_row([
                                         tk_v, 
                                         empresa_v, 
-                                        round(float(prec_v), 2),   # Rentabilidad Final
-                                        round(float(gan_v), 2),    # Ganancia Efectiva / Beneficio Neto
-                                        fecha_venta_completa,      # Fecha con la hora incluida
+                                        round(float(prec_v), 2), 
+                                        round(float(gan_v), 2), 
+                                        fecha_venta_completa, 
                                         broker_v,
                                         float(cant_v),
-                                        int(dias_cartera),         # Días en cartera
-                                        float(total_venta_local)   # Total de la venta
+                                        int(dias_cartera),
+                                        float(total_venta_local)
                                     ])
                                     st.success(f"✅ Venta registrada a las {hora_v}. Beneficio: {gan_v:+.2f} €")
                                     time.sleep(2)
@@ -1425,6 +1428,7 @@ if es_admin:
             if datos_cierres_auto and len(datos_cierres_auto) > 0:
                 df_cierres = pd.DataFrame(datos_cierres_auto)
                 
+                # Identificamos las columnas clave para matematicas y pintar graficos
                 col_rent = next((c for c in df_cierres.columns if 'rent' in str(c).lower() or '%' in str(c)), None)
                 col_gan = next((c for c in df_cierres.columns if 'ganancia' in str(c).lower() or 'efectiva' in str(c).lower() or 'beneficio' in str(c).lower()), None)
                 
@@ -1435,13 +1439,15 @@ if es_admin:
                             s_num = s_str.str.extract(r'([-]?\d+\.?\d*)', expand=False)
                             return pd.to_numeric(s_num, errors='coerce').fillna(0.0)
                             
-                        df_cierres[col_gan] = clean_numeric(df_cierres[col_gan])
-                        df_cierres[col_rent] = clean_numeric(df_cierres[col_rent])
+                        # Limpiamos para KPIs
+                        df_kpi = df_cierres.copy()
+                        df_kpi[col_gan] = clean_numeric(df_kpi[col_gan])
+                        df_kpi[col_rent] = clean_numeric(df_kpi[col_rent])
                         
-                        win_rate = (df_cierres[col_gan] > 0).mean() * 100
-                        beneficio_neto = df_cierres[col_gan].sum()
-                        operaciones_totales = len(df_cierres)
-                        operaciones_ganadoras = len(df_cierres[df_cierres[col_gan] > 0])
+                        win_rate = (df_kpi[col_gan] > 0).mean() * 100
+                        beneficio_neto = df_kpi[col_gan].sum()
+                        operaciones_totales = len(df_kpi)
+                        operaciones_ganadoras = len(df_kpi[df_kpi[col_gan] > 0])
                         operaciones_perdedoras = operaciones_totales - operaciones_ganadoras
                         
                         c_b1, c_b2, c_b3, c_b4 = st.columns(4)
@@ -1456,21 +1462,26 @@ if es_admin:
                         st.markdown("#### 📜 Registro de Operaciones Cerradas")
                         df_cierres_mostrar = df_cierres.copy()
                         
-                        # Extraemos TODAS las columnas que vengan de Google Sheets tal cual están
+                        # Damos formato bonito a euros y porcentajes a las columnas dinamicas
+                        if col_gan:
+                            df_cierres_mostrar[col_gan] = clean_numeric(df_cierres_mostrar[col_gan]).apply(lambda x: f"{x:+,.2f} €")
+                        if col_rent:
+                            df_cierres_mostrar[col_rent] = clean_numeric(df_cierres_mostrar[col_rent]).apply(lambda x: f"{x:+.2f}%")
+                        
+                        col_tot = next((c for c in df_cierres_mostrar.columns if 'total' in str(c).lower() or 'obtenido' in str(c).lower()), None)
+                        if col_tot:
+                            df_cierres_mostrar[col_tot] = clean_numeric(df_cierres_mostrar[col_tot]).apply(lambda x: f"{x:,.2f} €")
+
+                        # Mostramos todas las columnas tal cual vengan del Sheet
                         cols_mostrar_final = df_cierres_mostrar.columns.tolist()
                         
-                        # Damos formato visual al DataFrame solo si existen esas columnas
-                        if col_gan: df_cierres_mostrar[col_gan] = df_cierres_mostrar[col_gan].apply(lambda x: f"{x:+,.2f} €" if pd.notnull(x) else x)
-                        if col_rent: df_cierres_mostrar[col_rent] = df_cierres_mostrar[col_rent].apply(lambda x: f"{x:+.2f}%" if pd.notnull(x) else x)
-                        
-                        # Definimos el coloreado especial localmente para los euros y porcentajes
                         def color_celdas(val):
                             if isinstance(val, str) and ('%' in val or '€' in val):
                                 if val.startswith('+'): return 'color: #228B22;' 
                                 elif val.startswith('-'): return 'color: #FF3333;' 
                             return ''
 
-                        st.dataframe(df_cierres_mostrar[cols_mostrar_final].style.map(color_celdas, subset=[c for c in [col_gan, col_rent] if c]), use_container_width=True, hide_index=True)
+                        st.dataframe(df_cierres_mostrar[cols_mostrar_final].style.map(color_celdas), use_container_width=True, hide_index=True)
 
                         st.markdown("<br>", unsafe_allow_html=True)
 
@@ -1484,17 +1495,15 @@ if es_admin:
                                 st.plotly_chart(fig_win, use_container_width=True)
                             
                         with c_gc2:
-                            df_cierres['Color'] = np.where(df_cierres[col_gan].astype(str).str.replace('€', '').str.replace(',', '.').str.replace('+', '').astype(float) > 0, 'green', 'red')
-                            df_cierres['Operacion'] = [f"Op {i+1} ({tk})" for i, tk in enumerate(df_cierres.get('Ticker', df_cierres.get('Activo', df_cierres.index)))]
-                            # Recuperamos el valor original para el gráfico
-                            df_cierres['Valor_Grafico'] = df_cierres[col_gan].astype(str).str.replace('€', '').str.replace(',', '.').str.replace('+', '').astype(float)
-                            fig_hist = px.bar(df_cierres, x='Operacion', y='Valor_Grafico', title='Historial de Trades', color='Color', color_discrete_map={'green':'#228B22', 'red':'#FF3333'})
+                            df_kpi['Color'] = np.where(df_kpi[col_gan] > 0, 'green', 'red')
+                            df_kpi['Operacion'] = [f"Op {i+1} ({tk})" for i, tk in enumerate(df_kpi.get('Ticker', df_kpi.get('Activo', df_kpi.index)))]
+                            fig_hist = px.bar(df_kpi, x='Operacion', y=col_gan, title='Historial de Trades', color='Color', color_discrete_map={'green':'#228B22', 'red':'#FF3333'})
                             fig_hist.update_layout(showlegend=False, xaxis_title="", yaxis_title="Beneficio Realizado")
                             st.plotly_chart(fig_hist, use_container_width=True)
                             
                     except Exception as e: 
                         st.error(f"Error interno procesando los cierres: {e}")
                 else:
-                    st.error("⚠️ No se encuentran las columnas de Ganancia o Rentabilidad. Revisa el Google Sheets.")
+                    st.error("⚠️ No se encuentran las columnas de Ganancia o Rentabilidad en el Sheets. Revísalas.")
             else:
                 st.info("No hay operaciones cerradas registradas aún.")
