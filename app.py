@@ -15,7 +15,7 @@ import requests
 # ==========================================
 st.set_page_config(page_title="Alphaquant", page_icon="📈", layout="wide")
 # --- SISTEMA ADMIN Y NUEVA CONEXIÓN ---
-PIN_PROCURADO = "1234" 
+PIN_PROCURADO = "197519" 
 
 def conectar_ws(nombre_hoja):
     try:
