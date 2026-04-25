@@ -1245,125 +1245,275 @@ if es_admin:
             else:
                 st.info("No hay nada en la cartera.")
 
-# --- PESTAÑA CIERRES ANUALES (CORREGIDA: FECHAS Y COLUMNAS) ---
+# --- PESTAÑA CIERRES ANUALES ---
     with tabs[5]:
         st.subheader("🗓️ Histórico de Cierres y Rendimiento Anual")
         
-        # 1. PREPARACIÓN DE DATOS (CÁLCULO DE STOCK Y COMPRAS)
-        dict_compras = {}; dict_compras_info = {}
+        # 1. CÁLCULO DE STOCK DISPONIBLE Y DATOS DE COMPRA
+        dict_compras = {}
+        dict_compras_info = {} 
+        
         if st.session_state.get('datos_cartera'):
             for item in st.session_state.datos_cartera:
                 tk = item.get("TICKER", "").upper()
-                if tk and float(item.get("CANT.", 0)) > 0:
+                cant = float(item.get("CANT.", 0.0))
+                inv_e = float(item.get("INV_E", 0.0)) 
+                broker = item.get("BROKER", "N/A")
+                empresa = item.get("EMPRESA", tk)
+                fecha_compra = item.get("FECHA", "")
+                
+                if tk and cant > 0:
                     if tk not in dict_compras:
                         dict_compras[tk] = 0.0
-                        dict_compras_info[tk] = {'inv_e_total': 0.0, 'broker': item.get("BROKER", "N/A"), 'empresa': item.get("EMPRESA", tk), 'fecha_compra': item.get("FECHA", "")}
-                    dict_compras[tk] += float(item.get("CANT.", 0))
-                    dict_compras_info[tk]['inv_e_total'] += float(item.get("INV_E", 0))
+                        dict_compras_info[tk] = {'inv_e_total': 0.0, 'broker': broker, 'empresa': empresa, 'fecha_compra': fecha_compra}
+                    
+                    dict_compras[tk] += cant
+                    dict_compras_info[tk]['inv_e_total'] += inv_e
+        else:
+            ws_inventario = conectar_ws("Cartera")
+            if ws_inventario:
+                try:
+                    data_inv = ws_inventario.get_all_records()
+                    if data_inv:
+                        for d in data_inv:
+                            d_l = {str(k).lower().replace(' ', '').replace('_', '').replace('º', '').replace('.', ''): v for k, v in d.items()}
+                            tk = str(d_l.get('ticker', d_l.get('activo', ''))).strip().upper()
+                            raw_cant = str(d_l.get('cantidad', d_l.get('cant', d_l.get('nacciones', 0)))).replace(',', '.')
+                            
+                            fec_key = next((k for k in d.keys() if 'fecha' in str(k).lower()), None)
+                            fecha_c = str(d[fec_key]) if fec_key else ""
+                            
+                            brk_key = next((k for k in d.keys() if 'broker' in str(k).lower()), None)
+                            broker_c = str(d[brk_key]) if brk_key else "N/A"
+                            
+                            emp_key = next((k for k in d.keys() if 'empresa' in str(k).lower()), None)
+                            empresa_c = str(d[emp_key]) if emp_key else tk
+                            
+                            try: cant = float(raw_cant) if raw_cant else 0.0
+                            except: cant = 0.0
+                            
+                            if tk and cant > 0: 
+                                if tk not in dict_compras:
+                                    dict_compras[tk] = 0.0
+                                    dict_compras_info[tk] = {'inv_e_total': 0.0, 'broker': broker_c, 'empresa': empresa_c, 'fecha_compra': fecha_c}
+                                dict_compras[tk] += cant
+                except Exception: pass
 
-        ws_cierres = conectar_ws("Cierres")
-        datos_cierres_auto = []
         dict_ventas = {}
+        ws_cierres = conectar_ws("Cierres")
+        datos_cierres_auto = [] 
         if ws_cierres:
             try:
                 datos_cierres_auto = ws_cierres.get_all_records()
-                for d in datos_cierres_auto:
-                    tk = str(d.get('Ticker', '')).strip().upper()
-                    if tk:
-                        cant_v = str(d.get('Cantidad', '0')).replace(',', '.')
-                        dict_ventas[tk] = dict_ventas.get(tk, 0.0) + float(cant_v if cant_v else 0)
-            except: pass
+                if datos_cierres_auto:
+                    for d in datos_cierres_auto:
+                        d_l = {str(k).lower().replace(' ', '').replace('_', '').replace('º', '').replace('.', ''): str(v) for k, v in d.items()}
+                        tk = d_l.get('ticker', d_l.get('activo', '')).strip().upper()
+                        
+                        raw_cant = d_l.get('cantidad', d_l.get('cant', '')).replace(',', '.')
+                        try: cant = float(raw_cant) if raw_cant else 0.0
+                        except ValueError: cant = 0.0
+                        
+                        if tk and cant <= 0: cant = 999999.0 
+                        if tk: dict_ventas[tk] = dict_ventas.get(tk, 0.0) + cant
+            except Exception: pass
 
-        dict_stock = {tk: round(c - dict_ventas.get(tk, 0.0), 4) for tk, c in dict_compras.items() if (c - dict_ventas.get(tk, 0.0)) > 0.001}
+        # Calculamos el Stock Real
+        dict_stock = {}
+        for tk, cant_comprada in dict_compras.items():
+            cant_vendida = dict_ventas.get(tk, 0.0)
+            cant_restante = cant_comprada - cant_vendida
+            if cant_restante > 0.0001:
+                dict_stock[tk] = round(cant_restante, 4)
 
         col_cl1, col_cl2 = st.columns([1, 3])
         
         with col_cl1:
             st.markdown("#### 🤝 Registrar Venta")
-            if not dict_stock: st.warning("⚠️ No hay acciones para vender.")
+            
+            if not dict_stock:
+                st.warning("⚠️ No tienes acciones registradas en cartera para poder vender.")
             else:
-                with st.form("form_cierre_definitivo"):
-                    tk_v = st.selectbox("Activo:", sorted(list(dict_stock.keys())))
-                    cant_v = st.number_input("Cantidad:", min_value=0.0001, value=dict_stock[tk_v])
-                    total_v_local = st.number_input("Total Recibido por la Venta (€/$):", min_value=0.0)
+                with st.form("form_cierre_validado"):
+                    tk_v = st.selectbox("Activo a Vender:", sorted(list(dict_stock.keys())))
+                    cant_v = st.number_input("Cantidad a vender:", min_value=0.0001, step=1.0)
+                    total_venta_local = st.number_input("Total Obtenido por la Venta (€/$):", min_value=0.0, step=10.0, help="Importe bruto que has recibido por esta venta en la moneda original de tu broker.")
                     fecha_v = st.date_input("Fecha de Venta:")
                     
-                    if st.form_submit_button("Registrar Venta", use_container_width=True):
-                        if cant_v > dict_stock[tk_v]: st.error(f"Solo tienes {dict_stock[tk_v]} uds.")
+                    if st.form_submit_button("Registrar Cierre Automático", use_container_width=True):
+                        max_permitido = dict_stock.get(tk_v, 0.0)
+                        
+                        if cant_v > max_permitido:
+                            st.error(f"❌ Operación bloqueada. Intentas vender {cant_v} uds de {tk_v}, pero solo posees {max_permitido}.")
                         else:
-                            # Cálculo de Días y Rentabilidad
-                            info_c = dict_compras_info[tk_v]
-                            try:
-                                f_compra = datetime.datetime.strptime(info_c['fecha_compra'].split(" ")[0], "%Y-%m-%d").date()
-                                dias = (fecha_v - f_compra).days
-                            except: dias = 0
-                            
-                            # Hora de Madrid
-                            hora_v = datetime.datetime.now(pytz.timezone('Europe/Madrid')).strftime("%H:%M")
-                            fecha_completa_v = f"{fecha_v} {hora_v}"
-                            
-                            # Matemáticas: Beneficio = Venta - (PrecioMedioCompra * CantidadVendida)
-                            coste_proporcional = (info_c['inv_e_total'] / dict_compras[tk_v]) * cant_v
-                            # (Omitimos conversión FX para simplificar, asumiendo que el total_v ya es el valor que quieres registrar)
-                            beneficio = total_v_local - coste_proporcional
-                            rent = ((total_v_local / coste_proporcional) - 1) * 100 if coste_proporcional > 0 else 0
-                            
-                            if ws_cierres:
-                                ws_cierres.append_row([
-                                    tk_v, info_c['empresa'], round(rent, 2), round(beneficio, 2),
-                                    fecha_completa_v, info_c['broker'], float(cant_v), int(dias), float(total_v_local)
-                                ])
-                                st.success("✅ Venta registrada correctamente.")
-                                time.sleep(1.5); st.rerun()
+                            with st.spinner("Registrando y calculando rentabilidad..."):
+                                info_compra = dict_compras_info[tk_v]
+                                empresa_v = info_compra['empresa']
+                                broker_v = info_compra['broker']
+                                total_comprado = dict_compras[tk_v]
+                                inv_e_total = info_compra['inv_e_total']
+                                fecha_compra_str = info_compra.get('fecha_compra', str(fecha_v))
+                                
+                                try:
+                                    f_compra_str = fecha_compra_str.split(" ")[0]
+                                    try:
+                                        f_compra_dt = datetime.datetime.strptime(f_compra_str, "%Y-%m-%d").date()
+                                    except:
+                                        f_compra_dt = pd.to_datetime(f_compra_str, dayfirst=True).date()
+                                    dias_cartera = (fecha_v - f_compra_dt).days
+                                    if dias_cartera < 0: dias_cartera = 0
+                                except:
+                                    dias_cartera = 0
+                                
+                                p_medio_compra_e = inv_e_total / total_comprado if total_comprado > 0 else 0
+                                inversion_venta_e = p_medio_compra_e * cant_v
+                                
+                                es_usd = ("($)" in broker_v or "REVOLUT" in broker_v.upper() or "IBKR" in broker_v.upper())
+                                tasa_eur_usd = 1.08 
+                                if es_usd:
+                                    try:
+                                        df_fx = yf.download("EURUSD=X", period="1d", progress=False)
+                                        if not df_fx.empty:
+                                            if isinstance(df_fx.columns, pd.MultiIndex): df_fx.columns = df_fx.columns.get_level_values(0)
+                                            tasa_eur_usd = float(df_fx['Close'].iloc[-1])
+                                    except: pass
+                                
+                                total_venta_e = (total_venta_local / tasa_eur_usd) if es_usd else total_venta_local
+                                
+                                if inversion_venta_e > 0:
+                                    prec_v = ((total_venta_e / inversion_venta_e) - 1) * 100
+                                    gan_v = total_venta_e - inversion_venta_e
+                                else:
+                                    prec_v = 0.0
+                                    gan_v = total_venta_e
 
-            st.markdown("#### 🗑️ Borrar Registro")
-            with st.expander("Anular Venta"):
+                                hora_v = datetime.datetime.now().strftime("%H:%M")
+                                fecha_venta_completa = f"{fecha_v} {hora_v}"
+
+                                if ws_cierres:
+                                    ws_cierres.append_row([
+                                        tk_v, 
+                                        empresa_v, 
+                                        round(float(prec_v), 2), 
+                                        round(float(gan_v), 2), 
+                                        fecha_venta_completa, 
+                                        broker_v,
+                                        float(cant_v),
+                                        int(dias_cartera),
+                                        float(total_venta_local)
+                                    ])
+                                    st.success(f"✅ Venta registrada a las {hora_v}. Beneficio: {gan_v:+.2f} €")
+                                    time.sleep(2)
+                                    st.rerun()
+
+            # --- NUEVA SECCIÓN DE BORRADO DE VENTAS ---
+            st.markdown("#### 🗑️ Gestión de Ventas")
+            with st.expander("Corregir / Eliminar Venta"):
                 if datos_cierres_auto:
-                    v_del = st.selectbox("Venta a borrar:", [f"{d['Ticker']} ({d['Fecha de Venta']})" for d in datos_cierres_auto])
-                    if st.button("Eliminar permanentemente"):
-                        cell = ws_cierres.find(v_del.split(" (")[0])
-                        if cell: ws_cierres.delete_rows(cell.row); st.rerun()
+                    opciones_borrar_v = [f"{d.get('Ticker', d.get('Activo', ''))} - {d.get('Fecha de Venta', d.get('Fecha', ''))} ({d.get('Cantidad', '')} uds)" for d in datos_cierres_auto]
+                    with st.form("form_borrar_venta"):
+                        v_borrar = st.selectbox("Selecciona la venta:", opciones_borrar_v)
+                        accion_borrar = st.radio("¿Qué deseas hacer?", [
+                            "🔄 Anular Venta (Las acciones vuelven a tu Cartera)",
+                            "❌ Eliminar Definitivamente (Se borra de Ventas y de Cartera)"
+                        ])
+                        
+                        if st.form_submit_button("Ejecutar Acción", use_container_width=True):
+                            if ws_cierres:
+                                tk_a_borrar = v_borrar.split(" - ")[0].strip()
+                                cell = ws_cierres.find(tk_a_borrar, in_column=1)
+                                if cell: 
+                                    ws_cierres.delete_rows(cell.row)
+                                    
+                                    if "Definitivamente" in accion_borrar:
+                                        # Si elige eliminar definitivamente, conectamos a la Cartera y lo fulminamos allí también
+                                        ws_cartera = conectar_ws("Cartera")
+                                        if ws_cartera:
+                                            cell_c = ws_cartera.find(tk_a_borrar, in_column=1)
+                                            if cell_c:
+                                                ws_cartera.delete_rows(cell_c.row)
+                                        st.success(f"❌ {tk_a_borrar} ha sido eliminado de Ventas y de tu Cartera de forma permanente.")
+                                    else:
+                                        st.success(f"🔄 Venta anulada. Las acciones de {tk_a_borrar} vuelven a tu Cartera.")
+                                        
+                                    time.sleep(1.5)
+                                    st.rerun()
+                else:
+                    st.info("No hay ventas registradas.")
 
         with col_cl2:
-            if datos_cierres_auto:
-                df_v = pd.DataFrame(datos_cierres_auto)
+            if datos_cierres_auto and len(datos_cierres_auto) > 0:
+                df_cierres = pd.DataFrame(datos_cierres_auto)
                 
-                # Identificar columnas para KPIs
-                c_gan = next((c for c in df_v.columns if 'ganancia' in c.lower() or 'efectiva' in c.lower()), None)
-                c_rent = next((c for c in df_v.columns if 'rent' in c.lower() or '%' in c), None)
+                col_rent = next((c for c in df_cierres.columns if 'rent' in str(c).lower() or '%' in str(c)), None)
+                col_gan = next((c for c in df_cierres.columns if 'ganancia' in str(c).lower() or 'efectiva' in str(c).lower() or 'beneficio' in str(c).lower()), None)
                 
-                # KPIs rápidos
-                df_clean = df_v.copy()
-                for c in [c_gan, c_rent]:
-                    if c: df_clean[c] = df_clean[c].astype(str).str.replace(',', '.').str.extract(r'([-]?\d+\.?\d*)').astype(float).fillna(0)
-                
-                k1, k2, k3 = st.columns(3)
-                k1.metric("💸 Beneficio Realizado", f"{df_clean[c_gan].sum():+,.2f} €")
-                k2.metric("🎯 Win Rate", f"{(df_clean[c_gan] > 0).mean()*100:.1f}%")
-                k3.metric("⏱️ Media Días", f"{df_clean.get('Días en Cartera', [0]).mean():.0f} d")
-                
-                st.markdown("---")
-                st.markdown("#### 📜 Registro de Operaciones")
-                
-                # Formateo visual de la tabla
-                df_v_show = df_v.copy()
-                if c_gan: df_v_show[c_gan] = df_clean[c_gan].apply(lambda x: f"{x:+,.2f} €")
-                if c_rent: df_v_show[c_rent] = df_clean[c_rent].apply(lambda x: f"{x:+.2f}%")
-                
-                # Orden de columnas del Excel original
-                orden_ok = ["Ticker", "Empresa", c_rent, c_gan, "Fecha de Venta", "Broker", "Cantidad", "Días en Cartera", "Total Obtenido por la Venta (€/$)"]
-                cols_v = [c for c in orden_ok if c in df_v_show.columns]
-                
-                st.dataframe(df_v_show[cols_v].style.map(color_pct, subset=[c_gan, c_rent] if c_gan and c_rent else []), use_container_width=True, hide_index=True)
+                if col_gan and col_rent:
+                    try:
+                        def clean_numeric(series):
+                            s_str = series.astype(str).str.replace(',', '.')
+                            s_num = s_str.str.extract(r'([-]?\d+\.?\d*)', expand=False)
+                            return pd.to_numeric(s_num, errors='coerce').fillna(0.0)
+                            
+                        df_kpi = df_cierres.copy()
+                        df_kpi[col_gan] = clean_numeric(df_kpi[col_gan])
+                        df_kpi[col_rent] = clean_numeric(df_kpi[col_rent])
+                        
+                        win_rate = (df_kpi[col_gan] > 0).mean() * 100
+                        beneficio_neto = df_kpi[col_gan].sum()
+                        operaciones_totales = len(df_kpi)
+                        operaciones_ganadoras = len(df_kpi[df_kpi[col_gan] > 0])
+                        operaciones_perdedoras = operaciones_totales - operaciones_ganadoras
+                        
+                        c_b1, c_b2, c_b3, c_b4 = st.columns(4)
+                        c_b1.metric("💸 Beneficio Neto", f"{beneficio_neto:+,.2f} €")
+                        c_b2.metric("🎯 Win Rate", f"{win_rate:.1f}%")
+                        c_b3.metric("🏆 Ganadoras", f"{operaciones_ganadoras}")
+                        c_b4.metric("🪦 Perdedoras", f"{operaciones_perdedoras}")
+                        
+                        st.markdown("---")
+                    
+                        # --- 1. TABLA (ARRIBA) ---
+                        st.markdown("#### 📜 Registro de Operaciones Cerradas")
+                        df_cierres_mostrar = df_cierres.copy()
+                        
+                        if col_gan: df_cierres_mostrar[col_gan] = clean_numeric(df_cierres_mostrar[col_gan]).apply(lambda x: f"{x:+,.2f} €")
+                        if col_rent: df_cierres_mostrar[col_rent] = clean_numeric(df_cierres_mostrar[col_rent]).apply(lambda x: f"{x:+.2f}%")
+                        
+                        col_tot = next((c for c in df_cierres_mostrar.columns if 'total' in str(c).lower() or 'obtenido' in str(c).lower()), None)
+                        if col_tot: df_cierres_mostrar[col_tot] = clean_numeric(df_cierres_mostrar[col_tot]).apply(lambda x: f"{x:,.2f} €")
 
-                # Gráficos debajo
-                st.markdown("<br>", unsafe_allow_html=True)
-                g1, g2 = st.columns(2)
-                with g1:
-                    fig1 = px.pie(df_clean, values=df_clean[c_gan].abs(), names='Ticker', title="Distribución de Ganancias/Pérdidas")
-                    st.plotly_chart(fig1, use_container_width=True)
-                with g2:
-                    df_clean['Color'] = np.where(df_clean[c_gan] > 0, 'green', 'red')
-                    fig2 = px.bar(df_clean, x=df_clean.index, y=c_gan, color='Color', color_discrete_map={'green':'#228B22', 'red':'#FF3333'}, title="Historial de Trades")
-                    st.plotly_chart(fig2, use_container_width=True)
-            else: st.info("No hay ventas registradas.")
+                        cols_mostrar_final = df_cierres_mostrar.columns.tolist()
+                        
+                        def color_celdas(val):
+                            if isinstance(val, str) and ('%' in val or '€' in val):
+                                if val.startswith('+'): return 'color: #228B22;' 
+                                elif val.startswith('-'): return 'color: #FF3333;' 
+                            return ''
+
+                        st.dataframe(df_cierres_mostrar[cols_mostrar_final].style.map(color_celdas), use_container_width=True, hide_index=True)
+
+                        st.markdown("<br>", unsafe_allow_html=True)
+
+                        # --- 2. GRÁFICOS (DEBAJO) ---
+                        st.markdown("#### 📊 Gráficos de Rendimiento")
+                        c_gc1, c_gc2 = st.columns(2)
+                        with c_gc1:
+                            if operaciones_totales > 0:
+                                df_win_loss = pd.DataFrame({'Resultado': ['Ganadoras', 'Perdedoras'], 'Cantidad': [operaciones_ganadoras, operaciones_perdedoras]})
+                                fig_win = px.pie(df_win_loss, values='Cantidad', names='Resultado', title='Tasa de Acierto (Win Rate)', hole=0.4, color='Resultado', color_discrete_map={'Ganadoras':'#228B22', 'Perdedoras':'#FF3333'})
+                                st.plotly_chart(fig_win, use_container_width=True)
+                            
+                        with c_gc2:
+                            df_kpi['Color'] = np.where(df_kpi[col_gan] > 0, 'green', 'red')
+                            df_kpi['Operacion'] = [f"Op {i+1} ({tk})" for i, tk in enumerate(df_kpi.get('Ticker', df_kpi.get('Activo', df_kpi.index)))]
+                            fig_hist = px.bar(df_kpi, x='Operacion', y=col_gan, title='Historial de Trades', color='Color', color_discrete_map={'green':'#228B22', 'red':'#FF3333'})
+                            fig_hist.update_layout(showlegend=False, xaxis_title="", yaxis_title="Beneficio Realizado")
+                            st.plotly_chart(fig_hist, use_container_width=True)
+                            
+                    except Exception as e: 
+                        st.error(f"Error interno procesando los cierres: {e}")
+                else:
+                    st.error("⚠️ No se encuentran las columnas de Ganancia o Rentabilidad en el Sheets. Revísalas.")
+            else:
+                st.info("No hay operaciones cerradas registradas aún.")
