@@ -1144,28 +1144,25 @@ if es_admin:
                             st.success(f"✅ Registrado con éxito.")
                             time.sleep(1)
                             st.rerun()
-                        except Exception as e: st.error(f"Error al guardar: {e}")
-                            
+                        except Exception as e: st.error(f"Error al guardar en Google Sheets: {e}")
+
             st.markdown("#### 🗑️ Corregir / Borrar")
-                        with st.expander("Eliminar operación de la Cartera"):
-                            if st.session_state.get('datos_cartera'):
-                                # Crea una lista visual para saber qué vas a borrar
-                                opciones_borrar = [f"{d['TICKER']} - {d['FECHA']} ({d['CANT.']} uds)" for d in st.session_state.datos_cartera]
-                                with st.form("form_borrar_cartera"):
-                                    tk_borrar = st.selectbox("Selecciona la operación:", opciones_borrar)
-                                    if st.form_submit_button("Eliminar Registro", use_container_width=True):
-                                        if ws_c:
-                                            # Extrae solo el Ticker
-                                            ticker_a_borrar = tk_borrar.split(" - ")[0]
-                                            # Busca la fila en el Google Sheets y se la carga
-                                            cell = ws_c.find(ticker_a_borrar, in_column=1)
-                                            if cell: 
-                                                ws_c.delete_rows(cell.row)
-                                                st.success(f"🗑️ {ticker_a_borrar} borrado de la cartera.")
-                                                time.sleep(1)
-                                                st.rerun()
-                            else:
-                                st.info("No hay acciones registradas.")
+            with st.expander("Eliminar operación de la Cartera"):
+                if st.session_state.get('datos_cartera'):
+                    opciones_borrar = [f"{d['TICKER']} - {d['FECHA']} ({d['CANT.']} uds)" for d in st.session_state.datos_cartera]
+                    with st.form("form_borrar_cartera"):
+                        tk_borrar = st.selectbox("Selecciona la operación:", opciones_borrar)
+                        if st.form_submit_button("Eliminar Registro", use_container_width=True):
+                            if ws_c:
+                                ticker_a_borrar = tk_borrar.split(" - ")[0]
+                                cell = ws_c.find(ticker_a_borrar, in_column=1)
+                                if cell: 
+                                    ws_c.delete_rows(cell.row)
+                                    st.success(f"🗑️ {ticker_a_borrar} borrado de la cartera.")
+                                    time.sleep(1)
+                                    st.rerun()
+                else:
+                    st.info("No hay acciones registradas.")
         
         with col_c_der:
             if st.session_state.get('datos_cartera') and len(st.session_state.datos_cartera) > 0:
