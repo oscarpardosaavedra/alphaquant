@@ -1075,20 +1075,21 @@ if es_admin:
                             barra_v = st.progress(0, text="Valorando posiciones en tiempo real...")
                             for i, d in enumerate(datos_raw):
                                 try:
-                                    # Leemos estrictamente tus columnas
-                                    tk = str(d.get('Ticker', '')).strip()
+                                    # LECTURA A PRUEBA DE FALLOS: Busca múltiples nombres posibles
+                                    tk = str(d.get('Ticker', d.get('Activo', ''))).strip()
                                     if not tk: continue
                                     
                                     tk_y = a_yahoo(tk)
-                                    hist = yf.download(tk_y, period="5d", progress=False) # 5d para asegurar que hay datos
+                                    hist = yf.download(tk_y, period="5d", progress=False)
                                     if isinstance(hist.columns, pd.MultiIndex): hist.columns = hist.columns.get_level_values(0)
                                     
                                     if hist.empty or 'Close' not in hist.columns: continue
                                     
                                     p_actual = float(hist['Close'].dropna().iloc[-1])
                                     
-                                    raw_compra = str(d.get('Precio_Compra', 0)).replace(',', '.')
-                                    raw_cant = str(d.get('Cantidad', 0)).replace(',', '.')
+                                    # Escáner flexible para los precios y cantidades
+                                    raw_compra = str(d.get('Precio_Compra', d.get('Precio Compra', 0))).replace(',', '.')
+                                    raw_cant = str(d.get('Nº Acciones', d.get('Cantidad', 0))).replace(',', '.')
                                     
                                     p_compra = float(raw_compra)
                                     cant = float(raw_cant)
@@ -1116,7 +1117,7 @@ if es_admin:
                                             "MONEDA": moneda
                                         })
                                 except Exception as inner_e: 
-                                    pass
+                                    pass # Ignora filas mal escritas pero NO rompe la web
                                 barra_v.progress((i+1)/len(datos_raw))
                             
                             st.session_state.datos_cartera = lista_val
@@ -1146,7 +1147,7 @@ if es_admin:
                 
                 st.markdown("---")
                 
-                # --- GRÁFICOS VISUALES PROTEGIDOS ---
+                # --- GRÁFICOS VISUALES ---
                 c_g1, c_g2 = st.columns(2)
                 with c_g1:
                     if 'INVERTIDO' in df_cartera.columns and not df_cartera.empty:
@@ -1215,7 +1216,7 @@ if es_admin:
             if st.session_state.get('datos_cierres') and len(st.session_state.datos_cierres) > 0:
                 df_cierres = pd.DataFrame(st.session_state.datos_cierres)
                 
-                # Nombres de columnas estrictos como me los mostraste:
+                # Nombres de columnas estrictos como los tienes en el Excel:
                 col_rent = 'Rentabilidad_Final'
                 col_gan = 'Ganancia_Efectiva'
                 
@@ -1248,7 +1249,6 @@ if es_admin:
                             
                         with c_gc2:
                             df_cierres['Color'] = np.where(df_cierres[col_gan] > 0, 'green', 'red')
-                            # Usamos un x_label secuencial para que no pete si hay tickers duplicados
                             df_cierres['Operacion'] = [f"Op {i+1} ({tk})" for i, tk in enumerate(df_cierres.get('Ticker', df_cierres.index))]
                             fig_hist = px.bar(df_cierres, x='Operacion', y=col_gan, title='Historial de Trades Cerrados', color='Color', color_discrete_map={'green':'#228B22', 'red':'#FF3333'})
                             fig_hist.update_layout(showlegend=False, xaxis_title="", yaxis_title="Ganancia/Pérdida Efectiva")
@@ -1267,5 +1267,7 @@ if es_admin:
                         st.error(f"Error procesando los números. Detalle: {e_proc}")
                 else:
                     st.error("⚠️ No encuentro las columnas 'Ganancia_Efectiva' o 'Rentabilidad_Final'. Revisa tu Google Sheets.")
+            else:
+                st.info("👈 Pulsa en 'Cargar Histórico de Cierres' para ver tu rendimiento consolidado.")
             else:
                 st.info("👈 Pulsa en 'Cargar Histórico de Cierres' para ver tu rendimiento consolidado.")
