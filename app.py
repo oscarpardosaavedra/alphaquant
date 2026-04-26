@@ -1436,10 +1436,12 @@ if es_admin:
 
                         # --- 3. GRÁFICA DE VALOR TOTAL (ÁREA - LA DE SIEMPRE) ---
                         st.markdown("#### 📈 Evolución Histórica del Capital Total")
-                        fig_evolucion = px.area(df_ev, x='Fecha', y='Valor', 
+                        
+                        # --- GRÁFICA DE EVOLUCIÓN (LÍNEA PURA) ---
+                        fig_evolucion = px.line(df_ev, x='Fecha', y='Valor', 
                                                 title="Crecimiento del Patrimonio en Euros (€)",
                                                 labels={'Valor': 'Total (€)', 'Fecha': 'Día'},
-                                                color_discrete_sequence=['#228B22'])
+                                                color_discrete_sequence=['#00FF00']) # Verde neón para la línea
                         
                         fig_evolucion.update_layout(
                             hovermode="x unified",
@@ -1448,7 +1450,9 @@ if es_admin:
                             plot_bgcolor='rgba(0,0,0,0)',
                             yaxis=dict(gridcolor='rgba(255,255,255,0.1)', tickformat=",.2f")
                         )
-                        fig_evolucion.update_traces(mode="lines+markers", marker=dict(size=6))
+                        
+                        # Forzamos que se vea la línea clara y los puntos
+                        fig_evolucion.update_traces(mode="lines+markers", line=dict(width=3), marker=dict(size=6))
                         st.plotly_chart(fig_evolucion, use_container_width=True)
 
                     else:
