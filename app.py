@@ -1383,13 +1383,14 @@ if es_admin:
                 except Exception as e:
                     st.error(f"Error en el panel de evolución: {e}")
 
-    # --- ANÁLISIS DE RIESGO Y LIQUIDEZ (SECTORES Y BROKERS) ---
+# --- ANÁLISIS DE RIESGO Y LIQUIDEZ (SECTORES Y BROKERS) ---
         st.markdown("---")
         st.markdown("### 🔍 Análisis de Diversificación y Riesgo")
         
-        c_risk1, c_risk2 = st.columns(2)
+        # LA CLAVE: Creamos dos columnas del mismo ancho
+        col_sec, col_brok = st.columns(2)
         
-        with c_risk1:
+        with col_sec:
             # 1. DIVERSIFICACIÓN POR SECTOR
             st.markdown("#### 🏢 Reparto por Sectores")
             sectores_dict = {}
@@ -1399,7 +1400,6 @@ if es_admin:
                     tk = item['TICKER']
                     inv_e = item['INV_E']
                     try:
-                        # Consultamos a Yahoo el sector de la empresa
                         ticker_info = yf.Ticker(a_yahoo(tk)).info
                         sector = ticker_info.get('sector', 'Otros')
                     except:
@@ -1409,23 +1409,22 @@ if es_admin:
             
             df_sectores = pd.DataFrame(list(sectores_dict.items()), columns=['Sector', 'Inversión (€)'])
             
-            # Gráfico Sunburst (muy pro para ver jerarquías) o Pie
             fig_sectores = px.pie(df_sectores, values='Inversión (€)', names='Sector', 
                                   hole=0.4,
                                   color_discrete_sequence=px.colors.qualitative.Safe)
             
-            fig_sectores.update_layout(showlegend=True, template="plotly_dark", 
-                                       paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
+            # Forzamos la altura (height=400) para que cuadren exactas
+            fig_sectores.update_layout(height=400, showlegend=True, template="plotly_dark", 
+                                       paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
+                                       margin=dict(t=30, b=10, l=10, r=10)) # Ajustamos márgenes
             st.plotly_chart(fig_sectores, use_container_width=True)
-            st.caption("Muestra cuánto capital tienes expuesto a cada industria.")
 
-        with c_risk2:
+        with col_brok:
             # 2. EXPOSICIÓN POR BROKER
             st.markdown("#### 🏦 Ubicación del Capital")
             broker_dict = {}
             
             for item in st.session_state.datos_cartera:
-                # Limpiamos el nombre del broker (quitamos el símbolo de moneda si existe)
                 brk = item['BROKER'].split(" (")[0]
                 inv_e = item['INV_E']
                 broker_dict[brk] = broker_dict.get(brk, 0) + inv_e
@@ -1433,11 +1432,13 @@ if es_admin:
             df_brokers = pd.DataFrame(list(broker_dict.items()), columns=['Broker', 'Total (€)'])
             
             fig_brokers = px.pie(df_brokers, values='Total (€)', names='Broker', 
-                                 hole=0.6, # Tipo Donut
+                                 hole=0.6,
                                  color_discrete_sequence=px.colors.sequential.Greens_r)
             
-            fig_brokers.update_layout(showlegend=True, template="plotly_dark", 
-                                      paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
+            # Forzamos la misma altura (height=400)
+            fig_brokers.update_layout(height=400, showlegend=True, template="plotly_dark", 
+                                      paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
+                                      margin=dict(t=30, b=10, l=10, r=10)) # Ajustamos márgenes
             st.plotly_chart(fig_brokers, use_container_width=True)
             st.caption("Distribución física de tu dinero entre tus diferentes plataformas.")
 
