@@ -1275,24 +1275,44 @@ if es_admin:
                 
                 with c_g2:
                     try:
-                        # 1. Agrupamos todas las compras por Ticker y sumamos sus ganancias
-                        df_agrupado = df_c.groupby('TICKER', as_index=False)['GANANCIA (€)'].sum()
+                        # 1. Recuperamos el Valor Actual en euros de cada fila de forma matemática
+                        df_c['VALOR_ACTUAL_E'] = df_c['INV_E'] + df_c['GANANCIA (€)']
                         
-                        # 2. Decidimos el color de la barra en base al Total Neto
-                        df_agrupado['Color'] = np.where(df_agrupado['GANANCIA (€)'] >= 0, 'green', 'red')
+                        # 2. Agrupamos por Ticker sumando el total INVERTIDO y el total ACTUAL
+                        df_agrupado = df_c.groupby('TICKER', as_index=False).agg({
+                            'INV_E': 'sum',
+                            'VALOR_ACTUAL_E': 'sum'
+                        })
                         
-                        # 3. Dibujamos la gráfica limpia
-                        fig_bar = px.bar(df_agrupado, x='TICKER', y='GANANCIA (€)', 
-                                         title='Ganancia Neta por Activo (€)', 
-                                         color='Color', 
-                                         color_discrete_map={'green':'#228B22', 'red':'#FF3333'})
+                        # 3. MATEMÁTICA PURA: Ganancia Neta = Valor Actual Total - Invertido Total
+                        df_agrupado['GANANCIA NETA (€)'] = df_agrupado['VALOR_ACTUAL_E'] - df_agrupado['INV_E']
+                        
+                        # 4. Forzamos la etiqueta de color para que Plotly no se confunda con los nombres
+                        df_agrupado['Estado'] = np.where(df_agrupado['GANANCIA NETA (€)'] >= 0, 'Positivo', 'Negativo')
+                        
+                        # 5. Dibujamos la gráfica limpia y neta
+                        fig_bar = px.bar(df_agrupado, x='TICKER', y='GANANCIA NETA (€)', 
+                                         title='Ganancia Neta Consolidada (€)', 
+                                         color='Estado', 
+                                         color_discrete_map={'Positivo':'#228B22', 'Negativo':'#FF3333'},
+                                         hover_data={
+                                             'VALOR_ACTUAL_E': ':,.2f', 
+                                             'INV_E': ':,.2f', 
+                                             'Estado': False
+                                         })
                         
                         fig_bar.update_layout(
                             showlegend=False, 
                             template="plotly_dark", 
                             paper_bgcolor='rgba(0,0,0,0)', 
-                            plot_bgcolor='rgba(0,0,0,0)'
+                            plot_bgcolor='rgba(0,0,0,0)',
+                            yaxis_title="Ganancia Neta (€)",
+                            xaxis_title=""
                         )
+                        
+                        # Renombrar para que al pasar el ratón se lea perfecto
+                        fig_bar.for_each_trace(lambda t: t.update(name=t.name.replace("Estado=", "")))
+                        
                         st.plotly_chart(fig_bar, use_container_width=True)
                     except Exception as e: 
                         st.error(f"Error en gráfica de barras: {e}")
