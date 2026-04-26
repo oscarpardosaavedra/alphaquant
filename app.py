@@ -16,8 +16,10 @@ import re
 # 1. CONFIGURACIÓN Y CONEXIÓN DB (BASE DE DATOS)
 # ==========================================
 st.set_page_config(page_title="Alphaquant", page_icon="📈", layout="wide")
-# --- SISTEMA ADMIN Y NUEVA CONEXIÓN ---
-PIN_PROCURADO = "197519" 
+
+# --- SISTEMA ADMIN Y SESIÓN ---
+PIN_PROCURADO = "197519"
+TIEMPO_SESION = 2 * 60 * 60  # 2 horas en segundos
 
 def conectar_ws(nombre_hoja):
     try:
@@ -29,13 +31,47 @@ def conectar_ws(nombre_hoja):
     except:
         return None
 
+# --- CONTROL DEL GUARDIÁN DE TIEMPO ---
+if 'hora_login' in st.session_state:
+    tiempo_pasado = time.time() - st.session_state.hora_login
+    if tiempo_pasado > TIEMPO_SESION:
+        # Si han pasado más de 2 horas, caducamos la sesión
+        st.session_state.es_admin = False
+        del st.session_state.hora_login
+
+# --- MENÚ LATERAL ---
 with st.sidebar:
     st.markdown("<h2 style='text-align: center;'>🔐 Acceso Admin</h2>", unsafe_allow_html=True)
-    pin_ingresado = st.text_input("Introduce tu PIN para ver tu cartera privada:", type="password")
-    es_admin = (pin_ingresado == PIN_PROCURADO)
-    if es_admin: st.success("✅ Modo Administrador Activo")
-    else: st.info("Modo Público: Solo herramientas de análisis.")
-
+    
+    # Si la sesión está activa y es válida:
+    if st.session_state.get('es_admin', False):
+        st.success("✅ Modo Administrador Activo")
+        st.caption("Sesión recordada. No necesitas PIN durante 2 horas.")
+        es_admin = True # Variable para que el resto de tu código funcione
+        
+        # Botón de seguridad por si te vas del PC
+        if st.button("Cerrar Sesión Segura"):
+            st.session_state.es_admin = False
+            del st.session_state.hora_login
+            st.rerun()
+            
+    # Si NO hay sesión activa, pedimos la llave:
+    else:
+        pin_ingresado = st.text_input("Introduce tu PIN para ver tu cartera privada:", type="password")
+        
+        if pin_ingresado:
+            if pin_ingresado == PIN_PROCURADO:
+                # Fichamos la hora y damos acceso
+                st.session_state.es_admin = True
+                st.session_state.hora_login = time.time()
+                st.rerun() # Refrescamos la página al instante
+            else:
+                st.error("❌ PIN incorrecto.")
+                es_admin = False
+        else:
+            st.info("Modo Público: Solo herramientas de análisis.")
+            es_admin = False
+            
 # ---> MEMORIA PERSISTENTE PARA QUE NO SE BORRE EL RADAR NI AUDITORÍA <---
 if 'resultados_radar' not in st.session_state: st.session_state.resultados_radar = None
 if 'resultados_auditoria' not in st.session_state: st.session_state.resultados_auditoria = None
