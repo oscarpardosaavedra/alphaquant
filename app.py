@@ -1285,30 +1285,50 @@ if es_admin:
                 st.info("No hay nada en la cartera.")
 
 # --- LÓGICA DE EVOLUCIÓN HISTÓRICA AUTOMÁTICA ---
+# --- LÓGICA DE EVOLUCIÓN E IMPACTO DIARIO (SÍN QUITAR NADA) ---
         if st.session_state.get('tot_act'):
-            # El sistema guarda/actualiza el valor de hoy automáticamente al entrar
             guardar_foto_cartera(st.session_state.tot_act)
             
             st.markdown("---")
-            st.markdown("### 📈 Evolución Histórica de mi Capital (en €)")
-            
             ws_ev = conectar_ws("Evolucion")
             if ws_ev:
                 try:
                     datos_ev = ws_ev.get_all_records()
-                    if datos_ev:
+                    if len(datos_ev) > 0:
                         df_ev = pd.DataFrame(datos_ev)
-                        # Normalizamos nombres de columnas
                         df_ev.columns = [str(c).strip().capitalize() for c in df_ev.columns]
-                        
                         df_ev['Fecha'] = pd.to_datetime(df_ev['Fecha'])
                         df_ev = df_ev.sort_values('Fecha')
                         
+                        # Limpieza de valores decimales
                         if df_ev['Valor'].dtype == object:
                             df_ev['Valor'] = df_ev['Valor'].astype(str).str.replace(',', '.').str.extract(r'([-]?\d+\.?\d*)').astype(float)
-                        
+
+                        # --- 1. MÉTRICAS DE VARIACIÓN (KPIs) ---
+                        if len(df_ev) > 1:
+                            df_ev['Var_Pct'] = df_ev['Valor'].pct_change() * 100
+                            ultima_var = df_ev['Var_Pct'].iloc[-1]
+                            ultima_var_euro = df_ev['Valor'].iloc[-1] - df_ev['Valor'].iloc[-2]
+                            
+                            st.markdown("#### ⚡ Rendimiento de la Última Sesión")
+                            cv1, cv2, cv3 = st.columns([1, 1, 2])
+                            cv1.metric("Variación (%)", f"{ultima_var:+,.2f}%")
+                            cv2.metric("Variación (€)", f"{ultima_var_euro:+,.2f} €")
+                            cv3.caption("Evolución calculada respecto al registro anterior en tu historial.")
+
+                            # --- 2. GRÁFICA DE VOLATILIDAD (BARRAS) ---
+                            df_ev['Color'] = np.where(df_ev['Var_Pct'] >= 0, '#228B22', '#FF3333')
+                            fig_var = px.bar(df_ev.dropna(subset=['Var_Pct']), x='Fecha', y='Var_Pct',
+                                             title="Retornos Diarios (%)",
+                                             labels={'Var_Pct': 'Variación (%)', 'Fecha': 'Día'},
+                                             color='Color', color_discrete_map="identity")
+                            fig_var.update_layout(template="plotly_dark", paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', height=300)
+                            st.plotly_chart(fig_var, use_container_width=True)
+
+                        # --- 3. GRÁFICA DE VALOR TOTAL (ÁREA - LA DE SIEMPRE) ---
+                        st.markdown("#### 📈 Evolución Histórica del Capital Total")
                         fig_evolucion = px.area(df_ev, x='Fecha', y='Valor', 
-                                                title="Patrimonio Total Realizado (Cierre Diario)",
+                                                title="Crecimiento del Patrimonio en Euros (€)",
                                                 labels={'Valor': 'Total (€)', 'Fecha': 'Día'},
                                                 color_discrete_sequence=['#228B22'])
                         
@@ -1319,13 +1339,71 @@ if es_admin:
                             plot_bgcolor='rgba(0,0,0,0)',
                             yaxis=dict(gridcolor='rgba(255,255,255,0.1)', tickformat=",.2f")
                         )
-                        fig_evolucion.update_traces(mode="lines+markers", marker=dict(size=8))
-                        
+                        fig_evolucion.update_traces(mode="lines+markers", marker=dict(size=6))
                         st.plotly_chart(fig_evolucion, use_container_width=True)
+
                     else:
-                        st.info("💡 La gráfica empezará a dibujarse en cuanto registres tu primera acción.")
+                        st.info("💡 La gráfica se generará cuando el sistema tenga datos registrados.")
                 except Exception as e:
-                    st.error(f"Error al cargar la evolución: {e}")
+                    st.error(f"Error en el panel de evolución: {e}")
+
+    # --- ANÁLISIS DE RIESGO Y LIQUIDEZ (SECTORES Y BROKERS) ---
+        st.markdown("---")
+        st.markdown("### 🔍 Análisis de Diversificación y Riesgo")
+        
+        c_risk1, c_risk2 = st.columns(2)
+        
+        with c_risk1:
+            # 1. DIVERSIFICACIÓN POR SECTOR
+            st.markdown("#### 🏢 Reparto por Sectores")
+            sectores_dict = {}
+            
+            with st.spinner("Analizando sectores..."):
+                for item in st.session_state.datos_cartera:
+                    tk = item['TICKER']
+                    inv_e = item['INV_E']
+                    try:
+                        # Consultamos a Yahoo el sector de la empresa
+                        ticker_info = yf.Ticker(a_yahoo(tk)).info
+                        sector = ticker_info.get('sector', 'Otros')
+                    except:
+                        sector = 'Desconocido'
+                    
+                    sectores_dict[sector] = sectores_dict.get(sector, 0) + inv_e
+            
+            df_sectores = pd.DataFrame(list(sectores_dict.items()), columns=['Sector', 'Inversión (€)'])
+            
+            # Gráfico Sunburst (muy pro para ver jerarquías) o Pie
+            fig_sectores = px.pie(df_sectores, values='Inversión (€)', names='Sector', 
+                                  hole=0.4,
+                                  color_discrete_sequence=px.colors.qualitative.Safe)
+            
+            fig_sectores.update_layout(showlegend=True, template="plotly_dark", 
+                                       paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
+            st.plotly_chart(fig_sectores, use_container_width=True)
+            st.caption("Muestra cuánto capital tienes expuesto a cada industria.")
+
+        with c_risk2:
+            # 2. EXPOSICIÓN POR BROKER
+            st.markdown("#### 🏦 Ubicación del Capital")
+            broker_dict = {}
+            
+            for item in st.session_state.datos_cartera:
+                # Limpiamos el nombre del broker (quitamos el símbolo de moneda si existe)
+                brk = item['BROKER'].split(" (")[0]
+                inv_e = item['INV_E']
+                broker_dict[brk] = broker_dict.get(brk, 0) + inv_e
+            
+            df_brokers = pd.DataFrame(list(broker_dict.items()), columns=['Broker', 'Total (€)'])
+            
+            fig_brokers = px.pie(df_brokers, values='Total (€)', names='Broker', 
+                                 hole=0.6, # Tipo Donut
+                                 color_discrete_sequence=px.colors.sequential.Greens_r)
+            
+            fig_brokers.update_layout(showlegend=True, template="plotly_dark", 
+                                      paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
+            st.plotly_chart(fig_brokers, use_container_width=True)
+            st.caption("Distribución física de tu dinero entre tus diferentes plataformas.")
 
     # --- PESTAÑA CIERRES ANUALES ---
     with tabs[5]:
