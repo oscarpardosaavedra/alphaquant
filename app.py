@@ -1393,8 +1393,7 @@ if es_admin:
             else:
                 st.info("No hay nada en la cartera.")
 
-# --- LÓGICA DE EVOLUCIÓN HISTÓRICA AUTOMÁTICA ---
-# --- LÓGICA DE EVOLUCIÓN E IMPACTO DIARIO (SÍN QUITAR NADA) ---
+# --- SECCIÓN: EVOLUCIÓN Y RENDIMIENTO (LADO A LADO) ---
         if st.session_state.get('tot_act'):
             guardar_foto_cartera(st.session_state.tot_act)
             
@@ -1403,62 +1402,57 @@ if es_admin:
             if ws_ev:
                 try:
                     datos_ev = ws_ev.get_all_records()
-                    if len(datos_ev) > 0:
+                    if len(datos_ev) > 1:
                         df_ev = pd.DataFrame(datos_ev)
                         df_ev.columns = [str(c).strip().capitalize() for c in df_ev.columns]
                         df_ev['Fecha'] = pd.to_datetime(df_ev['Fecha'])
                         df_ev = df_ev.sort_values('Fecha')
                         
-                        # Limpieza de valores decimales
+                        # Limpieza de valores
                         if df_ev['Valor'].dtype == object:
                             df_ev['Valor'] = df_ev['Valor'].astype(str).str.replace(',', '.').str.extract(r'([-]?\d+\.?\d*)').astype(float)
 
-                        # --- 1. MÉTRICAS DE VARIACIÓN (KPIs) ---
-                        if len(df_ev) > 1:
-                            df_ev['Var_Pct'] = df_ev['Valor'].pct_change() * 100
-                            ultima_var = df_ev['Var_Pct'].iloc[-1]
-                            ultima_var_euro = df_ev['Valor'].iloc[-1] - df_ev['Valor'].iloc[-2]
+                        # Cálculo de variaciones para la segunda gráfica
+                        df_ev['Var_Pct'] = df_ev['Valor'].pct_change() * 100
+                        
+                        # --- CREACIÓN DE COLUMNAS PARA ALINEACIÓN ---
+                        col_graf1, col_graf2 = st.columns(2)
+
+                        with col_graf1:
+                            st.markdown("#### 📈 Evolución Capital Total")
+                            fig_cap = px.line(df_ev, x='Fecha', y='Valor', 
+                                             labels={'Valor': 'Total (€)', 'Fecha': 'Día'},
+                                             color_discrete_sequence=['#006400']) # Verde Oscuro (DarkGreen)
                             
-                            st.markdown("#### ⚡ Rendimiento de la Última Sesión")
-                            cv1, cv2, cv3 = st.columns([1, 1, 2])
-                            cv1.metric("Variación (%)", f"{ultima_var:+,.2f}%")
-                            cv2.metric("Variación (€)", f"{ultima_var_euro:+,.2f} €")
-                            cv3.caption("Evolución calculada respecto al registro anterior en tu historial.")
+                            fig_cap.update_layout(height=350, template="plotly_dark", 
+                                                 paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
+                                                 margin=dict(t=20, b=20, l=10, r=10))
+                            fig_cap.update_traces(mode="lines+markers", line=dict(width=3))
+                            st.plotly_chart(fig_cap, use_container_width=True)
 
-                            # --- 2. GRÁFICA DE VOLATILIDAD (BARRAS) ---
-                            df_ev['Color'] = np.where(df_ev['Var_Pct'] >= 0, '#228B22', '#FF3333')
-                            fig_var = px.bar(df_ev.dropna(subset=['Var_Pct']), x='Fecha', y='Var_Pct',
-                                             title="Retornos Diarios (%)",
-                                             labels={'Var_Pct': 'Variación (%)', 'Fecha': 'Día'},
-                                             color='Color', color_discrete_map="identity")
-                            fig_var.update_layout(template="plotly_dark", paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', height=300)
-                            st.plotly_chart(fig_var, use_container_width=True)
-
-                        # --- 3. GRÁFICA DE VALOR TOTAL (ÁREA - LA DE SIEMPRE) ---
-                        st.markdown("#### 📈 Evolución Histórica del Capital Total")
-                        
-                        # --- GRÁFICA DE EVOLUCIÓN (LÍNEA PURA) ---
-                        fig_evolucion = px.line(df_ev, x='Fecha', y='Valor', 
-                                                title="Crecimiento del Patrimonio en Euros (€)",
-                                                labels={'Valor': 'Total (€)', 'Fecha': 'Día'},
-                                                color_discrete_sequence=['#00FF00']) # Verde neón para la línea
-                        
-                        fig_evolucion.update_layout(
-                            hovermode="x unified",
-                            template="plotly_dark",
-                            paper_bgcolor='rgba(0,0,0,0)',
-                            plot_bgcolor='rgba(0,0,0,0)',
-                            yaxis=dict(gridcolor='rgba(255,255,255,0.1)', tickformat=",.2f")
-                        )
-                        
-                        # Forzamos que se vea la línea clara y los puntos
-                        fig_evolucion.update_traces(mode="lines+markers", line=dict(width=3), marker=dict(size=6))
-                        st.plotly_chart(fig_evolucion, use_container_width=True)
+                        with col_graf2:
+                            st.markdown("#### 📉 Rendimiento Diario (%)")
+                            # Filtrar el primer valor que es NaN tras el pct_change
+                            df_rend = df_ev.dropna(subset=['Var_Pct'])
+                            
+                            fig_rend = px.line(df_rend, x='Fecha', y='Var_Pct',
+                                              labels={'Var_Pct': 'Variación (%)', 'Fecha': 'Día'},
+                                              color_discrete_sequence=['#006400']) # Verde Oscuro (DarkGreen)
+                            
+                            fig_rend.update_layout(height=350, template="plotly_dark", 
+                                                  paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
+                                                  margin=dict(t=20, b=20, l=10, r=10))
+                            # Línea un poco más fina para el rendimiento y marcadores
+                            fig_rend.update_traces(mode="lines+markers", line=dict(width=2))
+                            # Añadimos una línea horizontal en el 0 para referencia
+                            fig_rend.add_hline(y=0, line_dash="dash", line_color="white", opacity=0.3)
+                            
+                            st.plotly_chart(fig_rend, use_container_width=True)
 
                     else:
-                        st.info("💡 La gráfica se generará cuando el sistema tenga datos registrados.")
+                        st.info("💡 Se requieren al menos 2 días de datos para mostrar las comparativas.")
                 except Exception as e:
-                    st.error(f"Error en el panel de evolución: {e}")
+                    st.error(f"Error al generar gráficas comparativas: {e}")
 
 # --- ANÁLISIS DE RIESGO Y LIQUIDEZ (SECTORES Y BROKERS) ---
         st.markdown("---")
