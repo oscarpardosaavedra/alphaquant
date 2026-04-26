@@ -1275,11 +1275,27 @@ if es_admin:
                 
                 with c_g2:
                     try:
-                        df_c['Color'] = np.where(df_c['GANANCIA (€)'] > 0, 'green', 'red')
-                        fig_bar = px.bar(df_c, x='TICKER', y='GANANCIA (€)', title='Ganancia / Pérdida en Curso (€)', color='Color', color_discrete_map={'green':'#228B22', 'red':'#FF3333'})
-                        fig_bar.update_layout(showlegend=False)
+                        # 1. Agrupamos todas las compras por Ticker y sumamos sus ganancias
+                        df_agrupado = df_c.groupby('TICKER', as_index=False)['GANANCIA (€)'].sum()
+                        
+                        # 2. Decidimos el color de la barra en base al Total Neto
+                        df_agrupado['Color'] = np.where(df_agrupado['GANANCIA (€)'] >= 0, 'green', 'red')
+                        
+                        # 3. Dibujamos la gráfica limpia
+                        fig_bar = px.bar(df_agrupado, x='TICKER', y='GANANCIA (€)', 
+                                         title='Ganancia Neta por Activo (€)', 
+                                         color='Color', 
+                                         color_discrete_map={'green':'#228B22', 'red':'#FF3333'})
+                        
+                        fig_bar.update_layout(
+                            showlegend=False, 
+                            template="plotly_dark", 
+                            paper_bgcolor='rgba(0,0,0,0)', 
+                            plot_bgcolor='rgba(0,0,0,0)'
+                        )
                         st.plotly_chart(fig_bar, use_container_width=True)
-                    except: pass
+                    except Exception as e: 
+                        st.error(f"Error en gráfica de barras: {e}")
 
             else:
                 st.info("No hay nada en la cartera.")
