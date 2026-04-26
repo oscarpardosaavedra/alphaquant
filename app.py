@@ -82,7 +82,26 @@ with st.sidebar:
     
     if st.session_state.get('es_admin', False):
         st.success("✅ Modo Administrador Activo")
-        st.caption("Sesión persistente. Puedes refrescar la página con F5.")
+        
+        # --- NUEVO: CONTADOR VISUAL PEQUEÑITO ---
+        try:
+            # Extraemos la hora de caducidad del token que está en la URL
+            token_actual = st.query_params.get("session_token", "")
+            caducidad_ts = int(token_actual.split('|')[1])
+            ahora_ts = int(datetime.datetime.now(pytz.timezone('Europe/Madrid')).timestamp())
+            
+            # Calculamos los minutos restantes
+            minutos_restantes = max(0, (caducidad_ts - ahora_ts) // 60)
+            
+            # Mostramos el texto en pequeñito
+            st.markdown(f"<p style='text-align: center; color: #aaaaaa; font-size: 0.85em; margin-bottom: 5px;'>⏱️ La sesión expira en: <b>{minutos_restantes} min</b></p>", unsafe_allow_html=True)
+            
+            # Añadimos una barra de progreso súper fina
+            progreso = min(1.0, minutos_restantes / 120.0) # 120 es el total de minutos de la sesión
+            st.progress(progreso)
+            st.markdown("<br>", unsafe_allow_html=True) # Un pequeño salto de línea
+        except:
+            pass
         
         if st.button("Cerrar Sesión", use_container_width=True):
             st.session_state.es_admin = False
@@ -97,11 +116,8 @@ with st.sidebar:
             
         if submit_btn:
             if pin_ingresado == PIN_PROCURADO:
-                # 1. Generamos el pase VIP
                 nuevo_token = generar_token()
-                # 2. Lo inyectamos en la URL para que sobreviva a los refrescos
                 st.query_params["session_token"] = nuevo_token
-                # 3. Marcamos como admin y recargamos
                 st.session_state.es_admin = True
                 st.rerun()
             else:
