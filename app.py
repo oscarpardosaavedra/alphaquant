@@ -17,9 +17,8 @@ import re
 # ==========================================
 st.set_page_config(page_title="Alphaquant", page_icon="📈", layout="wide")
 
-# --- SISTEMA ADMIN Y SESIÓN ---
-PIN_PROCURADO = "197519"
-TIEMPO_SESION = 2 * 60 * 60  # 2 horas en segundos
+# --- SISTEMA ADMIN Y NUEVA CONEXIÓN ---
+PIN_PROCURADO = "197519" 
 
 def conectar_ws(nombre_hoja):
     try:
@@ -31,11 +30,16 @@ def conectar_ws(nombre_hoja):
     except:
         return None
 
-# --- CONTROL DEL GUARDIÁN DE TIEMPO ---
+# --- CONTROL DEL GUARDIÁN DE TIEMPO (ZONA HORARIA SEGURA) ---
+tz = pytz.timezone('Europe/Madrid')
+TIEMPO_SESION_MINUTOS = 120  # 2 horas en minutos
+
 if 'hora_login' in st.session_state:
-    tiempo_pasado = time.time() - st.session_state.hora_login
-    if tiempo_pasado > TIEMPO_SESION:
-        # Si han pasado más de 2 horas, caducamos la sesión
+    ahora = datetime.datetime.now(tz)
+    tiempo_pasado = ahora - st.session_state.hora_login
+    
+    # Si han pasado más de los minutos permitidos, caducamos la sesión
+    if tiempo_pasado > datetime.timedelta(minutes=TIEMPO_SESION_MINUTOS):
         st.session_state.es_admin = False
         del st.session_state.hora_login
 
@@ -43,28 +47,30 @@ if 'hora_login' in st.session_state:
 with st.sidebar:
     st.markdown("<h2 style='text-align: center;'>🔐 Acceso Admin</h2>", unsafe_allow_html=True)
     
-    # Si la sesión está activa y es válida:
+    # Verificamos si tiene el pase activo
     if st.session_state.get('es_admin', False):
         st.success("✅ Modo Administrador Activo")
-        st.caption("Sesión recordada. No necesitas PIN durante 2 horas.")
-        es_admin = True # Variable para que el resto de tu código funcione
+        st.caption(f"Sesión abierta. Se cerrará automáticamente en {TIEMPO_SESION_MINUTOS} min.")
+        es_admin = True
         
-        # Botón de seguridad por si te vas del PC
+        # Botón para cerrar manual
         if st.button("Cerrar Sesión Segura"):
             st.session_state.es_admin = False
             del st.session_state.hora_login
             st.rerun()
             
-    # Si NO hay sesión activa, pedimos la llave:
+    # Si no tiene pase, pedimos el PIN
     else:
-        pin_ingresado = st.text_input("Introduce tu PIN para ver tu cartera privada:", type="password")
-        
-        if pin_ingresado:
+        # Formulario para que el "Enter" funcione mejor
+        with st.form("login_form", clear_on_submit=True):
+            pin_ingresado = st.text_input("Introduce tu PIN para ver tu cartera privada:", type="password")
+            submit_button = st.form_submit_button("Desbloquear")
+            
+        if submit_button:
             if pin_ingresado == PIN_PROCURADO:
-                # Fichamos la hora y damos acceso
                 st.session_state.es_admin = True
-                st.session_state.hora_login = time.time()
-                st.rerun() # Refrescamos la página al instante
+                st.session_state.hora_login = datetime.datetime.now(tz)
+                st.rerun()
             else:
                 st.error("❌ PIN incorrecto.")
                 es_admin = False
