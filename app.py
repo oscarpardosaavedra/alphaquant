@@ -6,6 +6,8 @@ import plotly.graph_objects as go
 import plotly.express as px
 import datetime
 import pytz
+import hmac
+import hashlib
 import gspread
 from google.oauth2.service_account import Credentials
 import time
@@ -19,6 +21,7 @@ st.set_page_config(page_title="Alphaquant", page_icon="📈", layout="wide")
 
 # --- SISTEMA ADMIN Y NUEVA CONEXIÓN ---
 PIN_PROCURADO = "197519" 
+SECRET_KEY = b"AlphaquantSecretKey2026" # Clave para generar el token
 
 def conectar_ws(nombre_hoja):
     try:
@@ -30,53 +33,81 @@ def conectar_ws(nombre_hoja):
     except:
         return None
 
-# --- CONTROL DEL GUARDIÁN DE TIEMPO (ZONA HORARIA SEGURA) ---
-tz = pytz.timezone('Europe/Madrid')
-TIEMPO_SESION_MINUTOS = 120  # 2 horas en minutos
+# --- FUNCIONES DEL GUARDIÁN ---
+def generar_token():
+    tz = pytz.timezone('Europe/Madrid')
+    # El token caduca exactamente a las 2 horas de su creación
+    caducidad = int((datetime.datetime.now(tz) + datetime.timedelta(hours=2)).timestamp())
+    mensaje = f"admin|{caducidad}".encode('utf-8')
+    firma = hmac.new(SECRET_KEY, mensaje, hashlib.sha256).hexdigest()
+    return f"admin|{caducidad}|{firma}"
 
-if 'hora_login' in st.session_state:
-    ahora = datetime.datetime.now(tz)
-    tiempo_pasado = ahora - st.session_state.hora_login
-    
-    # Si han pasado más de los minutos permitidos, caducamos la sesión
-    if tiempo_pasado > datetime.timedelta(minutes=TIEMPO_SESION_MINUTOS):
-        st.session_state.es_admin = False
-        del st.session_state.hora_login
+def validar_token(token_str):
+    if not token_str: return False
+    try:
+        partes = token_str.split('|')
+        if len(partes) != 3: return False
+        usuario, caducidad_str, firma_recibida = partes
+        
+        # 1. Comprobamos caducidad
+        tz = pytz.timezone('Europe/Madrid')
+        ahora_ts = int(datetime.datetime.now(tz).timestamp())
+        if ahora_ts > int(caducidad_str): return False
+        
+        # 2. Comprobamos la firma para evitar manipulaciones
+        mensaje = f"{usuario}|{caducidad_str}".encode('utf-8')
+        firma_calculada = hmac.new(SECRET_KEY, mensaje, hashlib.sha256).hexdigest()
+        
+        return hmac.compare_digest(firma_calculada, firma_recibida)
+    except:
+        return False
+
+# --- LÓGICA DE LOGIN (COMPROBACIÓN INICIAL) ---
+# Leemos los parámetros de la URL
+query_params = st.query_params
+token_actual = query_params.get("session_token")
+
+# Verificamos si el token de la URL es válido
+es_admin = validar_token(token_actual)
+
+# Sincronizamos con el estado interno
+if es_admin:
+    st.session_state.es_admin = True
+else:
+    st.session_state.es_admin = False
 
 # --- MENÚ LATERAL ---
 with st.sidebar:
     st.markdown("<h2 style='text-align: center;'>🔐 Acceso Admin</h2>", unsafe_allow_html=True)
     
-    # Verificamos si tiene el pase activo
     if st.session_state.get('es_admin', False):
         st.success("✅ Modo Administrador Activo")
-        st.caption(f"Sesión abierta. Se cerrará automáticamente en {TIEMPO_SESION_MINUTOS} min.")
-        es_admin = True
+        st.caption("Sesión persistente. Puedes refrescar la página con F5.")
         
-        # Botón para cerrar manual
-        if st.button("Cerrar Sesión Segura"):
+        if st.button("Cerrar Sesión", use_container_width=True):
             st.session_state.es_admin = False
-            del st.session_state.hora_login
+            # Borramos el token de la URL
+            st.query_params.clear()
             st.rerun()
             
-    # Si no tiene pase, pedimos el PIN
     else:
-        # Formulario para que el "Enter" funcione mejor
         with st.form("login_form", clear_on_submit=True):
-            pin_ingresado = st.text_input("Introduce tu PIN para ver tu cartera privada:", type="password")
-            submit_button = st.form_submit_button("Desbloquear")
+            pin_ingresado = st.text_input("Introduce tu PIN:", type="password")
+            submit_btn = st.form_submit_button("Desbloquear", use_container_width=True)
             
-        if submit_button:
+        if submit_btn:
             if pin_ingresado == PIN_PROCURADO:
+                # 1. Generamos el pase VIP
+                nuevo_token = generar_token()
+                # 2. Lo inyectamos en la URL para que sobreviva a los refrescos
+                st.query_params["session_token"] = nuevo_token
+                # 3. Marcamos como admin y recargamos
                 st.session_state.es_admin = True
-                st.session_state.hora_login = datetime.datetime.now(tz)
                 st.rerun()
             else:
                 st.error("❌ PIN incorrecto.")
-                es_admin = False
         else:
             st.info("Modo Público: Solo herramientas de análisis.")
-            es_admin = False
             
 # ---> MEMORIA PERSISTENTE PARA QUE NO SE BORRE EL RADAR NI AUDITORÍA <---
 if 'resultados_radar' not in st.session_state: st.session_state.resultados_radar = None
